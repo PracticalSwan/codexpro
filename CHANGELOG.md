@@ -6,6 +6,7 @@
 - Fixed `apply_patch` in workspaces that are subdirectories of a parent Git repository by applying workspace-relative patches under the Git prefix and rejecting Git's zero-exit `Skipped patch` result.
 - Made `codexpro_self_test` Pro-context probing independent of the write probe and restore or remove its temporary `.ai-bridge/codexpro-self-test.md` file after diagnostics.
 - Fixed the local web profile editor to reuse the captured CodexPro token as a Bearer credential after browser history cleanup, so Save profile works on token-protected setups.
+- On Windows, Bash now prefers Git for Windows instead of silently launching WSL, and server/self-test diagnostics report the resolved Bash, Git, and search runtimes including Node search fallback. Set `CODEXPRO_BASH_EXECUTABLE` to an absolute Bash path for an explicit override.
 
 ## 0.30.0 (2026-08-08)
 
