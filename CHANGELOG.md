@@ -4,6 +4,7 @@
 
 - Preserved explicitly opened descendant workspace IDs across HTTP MCP sessions with a process-level registry, while keeping implicit workspace selection session-local.
 - Fixed `apply_patch` in workspaces that are subdirectories of a parent Git repository by applying workspace-relative patches under the Git prefix and rejecting Git's zero-exit `Skipped patch` result.
+- Made `codexpro_self_test` Pro-context probing independent of the write probe and restore or remove its temporary `.ai-bridge/codexpro-self-test.md` file after diagnostics.
 
 ## 0.30.0 (2026-08-08)
 
