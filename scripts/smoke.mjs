@@ -475,14 +475,12 @@ if (selfTest.structuredContent.status === 'fail' || !selfTest.structuredContent.
 if (JSON.stringify([...(selfTest.structuredContent.expected_tools ?? [])].sort()) !== JSON.stringify([...(selfTest.structuredContent.registered_tools ?? [])].sort())) {
   throw new Error(`codexpro_self_test expected/registered tools mismatch: ${JSON.stringify(selfTest.structuredContent)}`);
 }
-if (!selfTest.structuredContent.files_touched?.includes?.('.ai-bridge/codexpro-self-test.md')) {
-  throw new Error('codexpro_self_test did not run the .ai-bridge write/edit probe');
+if (selfTest.structuredContent.files_touched?.length) {
+  throw new Error(`codexpro_self_test default unexpectedly touched files: ${JSON.stringify(selfTest.structuredContent.files_touched)}`);
 }
-try {
-  await fs.access(path.join(tmp, '.ai-bridge', 'codexpro-self-test.md'));
-  throw new Error('codexpro_self_test left its transient write probe behind');
-} catch (error) {
-  if (error?.code !== 'ENOENT') throw error;
+const defaultWriteProbe = selfTest.structuredContent.checks?.find?.((item) => item.name === 'write/edit probe');
+if (defaultWriteProbe?.status !== 'skipped') {
+  throw new Error(`codexpro_self_test default write probe was not SKIPPED: ${JSON.stringify(defaultWriteProbe)}`);
 }
 const independentContextSelfTest = await client.request('tools/call', {
   name: 'codexpro_self_test',
@@ -1460,6 +1458,19 @@ const compactBash = await fullModeClient.request('tools/call', { name: 'bash', a
 const compactBashText = compactBash.content?.[0]?.text ?? '';
 if (!compactBashText.includes('structured tool result') || compactBashText.includes('structured CodexPro card')) {
   throw new Error(`compact Bash transcript referenced the wrong output surface: ${compactBashText}`);
+}
+const fullModeSelfTest = await fullModeClient.request('tools/call', {
+  name: 'codexpro_self_test',
+  arguments: { include_global_skills: false, max_skills: 4 }
+});
+const fullModeWriteProbe = fullModeSelfTest.structuredContent.checks?.find?.((item) => item.name === 'write/edit probe');
+if (fullModeSelfTest.structuredContent.status !== 'pass' ||
+    fullModeSelfTest.structuredContent.health !== 'pass' ||
+    fullModeSelfTest.structuredContent.security_posture !== 'elevated' ||
+    fullModeSelfTest.structuredContent.warned !== 0 ||
+    fullModeWriteProbe?.status !== 'skipped' ||
+    fullModeSelfTest.structuredContent.files_touched?.length) {
+  throw new Error(`healthy full-mode self-test did not report PASS/elevated without writes: ${JSON.stringify(fullModeSelfTest.structuredContent)}`);
 }
 fullModeClient.close();
 
