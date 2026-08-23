@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Prioritized tracked source/config/infrastructure files within bounded repository analysis and stopped documentation/generated filenames from creating runtime risk signals on their own.
 - Added parsed recent commits and bounded AI handoff context to `workspace_snapshot` structured output so it matches the information promised by the tool descriptor.
 - Added bounded regex search to the Node fallback in an interruptible worker when ripgrep is unavailable, exposed search capabilities explicitly, and made ripgrep JSON/stdout decoding safe across UTF-8 stream chunk boundaries.
 - Made `codexpro_self_test` read-only by default and separated health from intentional security posture: skipped/info checks no longer make a healthy trusted full-mode configuration report WARN.
