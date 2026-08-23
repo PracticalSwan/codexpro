@@ -1741,6 +1741,10 @@ export function createCodexProServer(
       });
       const ai = await readAiBridgeContext(config, guard, workspace);
       const text = `${summary.text}\n\n## AI handoff context\n\n${ai.text}`;
+      const aiContextTruncated = ai.text.length > STRUCTURED_STRING_MAX_CHARS;
+      const aiContextText = aiContextTruncated
+        ? `${ai.text.slice(0, STRUCTURED_STRING_MAX_CHARS)}\n...[AI context truncated in structured output]`
+        : ai.text;
       return textResult(text, {
         workspace_id: workspace.id,
         root: workspace.root,
@@ -1751,7 +1755,9 @@ export function createCodexProServer(
         skill_counts: summary.skillCounts,
         tree: summary.tree,
         git_status: summary.gitStatus,
+        recent_commits: summary.recentCommits,
         ai_context_files: ai.files,
+        ai_context: { files: ai.files, text: aiContextText, truncated: aiContextTruncated },
         bash_mode: config.bashMode,
         write_mode: config.writeMode,
         tool_mode: config.toolMode

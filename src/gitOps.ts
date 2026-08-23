@@ -13,6 +13,14 @@ export interface GitRuntimeInfo {
   error?: string;
 }
 
+export interface GitCommitSummary {
+  sha: string;
+  shortSha: string;
+  subject: string;
+  author: string;
+  date: string;
+}
+
 function resolveGitExecutable(): string | null {
   const lookup = process.platform === "win32"
     ? spawnSync("where.exe", ["git"], { encoding: "utf8", windowsHide: true })
@@ -152,6 +160,36 @@ export function gitDiffStatus(config: CodexProConfig, guard: PathGuard, workspac
 export function gitLog(config: CodexProConfig, workspace: Workspace, maxCount = 8): string {
   const count = Math.max(1, Math.min(Math.floor(maxCount), 30));
   return runGit(workspace.root, ["log", `--max-count=${count}`, "--oneline", "--decorate"], config.maxOutputBytes);
+}
+
+export function gitRecentCommits(config: CodexProConfig, workspace: Workspace, maxCount = 8): GitCommitSummary[] {
+  const count = Math.max(1, Math.min(Math.floor(maxCount), 30));
+  const result = spawnSync("git", [
+    "log",
+    `--max-count=${count}`,
+    "--format=%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1e"
+  ], {
+    cwd: workspace.root,
+    encoding: "utf8",
+    maxBuffer: config.maxOutputBytes,
+    env: { ...process.env, NO_COLOR: "1" }
+  });
+  if (result.error || result.status !== 0) return [];
+  return String(result.stdout ?? "")
+    .split("\x1e")
+    .map((record) => record.trim())
+    .filter(Boolean)
+    .map((record) => {
+      const [sha = "", shortSha = "", author = "", date = "", ...subjectParts] = record.split("\x1f");
+      return {
+        sha: redactSensitiveText(sha),
+        shortSha: redactSensitiveText(shortSha),
+        subject: redactSensitiveText(subjectParts.join("\x1f")),
+        author: redactSensitiveText(author),
+        date: redactSensitiveText(date)
+      };
+    })
+    .filter((commit) => Boolean(commit.sha));
 }
 
 export function assertGitCleanEnoughForWrite(_workspace: Workspace): void {
