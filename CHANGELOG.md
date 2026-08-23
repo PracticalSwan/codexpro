@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added bounded regex search to the Node fallback in an interruptible worker when ripgrep is unavailable, exposed search capabilities explicitly, and made ripgrep JSON/stdout decoding safe across UTF-8 stream chunk boundaries.
 - Made `codexpro_self_test` read-only by default and separated health from intentional security posture: skipped/info checks no longer make a healthy trusted full-mode configuration report WARN.
 - Separated Bash transcript retention from runaway-output termination: verbose commands can finish successfully with bounded returned output, while a higher observed-output ceiling terminates true output floods and reports explicit termination/byte/encoding diagnostics.
 - Made Bash descriptions and server instructions reflect `bash=full`, removed misleading static destructive/open-world annotations from the mixed-capability `codexpro` supertool, and made compact Bash output refer to the structured tool result rather than a card.
