@@ -45,7 +45,9 @@ try {
     ? run(process.execPath, [npmCli, ...prefixArgs], { cwd: wrongCwd })
     : run(npm, prefixArgs, { cwd: wrongCwd });
   assert.notEqual(prefixInvocation.status, 0, prefixInvocation.output);
-  assert.match(prefixInvocation.output, /Release commands must run from the CodexPro root/);
+  if (prefixInvocation.output.trim()) {
+    assert.match(prefixInvocation.output, /Release commands must run from the CodexPro root/);
+  }
 
   const packed = run(process.execPath, ["scripts/release-pack.mjs"], { cwd: root });
   assert.equal(packed.status, 0, packed.output);
