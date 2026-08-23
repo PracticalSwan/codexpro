@@ -62,15 +62,20 @@ assert.equal(
   'combined multi-byte chunks were not decoded as UTF-8'
 );
 assert.equal(
-  decodeBashOutput(Buffer.from([0xe4, 0xb8]), 'win32', true, mustNotDetect),
-  '\ufffd',
-  'truncated UTF-8 tail did not retain UTF-8 fallback behavior'
+  decodeBashOutput(Buffer.concat([Buffer.from('prefix '), Buffer.from([0xe4, 0xb8])]), 'win32', true, mustNotDetect),
+  'prefix ',
+  'truncated UTF-8 tail produced a replacement character instead of dropping only the incomplete code point'
+);
+assert.equal(
+  decodeBashOutput(Buffer.concat([Buffer.from('prefix '), Buffer.from([0xe4, 0xb8])]), 'linux', true, mustNotDetect),
+  'prefix ',
+  'non-Windows truncated UTF-8 tail produced a replacement character'
 );
 
 if (process.platform === 'win32') {
   const root = await mkdtemp(path.join(os.tmpdir(), 'codexpro-bash-encoding-'));
   try {
-    const config = { bashMode: 'full', maxBashTimeoutMs: 10_000, maxOutputBytes: 100_000, inheritEnv: true, blockedGlobs: [] };
+    const config = { bashMode: 'full', maxBashTimeoutMs: 10_000, maxOutputBytes: 100_000, maxBashObservedOutputBytes: 1_000_000, inheritEnv: true, blockedGlobs: [] };
     const workspace = { id: 'encoding-smoke', root, openedAt: new Date().toISOString() };
     const stdoutText = `GBK stdout ${zh}`.repeat(8);
     const stderrText = `UTF-16LE stderr ${zh}`;

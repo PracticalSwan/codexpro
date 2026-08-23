@@ -30,6 +30,8 @@ export interface BashToolchainInfo {
   tools: Record<"node" | "npm" | "npx" | "git" | "rg", BashToolInfo>;
 }
 
+export type BashTerminationReason = "normal" | "timeout" | "output_limit" | "signal";
+
 export interface BashResult {
   command: string;
   cwd: string;
@@ -39,6 +41,14 @@ export interface BashResult {
   stdout: string;
   stderr: string;
   truncated: boolean;
+  terminationReason: BashTerminationReason;
+  observedStdoutBytes: number;
+  observedStderrBytes: number;
+  observedOutputBytes: number;
+  retainedStdoutBytes: number;
+  retainedStderrBytes: number;
+  stdoutEncoding: string;
+  stderrEncoding: string;
   bashExecutable: string;
   bashRuntime: BashRuntimeKind;
   bashRuntimeSource: BashRuntimeInfo["source"];
@@ -387,20 +397,33 @@ export function probeBashToolchain(config: CodexProConfig, workspace: Workspace)
   return { runtime, cwd, tools };
 }
 
-function trimOutput(value: string, maxBytes: number): { value: string; truncated: boolean } {
-  const buffer = Buffer.from(value, "utf8");
-  if (buffer.byteLength <= maxBytes) return { value, truncated: false };
-  const sliced = buffer.subarray(0, maxBytes).toString("utf8");
-  return { value: `${sliced}\n...[output truncated to ${maxBytes} bytes]`, truncated: true };
+function utf8PrefixByBytes(value: string, maxBytes: number): string {
+  let bytes = 0;
+  let end = 0;
+  for (const char of value) {
+    const charBytes = Buffer.byteLength(char, "utf8");
+    if (bytes + charBytes > maxBytes) break;
+    bytes += charBytes;
+    end += char.length;
+  }
+  return value.slice(0, end);
+}
+
+function trimOutput(value: string, maxBytes: number, forceTruncated = false): { value: string; truncated: boolean } {
+  const byteLength = Buffer.byteLength(value, "utf8");
+  if (byteLength <= maxBytes && !forceTruncated) return { value, truncated: false };
+  const sliced = byteLength > maxBytes ? utf8PrefixByBytes(value, maxBytes) : value;
+  return { value: `${sliced}\n...[output truncated to ${maxBytes} retained bytes]`, truncated: true };
 }
 
 export type BashEncodingCandidate = { name: string; confidence: number };
 export type BashEncodingDetector = (input: Buffer) => BashEncodingCandidate[];
+export interface DecodedBashOutput { text: string; encoding: string }
 
-function decodeLikelyUtf16(bytes: Buffer): string | undefined {
+function decodeLikelyUtf16(bytes: Buffer): DecodedBashOutput | undefined {
   if (bytes.length < 4) return undefined;
-  if (bytes[0] === 0xff && bytes[1] === 0xfe) return iconv.decode(bytes.subarray(2), "utf16le");
-  if (bytes[0] === 0xfe && bytes[1] === 0xff) return iconv.decode(bytes.subarray(2), "utf16-be");
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return { text: iconv.decode(bytes.subarray(2), "utf16le"), encoding: "utf16le" };
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return { text: iconv.decode(bytes.subarray(2), "utf16-be"), encoding: "utf16be" };
   if (bytes.length % 2 !== 0) return undefined;
 
   const pairs = bytes.length / 2;
@@ -412,9 +435,42 @@ function decodeLikelyUtf16(bytes: Buffer): string | undefined {
   }
   const evenRatio = evenNuls / pairs;
   const oddRatio = oddNuls / pairs;
-  if (oddRatio >= 0.3 && oddRatio >= evenRatio + 0.2) return iconv.decode(bytes, "utf16le");
-  if (evenRatio >= 0.3 && evenRatio >= oddRatio + 0.2) return iconv.decode(bytes, "utf16-be");
+  if (oddRatio >= 0.3 && oddRatio >= evenRatio + 0.2) return { text: iconv.decode(bytes, "utf16le"), encoding: "utf16le" };
+  if (evenRatio >= 0.3 && evenRatio >= oddRatio + 0.2) return { text: iconv.decode(bytes, "utf16-be"), encoding: "utf16be" };
   return undefined;
+}
+
+export function decodeBashOutputDetailed(
+  bytes: Buffer,
+  platform: NodeJS.Platform = process.platform,
+  allowTrailingIncompleteUtf8 = false,
+  detect: BashEncodingDetector = analyse
+): DecodedBashOutput {
+  const utf8Fallback = (encoding = "utf8") => ({ text: bytes.toString("utf8"), encoding });
+  const decodeUtf8 = (): DecodedBashOutput | undefined => {
+    try {
+      const decoder = new TextDecoder("utf-8", { fatal: true });
+      return { text: decoder.decode(bytes, { stream: allowTrailingIncompleteUtf8 }), encoding: "utf8" };
+    } catch {
+      return undefined;
+    }
+  };
+  if (bytes.length === 0) return utf8Fallback();
+  if (platform !== "win32") return decodeUtf8() ?? utf8Fallback("utf8-fallback");
+
+  const utf16 = decodeLikelyUtf16(bytes);
+  if (utf16 !== undefined) return utf16;
+
+  const utf8 = decodeUtf8();
+  if (utf8) return utf8;
+
+  try {
+    const candidate = detect(bytes)[0];
+    if (!candidate || candidate.confidence < 80 || !iconv.encodingExists(candidate.name)) return utf8Fallback("utf8-fallback");
+    return { text: iconv.decode(bytes, candidate.name), encoding: candidate.name };
+  } catch {
+    return utf8Fallback("utf8-fallback");
+  }
 }
 
 /** Decode one completed bash output stream without allowing a detected encoding to affect another stream. */
@@ -424,27 +480,7 @@ export function decodeBashOutput(
   allowTrailingIncompleteUtf8 = false,
   detect: BashEncodingDetector = analyse
 ): string {
-  const utf8Fallback = () => bytes.toString("utf8");
-  if (platform !== "win32" || bytes.length === 0) return utf8Fallback();
-
-  const utf16 = decodeLikelyUtf16(bytes);
-  if (utf16 !== undefined) return utf16;
-
-  try {
-    // Streaming validation accepts only an unfinished final sequence when the process was stopped mid-write.
-    new TextDecoder("utf-8", { fatal: true }).decode(bytes, { stream: allowTrailingIncompleteUtf8 });
-    return utf8Fallback();
-  } catch {
-    // A non-UTF-8 stream may still be decodable using a high-confidence supported encoding.
-  }
-
-  try {
-    const candidate = detect(bytes)[0];
-    if (!candidate || candidate.confidence < 80 || !iconv.encodingExists(candidate.name)) return utf8Fallback();
-    return iconv.decode(bytes, candidate.name);
-  } catch {
-    return utf8Fallback();
-  }
+  return decodeBashOutputDetailed(bytes, platform, allowTrailingIncompleteUtf8, detect).text;
 }
 
 function terminateProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
@@ -501,8 +537,13 @@ export async function runBash(
     let closed = false;
     let terminationStarted = false;
     let killTimer: NodeJS.Timeout | undefined;
-    let observedOutputBytes = 0;
+    let observedStdoutBytes = 0;
+    let observedStderrBytes = 0;
+    let retainedStdoutBytes = 0;
+    let retainedStderrBytes = 0;
+    let retainedBytes = 0;
     const retainedOutputBytes = config.maxOutputBytes + 1;
+    const observedOutputLimit = Math.max(retainedOutputBytes, config.maxBashObservedOutputBytes);
 
     const terminate = (signal: NodeJS.Signals) => {
       if (closed) return;
@@ -515,14 +556,23 @@ export async function runBash(
       killTimer = setTimeout(() => terminate("SIGKILL"), 1_500);
       killTimer.unref();
     };
-    let retainedBytes = 0;
-    const appendBounded = (chunks: Buffer[], chunk: Buffer) => {
-      observedOutputBytes += chunk.byteLength;
+    const appendBounded = (stream: "stdout" | "stderr", chunks: Buffer[], chunk: Buffer) => {
+      if (stream === "stdout") observedStdoutBytes += chunk.byteLength;
+      else observedStderrBytes += chunk.byteLength;
       const remaining = retainedOutputBytes - retainedBytes;
       if (remaining <= 0) return;
       const retained = chunk.subarray(0, remaining);
       chunks.push(retained);
       retainedBytes += retained.byteLength;
+      if (stream === "stdout") retainedStdoutBytes += retained.byteLength;
+      else retainedStderrBytes += retained.byteLength;
+    };
+    const enforceObservedOutputLimit = () => {
+      const observed = observedStdoutBytes + observedStderrBytes;
+      if (!killedByOutputLimit && observed > observedOutputLimit) {
+        killedByOutputLimit = true;
+        terminateWithEscalation();
+      }
     };
 
     const timer = setTimeout(() => {
@@ -532,32 +582,46 @@ export async function runBash(
     timer.unref();
 
     child.stdout.on("data", (chunk) => {
-      appendBounded(stdoutChunks, Buffer.from(chunk));
-      if (observedOutputBytes > config.maxOutputBytes) {
-        killedByOutputLimit = true;
-        terminateWithEscalation();
-      }
+      appendBounded("stdout", stdoutChunks, Buffer.from(chunk));
+      enforceObservedOutputLimit();
     });
     child.stderr.on("data", (chunk) => {
-      appendBounded(stderrChunks, Buffer.from(chunk));
-      if (observedOutputBytes > config.maxOutputBytes) {
-        killedByOutputLimit = true;
-        terminateWithEscalation();
-      }
+      appendBounded("stderr", stderrChunks, Buffer.from(chunk));
+      enforceObservedOutputLimit();
     });
     child.on("error", reject);
     child.on("close", (exitCode, signal) => {
       closed = true;
       clearTimeout(timer);
       if (killTimer) clearTimeout(killTimer);
-      const allowTrailingIncompleteUtf8 = killedByTimeout || killedByOutputLimit;
-      const stdout = decodeBashOutput(Buffer.concat(stdoutChunks), process.platform, allowTrailingIncompleteUtf8);
-      let stderr = decodeBashOutput(Buffer.concat(stderrChunks), process.platform, allowTrailingIncompleteUtf8);
+      const observedOutputBytes = observedStdoutBytes + observedStderrBytes;
+      const captureTruncated = observedOutputBytes > retainedBytes;
+      const allowTrailingIncompleteUtf8 = killedByTimeout || killedByOutputLimit || captureTruncated;
+      const decodedStdout = decodeBashOutputDetailed(Buffer.concat(stdoutChunks), process.platform, allowTrailingIncompleteUtf8);
+      const decodedStderr = decodeBashOutputDetailed(Buffer.concat(stderrChunks), process.platform, allowTrailingIncompleteUtf8);
+      let stderr = decodedStderr.text;
       if (killedByTimeout) {
         stderr += `\n[codexpro] Command timed out after ${timeoutMs} ms.`;
+      } else if (killedByOutputLimit) {
+        stderr += `\n[codexpro] Command terminated after exceeding ${observedOutputLimit} observed output bytes.`;
       }
-      const out = trimOutput(redactSensitiveText(stdout), config.maxOutputBytes);
-      const err = trimOutput(redactSensitiveText(stderr), config.maxOutputBytes);
+      const out = trimOutput(
+        redactSensitiveText(decodedStdout.text),
+        config.maxOutputBytes,
+        observedStdoutBytes > retainedStdoutBytes
+      );
+      const err = trimOutput(
+        redactSensitiveText(stderr),
+        config.maxOutputBytes,
+        observedStderrBytes > retainedStderrBytes
+      );
+      const terminationReason: BashTerminationReason = killedByOutputLimit
+        ? "output_limit"
+        : killedByTimeout
+          ? "timeout"
+          : signal
+            ? "signal"
+            : "normal";
       resolve({
         command,
         cwd: path.relative(workspace.root, cwd) || ".",
@@ -566,7 +630,15 @@ export async function runBash(
         durationMs: Date.now() - start,
         stdout: out.value,
         stderr: err.value,
-        truncated: out.truncated || err.truncated,
+        truncated: captureTruncated || out.truncated || err.truncated,
+        terminationReason,
+        observedStdoutBytes,
+        observedStderrBytes,
+        observedOutputBytes,
+        retainedStdoutBytes,
+        retainedStderrBytes,
+        stdoutEncoding: decodedStdout.encoding,
+        stderrEncoding: decodedStderr.encoding,
         bashExecutable,
         bashRuntime: bashRuntime.runtime,
         bashRuntimeSource: bashRuntime.source,

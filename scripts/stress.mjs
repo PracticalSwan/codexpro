@@ -618,10 +618,25 @@ async function runBashOutputTerminationStress() {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-stress-bash-output-'));
   const client = await initClient(root, {
     CODEXPRO_BASH_MODE: 'full',
-    CODEXPRO_MAX_OUTPUT_BYTES: '4000'
+    CODEXPRO_MAX_OUTPUT_BYTES: '4000',
+    CODEXPRO_MAX_BASH_OBSERVED_OUTPUT_BYTES: '64000'
   });
   try {
     const opened = await client.request('tools/call', { name: 'open_current_workspace', arguments: { include_tree: false } });
+    const finite = await client.request('tools/call', {
+      name: 'bash',
+      arguments: {
+        workspace_id: opened.structuredContent.workspace_id,
+        command: `${JSON.stringify(process.execPath)} -e "process.stdout.write('x'.repeat(8000))"`,
+        timeout_ms: 15000
+      }
+    });
+    assert(finite.structuredContent.exitCode === 0, `finite verbose bash was killed by the retained-output limit: ${JSON.stringify(finite.structuredContent)}`);
+    assert(finite.structuredContent.truncated === true, `finite verbose bash did not report retained-output truncation: ${JSON.stringify(finite.structuredContent)}`);
+    assert(finite.structuredContent.terminationReason === 'normal', `finite verbose bash reported the wrong termination reason: ${JSON.stringify(finite.structuredContent)}`);
+    assert(finite.structuredContent.observedStdoutBytes >= 8000, `finite verbose bash omitted observed stdout bytes: ${JSON.stringify(finite.structuredContent)}`);
+    assert(finite.structuredContent.retainedStdoutBytes <= 4001, `finite verbose bash retained too much stdout: ${JSON.stringify(finite.structuredContent)}`);
+
     const started = Date.now();
     const result = await client.request('tools/call', {
       name: 'bash',
@@ -633,9 +648,11 @@ async function runBashOutputTerminationStress() {
     });
     const retainedBytes = Buffer.byteLength(result.structuredContent.stdout ?? '', 'utf8') +
       Buffer.byteLength(result.structuredContent.stderr ?? '', 'utf8');
-    assert(Date.now() - started < 8000, `output-limited bash waited for the independent timeout: ${Date.now() - started} ms`);
-    assert(result.structuredContent.truncated === true, `output-limited bash did not report truncation: ${JSON.stringify(result.structuredContent)}`);
-    assert(retainedBytes < 9000, `output-limited bash retained too much output: ${retainedBytes} bytes`);
+    assert(Date.now() - started < 8000, `runaway-output bash waited for the independent timeout: ${Date.now() - started} ms`);
+    assert(result.structuredContent.terminationReason === 'output_limit', `runaway-output bash did not expose its termination reason: ${JSON.stringify(result.structuredContent)}`);
+    assert(result.structuredContent.observedOutputBytes > 64000, `runaway-output bash did not expose observed bytes: ${JSON.stringify(result.structuredContent)}`);
+    assert(result.structuredContent.truncated === true, `runaway-output bash did not report truncation: ${JSON.stringify(result.structuredContent)}`);
+    assert(retainedBytes < 9000, `runaway-output bash retained too much output: ${retainedBytes} bytes`);
   } finally {
     client.close();
     await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

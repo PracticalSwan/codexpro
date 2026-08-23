@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Separated Bash transcript retention from runaway-output termination: verbose commands can finish successfully with bounded returned output, while a higher observed-output ceiling terminates true output floods and reports explicit termination/byte/encoding diagnostics.
 - Made Bash descriptions and server instructions reflect `bash=full`, removed misleading static destructive/open-world annotations from the mixed-capability `codexpro` supertool, and made compact Bash output refer to the structured tool result rather than a card.
 - On Windows, Bash stdout/stderr are retained as raw bytes and decoded per stream after exit, preserving UTF-8, recovering UTF-16 output with BOM or NUL-pattern evidence, and accepting high-confidence supported legacy encodings such as GBK/GB18030.
 - Preserved explicitly opened descendant workspace IDs across HTTP MCP sessions with a process-level registry, while keeping implicit workspace selection session-local.

@@ -1104,6 +1104,7 @@ export function createCodexProServer(
         maxWriteBytes: config.maxWriteBytes,
         maxImportBytes: config.maxImportBytes,
         maxOutputBytes: config.maxOutputBytes,
+        maxBashObservedOutputBytes: config.maxBashObservedOutputBytes,
         maxBashTimeoutMs: config.maxBashTimeoutMs,
         maxSearchResults: config.maxSearchResults,
         blockedGlobs: config.blockedGlobs,
