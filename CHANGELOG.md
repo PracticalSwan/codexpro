@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Hardened Windows sensitive-path handling across file tools and safe Bash: blocked names now match case-insensitively, and NTFS alternate-data-stream paths are checked against their base file so variants such as `.ENV`, `.Git`, `ID_RSA`, uppercase private-key extensions, and `.ENV:secret` cannot bypass the guard.
 - Made the execute-handoff release smoke accept resolved Windows `.cmd` adapter paths instead of requiring the bare CLI name.
 - Prioritized tracked source/config/infrastructure files within bounded repository analysis and stopped documentation/generated filenames from creating runtime risk signals on their own.
 - Added parsed recent commits and bounded AI handoff context to `workspace_snapshot` structured output so it matches the information promised by the tool descriptor.

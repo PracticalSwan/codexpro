@@ -565,6 +565,22 @@ const inventory = await client.request('tools/call', { name: 'codexpro_inventory
 if (inventory.structuredContent.codexpro_tool !== 'codexpro_inventory') throw new Error('inventory result was not tagged for widget rendering');
 const opened = await client.request('tools/call', { name: 'open_workspace', arguments: { root: tmp, include_tree: true } });
 const ws = opened.structuredContent.workspace_id;
+if (process.platform === 'win32') {
+  const uppercaseEnvPath = path.join(tmp, '.ENV');
+  await fs.writeFile(uppercaseEnvPath, 'SAFE_PLACEHOLDER=1\n', 'utf8');
+  await fs.writeFile(`${uppercaseEnvPath}:secret`, 'SAFE_STREAM_PLACEHOLDER=1\n', 'utf8');
+  try {
+    await expectToolError('read', { workspace_id: ws, path: '.ENV' }, /blocked/i);
+    await expectToolError('read', { workspace_id: ws, path: '.ENV::$DATA' }, /blocked/i);
+    await expectToolError('read', { workspace_id: ws, path: '.ENV:secret' }, /blocked/i);
+    await expectToolError('write', { workspace_id: ws, path: '.ENV:newstream', content: 'placeholder\n' }, /blocked/i);
+    await expectToolError('write', { workspace_id: ws, path: 'ID_RSA', content: 'placeholder\n' }, /blocked/i);
+    await expectToolError('bash', { workspace_id: ws, command: 'git show HEAD:.ENV:secret' }, /blocked/i);
+    await expectToolError('read', { workspace_id: ws, path: '.Git/config' }, /blocked/i);
+  } finally {
+    await fs.rm(uppercaseEnvPath, { force: true });
+  }
+}
 const nestedOpened = await client.request('tools/call', { name: 'open_workspace', arguments: { root: nestedWorkspace, include_tree: false } });
 const nestedPatch = await client.request('tools/call', {
   name: 'apply_patch',
