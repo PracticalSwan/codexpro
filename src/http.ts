@@ -530,7 +530,7 @@ function onboardingPage(config: CodexProConfig): string {
   const sessionArg = shellQuote(config.bashSessionId || "main");
   const githubUrl = "https://github.com/PracticalSwan/codexpro";
   const upstreamNpmUrl = "https://www.npmjs.com/package/codexpro";
-  const docsUrl = "https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/FEATURES.md";
+  const docsUrl = "https://github.com/PracticalSwan/codexpro/blob/main/FEATURES.md";
   const chatgptUrl = "https://chatgpt.com/#settings/Connectors";
   const controls = [
     copyCommand("Re-run setup wizard", "Use the CLI for broader profile edits that are intentionally not exposed here.", "codexpro setup"),

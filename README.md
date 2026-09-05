@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/PracticalSwan/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/PracticalSwan/codexpro/ci.yml?branch=feature%2Fplans-01-04-20260905&style=flat-square"></a>
-  <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/LICENSE"><img alt="License" src="https://img.shields.io/github/license/PracticalSwan/codexpro?style=flat-square"></a>
+  <a href="https://github.com/PracticalSwan/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/PracticalSwan/codexpro/ci.yml?branch=main&style=flat-square"></a>
+  <a href="https://github.com/PracticalSwan/codexpro/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/PracticalSwan/codexpro?style=flat-square"></a>
   <img alt="CodexPro Full" src="https://img.shields.io/badge/CodexPro%20Full-0.32.3-2563eb?style=flat-square">
 </p>
 
@@ -56,7 +56,7 @@ CodexPro Full is not a hosted SaaS service, model proxy, quota bypass, account p
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
 cd codexpro
-git checkout feature/plans-01-04-20260905
+git checkout main
 npm install
 npm run build
 npm pack

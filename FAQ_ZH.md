@@ -21,7 +21,7 @@ Install this fork from the PracticalSwan source checkout or a verified fork tarb
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
 cd codexpro
-git checkout feature/plans-01-04-20260905
+git checkout main
 npm install
 npm run build
 npm pack
@@ -36,7 +36,7 @@ Update the fork checkout and reinstall its tarball:
 
 ```bash
 cd /path/to/codexpro
-git pull origin feature/plans-01-04-20260905
+git pull origin main
 npm install
 npm run build
 npm pack

@@ -10,7 +10,7 @@ Last verified: 2026-09-06 (Asia/Bangkok)
 - Local integration HEAD at planning start: `01f01300820e0ed729744d44c77490ba2bff1bb5`
 - Upstream `main` at planning start: `587f7fd3a4644a847bba13aeb49336056052e1f6`
 - Package version at planning start: `0.30.0`
-- Current verified roadmap implementation version: `0.32.3` on local branch `feature/plans-01-04-20260905`.
+- Current verified roadmap implementation version: `0.32.3` on local branch `main`.
 - Public fork identity: **CodexPro Full**, canonical repository `PracticalSwan/codexpro`; CLI/package/protocol remain `codexpro` compatible. The fork is not separately published to npm as of this verification.
 - Local integration was clean and 21 commits ahead of upstream main when this roadmap was created.
 

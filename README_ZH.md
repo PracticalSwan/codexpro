@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/PracticalSwan/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/PracticalSwan/codexpro/ci.yml?branch=feature%2Fplans-01-04-20260905&style=flat-square"></a>
-  <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/LICENSE"><img alt="License" src="https://img.shields.io/github/license/PracticalSwan/codexpro?style=flat-square"></a>
+  <a href="https://github.com/PracticalSwan/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/PracticalSwan/codexpro/ci.yml?branch=main&style=flat-square"></a>
+  <a href="https://github.com/PracticalSwan/codexpro/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/PracticalSwan/codexpro?style=flat-square"></a>
   <img alt="CodexPro Full" src="https://img.shields.io/badge/CodexPro%20Full-0.32.3-2563eb?style=flat-square">
 </p>
 
@@ -49,7 +49,7 @@ ChatGPT 可以读取、搜索、编辑、审查、验证、导入附件，并写
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
 cd codexpro
-git checkout feature/plans-01-04-20260905
+git checkout main
 npm install
 npm run build
 npm pack
@@ -170,7 +170,7 @@ chmod 600 ~/.codexpro/http-token
 ## 更新
 
 ```bash
-git pull origin feature/plans-01-04-20260905
+git pull origin main
 npm install
 npm run build
 npm pack

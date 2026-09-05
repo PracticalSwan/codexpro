@@ -4,6 +4,7 @@
 
 - Repositioned the PracticalSwan fork as **CodexPro Full** while preserving the `codexpro` CLI/package/protocol compatibility surface and upstream MIT attribution. Canonical repository, issue, release-guard, local-admin, and documentation metadata now point to `PracticalSwan/codexpro`.
 - Added `FEATURES.md` as the canonical 0.32.3 capability guide and refreshed active README/FAQ/security/launch/profile documentation so the fork is not confused with the separately published upstream npm package.
+- Consolidated the verified CodexPro Full line onto canonical main and removed active documentation/UI dependencies on the temporary feature branch so branch cleanup does not break install, badge, or documentation links.
 
 ## 0.32.3 (2026-09-05)
 
