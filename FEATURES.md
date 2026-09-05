@@ -1,6 +1,6 @@
 # CodexPro Full 0.32.3 — Feature Guide
 
-CodexPro Full is PracticalSwan's independently maintained CodexPro fork. It keeps the `codexpro` CLI and MCP compatibility while adding the 0.31–0.32 agentic, continuity, safety, code-intelligence, artifact, and Durable Goal features.
+CodexPro Full is PracticalSwan's independently maintained CodexPro fork. It keeps the `codexpro` CLI and MCP compatibility while adding the 0.31–0.32 agentic, continuity, safety, code-intelligence, artifact, and Durable Goal features. The release package is `codexpro-full`; installing it still provides the `codexpro` CLI.
 
 > Repository: `https://github.com/PracticalSwan/codexpro`
 > Upstream lineage: `https://github.com/rebel0789/codexpro`

@@ -28,7 +28,7 @@
 
 `PracticalSwan/codexpro` is the canonical independently maintained fork. It preserves the `codexpro` CLI/MCP/profile compatibility surface while maintaining the 0.31-0.32 feature line. Upstream remains `rebel0789/codexpro` under the existing MIT lineage.
 
-This fork is not currently a separate npm publication. `npm install -g codexpro@latest` refers to the upstream npm package. See [FEATURES.md](FEATURES.md) for the complete fork capability guide.
+CodexPro Full uses the independent distribution package **`codexpro-full`** while the installed CLI remains **`codexpro`**. GitHub Releases are the canonical public release channel. The upstream npm package `codexpro@latest` is not this fork, and `codexpro-full` is not yet published to npm.
 
 ## 它是什么
 
@@ -39,6 +39,15 @@ ChatGPT 可以读取、搜索、编辑、审查、验证、导入附件，并写
 它不是托管 SaaS、模型代理、配额绕过、账号池或远程 shell 服务。
 
 ## 安装
+
+GitHub Release:
+
+```bash
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz
+codexpro --version
+```
+
+Source build:
 
 需要：
 
@@ -53,7 +62,7 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.3.tgz
 codexpro --version
 ```
 
@@ -174,7 +183,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.3.tgz
 codexpro --version
 ```
 
@@ -182,7 +191,7 @@ codexpro --version
 
 ## 文档
 
-- [中文网站](https://github.com/PracticalSwan/codexpro)
+- [中文网站](https://practicalswan.github.io/codexpro/zh.html)
 - [中文 FAQ](FAQ_ZH.md)
 - [Security](SECURITY.md)
 - [稳定 URL 指南](DOMAIN_SETUP.md)

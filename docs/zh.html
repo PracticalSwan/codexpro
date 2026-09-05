@@ -44,17 +44,11 @@
             安装 CLI，在项目里运行 setup，然后把复制好的 Server URL 粘贴到 ChatGPT Plugins。CodexPro 会处理本地 server、token、tunnel 和 workspace 工具。
           </p>
           <div class="install-line" role="group" aria-label="安装命令">
-            <code>git clone https://github.com/PracticalSwan/codexpro.git
-cd codexpro
-git checkout main
-npm install
-npm run build
-npm pack
-npm install -g ./codexpro-0.32.3.tgz
+            <code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz
 codexpro setup</code>
-            <button class="copy-button" data-copy="git clone https://github.com/PracticalSwan/codexpro.git&#10;cd codexpro&#10;git checkout main&#10;npm install&#10;npm run build&#10;npm pack&#10;npm install -g ./codexpro-0.32.3.tgz&#10;codexpro setup">复制</button>
+            <button class="copy-button" data-copy="npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz&#10;codexpro setup">复制</button>
           </div>
-          <p class="eyebrow">main 文档可能早于 npm 发布；全局安装前请看 npm 版本，未发布行为用 source checkout。</p>
+          <p class="eyebrow">CodexPro Full 0.32.3 ships independently through GitHub Releases; the upstream npm package is not this fork.</p>
           <div class="hero-proof" aria-label="核心能力">
             <span>AGENTS.md 上下文</span>
             <span>.ai-bridge handoff</span>
@@ -81,7 +75,7 @@ codexpro setup</code>
             <div class="demo-grid">
               <div class="chat-pane">
                 <small>安装</small>
-                <p><code>git clone https://github.com/PracticalSwan/codexpro.git</code><br /><code>npm install && npm run build && npm pack</code><br /><code>npm install -g ./codexpro-0.32.3.tgz</code></p>
+                <p><code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz</code><br /><code>codexpro --version</code></p>
                 <div class="message-chip">Server URL 自动复制</div>
               </div>
               <div class="tool-pane">
@@ -180,13 +174,8 @@ codexpro setup</code>
             <span>1</span>
             <div>
               <strong>全局安装</strong>
-              <pre><code>git clone https://github.com/PracticalSwan/codexpro.git
-cd codexpro
-git checkout main
-npm install
-npm run build
-npm pack
-npm install -g ./codexpro-0.32.3.tgz</code></pre>
+              <pre><code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz
+codexpro --version</code></pre>
             </div>
           </div>
           <div class="step">

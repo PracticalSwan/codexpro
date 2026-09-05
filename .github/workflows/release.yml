@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify tag matches package version
+        shell: bash
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $expected" >&2
+            exit 1
+          fi
+
+      - name: Verify release
+        run: npm run release:check
+
+      - name: Pack release artifact
+        id: pack
+        shell: bash
+        run: |
+          file="$(npm pack --ignore-scripts --silent)"
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+          sha256sum "$file" > "$file.sha256"
+
+      - name: Create GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "${{ steps.pack.outputs.file }}" \
+            "${{ steps.pack.outputs.file }}.sha256" \
+            --verify-tag \
+            --generate-notes \
+            --title "CodexPro Full ${GITHUB_REF_NAME#v}"

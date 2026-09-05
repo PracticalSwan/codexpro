@@ -9,17 +9,15 @@ Do not present CodexPro as a fully reviewed public ChatGPT app until it has gone
 
 ## Release Gate
 
-Run these before tagging a release:
+Run the authoritative release check before tagging:
 
 ```bash
-npm install --package-lock-only
-npm run build
-npm run smoke
-npm pack --dry-run
-codexpro doctor --tunnel none
+npm ci
+npm run release:check
+git diff --check
 ```
 
-This fork is not currently published as a separate npm package. Do not advertise upstream `codexpro@latest` as the fork release. If a separate package is introduced later, add an explicit package-name/dist-tag verification gate before publication.
+The public release package is `codexpro-full`; it intentionally installs the compatible `codexpro` CLI. GitHub Releases are the canonical release channel. The upstream npm package `codexpro@latest` is not this fork. npm-registry publication of `codexpro-full` is optional and must not be claimed until npm authentication or trusted publishing is configured and the published package is verified.
 
 The tarball must not include:
 
@@ -84,7 +82,7 @@ Use CodexPro. Run bash with pwd, then run bash with a blocked command. Report bo
 
 ## Onboarding Gate
 
-Fresh-user setup for this fork should work from a verified source checkout or fork tarball. The upstream `npx codexpro@latest` path is not a fork release channel.
+Fresh-user setup should work from the GitHub Release artifact (`https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz`) or a verified source checkout. The upstream `npx codexpro@latest` path is not a fork release channel.
 
 The terminal must clearly show:
 

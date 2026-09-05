@@ -1,5 +1,5 @@
 {
-  "name": "codexpro",
+  "name": "codexpro-full",
   "version": "0.32.3",
   "description": "CodexPro Full: PracticalSwan's local MCP bridge for full ChatGPT coding workflows on explicitly allowed repos.",
   "type": "module",
@@ -11,7 +11,7 @@
   "bugs": {
     "url": "https://github.com/PracticalSwan/codexpro/issues"
   },
-  "homepage": "https://github.com/PracticalSwan/codexpro#readme",
+  "homepage": "https://practicalswan.github.io/codexpro/",
   "contributors": [
     {
       "name": "PracticalSwan",
@@ -114,5 +114,6 @@
     "@types/node": "^24.0.0",
     "tsx": "^4.20.3",
     "typescript": "^5.8.3"
-  }
+  },
+  "author": "PracticalSwan"
 }

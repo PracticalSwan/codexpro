@@ -8,7 +8,7 @@ Canonical fork: `https://github.com/PracticalSwan/codexpro`
 
 Upstream project: `https://github.com/rebel0789/codexpro`
 
-The fork is not currently published as a separate npm package. `npm install -g codexpro@latest` refers to the upstream npm package unless a future fork-specific package is published. For the complete fork feature map, see [FEATURES.md](FEATURES.md).
+The fork is distributed independently as **`codexpro-full`**, while the installed CLI remains **`codexpro`**. GitHub Releases are the canonical public release channel. The upstream npm package `codexpro@latest` is a different distribution; `codexpro-full` is not published to the npm registry yet. For the complete fork feature map, see [FEATURES.md](FEATURES.md).
 
 ## Which ChatGPT account should I use?
 
@@ -78,7 +78,13 @@ Use explicit tools such as `read`, `search`, `edit`, `bash`, and `show_changes` 
 
 ## What is the recommended install path for this fork?
 
-Install the PracticalSwan fork from a source checkout or a verified fork tarball:
+Install the release artifact directly from GitHub Releases:
+
+```bash
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz
+```
+
+Or build the PracticalSwan fork from source:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -87,7 +93,7 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.3.tgz
 ```
 
 Then run setup from the repository you want ChatGPT to work on:
@@ -115,7 +121,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.3.tgz
 codexpro --version
 ```
 
@@ -420,7 +426,7 @@ The canonical fork is:
 https://github.com/PracticalSwan/codexpro
 ```
 
-This repository does not assume a GitHub Pages deployment exists. Use the repository README and [FEATURES.md](FEATURES.md) as the current documentation source of truth. The upstream project remains credited at `https://github.com/rebel0789/codexpro`.
+Public documentation is published at `https://practicalswan.github.io/codexpro/`. The repository README and [FEATURES.md](FEATURES.md) remain the source of truth. The upstream project remains credited at `https://github.com/rebel0789/codexpro`.
 
 ## Is CodexPro production safe?
 

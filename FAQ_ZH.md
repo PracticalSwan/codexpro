@@ -6,7 +6,7 @@ Canonical fork: `https://github.com/PracticalSwan/codexpro`
 
 Upstream lineage: `https://github.com/rebel0789/codexpro`
 
-This fork preserves the `codexpro` CLI/MCP/profile compatibility surface while maintaining its own 0.31-0.32 feature line. It is not currently published as a separate npm package; upstream `codexpro@latest` is not the fork release. See [FEATURES.md](FEATURES.md).
+CodexPro Full uses the independent distribution package **`codexpro-full`** while the installed CLI remains **`codexpro`**. GitHub Releases are the canonical public release channel. The upstream npm package `codexpro@latest` is not this fork, and `codexpro-full` is not yet published to npm.
 
 ## 我应该用什么 ChatGPT 账号？
 
@@ -16,7 +16,13 @@ CodexPro 不解锁 Plugins，不解锁模型，不绕过账号限制，也不提
 
 ## CodexPro Full install
 
-Install this fork from the PracticalSwan source checkout or a verified fork tarball:
+Recommended GitHub Release install:
+
+```bash
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz
+```
+
+Or build from the PracticalSwan source checkout:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -25,7 +31,7 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.3.tgz
 ```
 
 Then run `codexpro setup` in the workspace you want ChatGPT to access. Daily startup is `codexpro start`. Upstream `codexpro@latest` is not the fork release.
@@ -40,7 +46,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.3.tgz
 codexpro --version
 ```
 

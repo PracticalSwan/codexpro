@@ -24,7 +24,7 @@ Upstream:       https://github.com/rebel0789/codexpro
 Current fork:   0.32.3
 ```
 
-This fork is **not currently published as a separate npm package**. `npm install -g codexpro@latest` refers to the upstream npm package unless a future fork-specific package is published. The CLI/package name remains `codexpro` for compatibility.
+CodexPro Full uses the independent distribution package **`codexpro-full`** while preserving the installed CLI command **`codexpro`**, MCP protocol, profiles, and workspace model. **GitHub Releases are the canonical public release channel.** The upstream npm package `codexpro` is a different distribution; the `codexpro-full` npm registry package is not published yet.
 
 ## What it is
 
@@ -51,6 +51,13 @@ CodexPro Full is not a hosted SaaS service, model proxy, quota bypass, account p
 
 ## Install this fork
 
+### From the GitHub Release
+
+```bash
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz
+codexpro --version
+```
+
 ### From a source checkout
 
 ```bash
@@ -60,7 +67,7 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.3.tgz
 codexpro --version
 ```
 
@@ -387,6 +394,7 @@ This fork preserves upstream attribution and MIT licensing while maintaining its
 
 ## Documentation
 
+- [Website](https://practicalswan.github.io/codexpro/)
 - [Feature guide](FEATURES.md)
 - [FAQ](FAQ.md)
 - [Security](SECURITY.md)

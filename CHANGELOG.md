@@ -2,14 +2,17 @@
 
 ## Unreleased
 
+## 0.32.3 (2026-09-06)
+
+- Separated the fork distribution as `codexpro-full` while preserving the installed `codexpro` CLI and existing MCP/profile compatibility.
+- Reworked GitHub automation into a bounded cross-platform CI matrix, release-integrity checks, tag-driven GitHub Release packaging with SHA-256 assets, and Dependabot maintenance.
+- Prepared the static `docs/` site and repository metadata for the fork's own GitHub Pages documentation.
 - Repositioned the PracticalSwan fork as **CodexPro Full** while preserving the `codexpro` CLI/package/protocol compatibility surface and upstream MIT attribution. Canonical repository, issue, release-guard, local-admin, and documentation metadata now point to `PracticalSwan/codexpro`.
 - Added `FEATURES.md` as the canonical 0.32.3 capability guide and refreshed active README/FAQ/security/launch/profile documentation so the fork is not confused with the separately published upstream npm package.
 - Consolidated the verified CodexPro Full line onto canonical main and removed active documentation/UI dependencies on the temporary feature branch so branch cleanup does not break install, badge, or documentation links.
-
-## 0.32.3 (2026-09-05)
-
 - Fixed workspace_events so allowed hidden workspace paths participate in create/edit/delete/rename snapshots while blocked paths such as .git remain excluded by PathGuard.
 - Clarified open_current_workspace / open_workspace selection semantics: implicit selection remains intentionally MCP-session-local for isolation, and structured results now tell cross-session HTTP/ChatGPT callers to pass workspace_id explicitly.
+
 ## 0.32.2 (2026-09-05)
 
 - Added persistent practical-profile capability settings to the authenticated local control page, including analysis, artifact export, Durable Goals, CodeGraph/LSP provider configuration, Git-push gating, environment inheritance, Bash transcript, and widget origin; secrets remain hidden and unchanged unless managed through their existing protected paths.
