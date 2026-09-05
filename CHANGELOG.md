@@ -6,6 +6,7 @@
 
 - Separated the fork distribution as `codexpro-full` while preserving the installed `codexpro` CLI and existing MCP/profile compatibility.
 - Reworked GitHub automation into a bounded cross-platform CI matrix, release-integrity checks, tag-driven GitHub Release packaging with SHA-256 assets, and Dependabot maintenance.
+- Made CI smoke fixtures self-contained by configuring repository-local Git identity and canonicalizing Windows temporary workspace roots before guarded Bash checks.
 - Prepared the static `docs/` site and repository metadata for the fork's own GitHub Pages documentation.
 - Repositioned the PracticalSwan fork as **CodexPro Full** while preserving the `codexpro` CLI/package/protocol compatibility surface and upstream MIT attribution. Canonical repository, issue, release-guard, local-admin, and documentation metadata now point to `PracticalSwan/codexpro`.
 - Added `FEATURES.md` as the canonical 0.32.3 capability guide and refreshed active README/FAQ/security/launch/profile documentation so the fork is not confused with the separately published upstream npm package.

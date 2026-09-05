@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import iconv from 'iconv-lite';
@@ -73,7 +73,8 @@ assert.equal(
 );
 
 if (process.platform === 'win32') {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'codexpro-bash-encoding-'));
+  const rootRaw = await mkdtemp(path.join(os.tmpdir(), 'codexpro-bash-encoding-'));
+  const root = await realpath(rootRaw);
   try {
     const config = { bashMode: 'full', maxBashTimeoutMs: 10_000, maxOutputBytes: 100_000, maxBashObservedOutputBytes: 1_000_000, inheritEnv: true, blockedGlobs: [] };
     const workspace = { id: 'encoding-smoke', root, openedAt: new Date().toISOString() };
@@ -89,7 +90,7 @@ if (process.platform === 'win32') {
     assert.equal(result.stdout, stdoutText, `Windows stdout decoding failed: ${JSON.stringify(result)}`);
     assert.equal(result.stderr, stderrText, `Windows stderr decoding failed: ${JSON.stringify(result)}`);
   } finally {
-    await rm(root, { recursive: true, force: true });
+    await rm(rootRaw, { recursive: true, force: true });
   }
 }
 
