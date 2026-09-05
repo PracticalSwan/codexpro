@@ -83,7 +83,8 @@ export class WorkspaceManager {
 
   constructor(
     private readonly config: CodexProConfig,
-    private readonly registry = new WorkspaceRegistry()
+    private readonly registry = new WorkspaceRegistry(),
+    private readonly onOpen?: (workspace: Workspace) => void
   ) {}
 
   defaultWorkspace(): Workspace {
@@ -118,6 +119,7 @@ export class WorkspaceManager {
     const existing = this.registry.findByRoot(realRoot);
     if (existing) {
       this.workspaces.set(existing.id, existing);
+      this.onOpen?.(existing);
       if (options.select !== false) this.selectedWorkspaceId = existing.id;
       return existing;
     }
@@ -125,6 +127,7 @@ export class WorkspaceManager {
     const id = workspaceIdForRoot(realRoot);
     const workspace = this.registry.register({ id, root: realRoot, openedAt: new Date().toISOString() });
     this.workspaces.set(id, workspace);
+    this.onOpen?.(workspace);
     if (options.select !== false) this.selectedWorkspaceId = id;
     return workspace;
   }
@@ -159,16 +162,23 @@ export class WorkspaceManager {
 }
 
 export class PathGuard {
-  constructor(private readonly config: CodexProConfig) {}
+  constructor(
+    private readonly config: CodexProConfig,
+    private readonly configForWorkspace?: (workspace: Workspace) => CodexProConfig
+  ) {}
 
-  isBlockedRelativePath(relPath: string): boolean {
+  private effectiveConfig(workspace?: Workspace): CodexProConfig {
+    return workspace && this.configForWorkspace ? this.configForWorkspace(workspace) : this.config;
+  }
+
+  isBlockedRelativePath(relPath: string, workspace?: Workspace): boolean {
     const rel = normalizeRelPath(relPath).replace(/^\.\//, "");
     if (!rel || rel === ".") return false;
     const nocase = process.platform === "win32";
     const matchPaths = nocase
       ? [...new Set([rel, rel.split("/").map((segment) => segment.split(":", 1)[0]).join("/")])]
       : [rel];
-    return this.config.blockedGlobs.some((glob) =>
+    return this.effectiveConfig(workspace).blockedGlobs.some((glob) =>
       matchPaths.some((candidate) =>
         minimatch(candidate, glob, { dot: true, nocase, matchBase: false }) ||
         minimatch(path.basename(candidate), glob, { dot: true, nocase, matchBase: true })
@@ -176,8 +186,8 @@ export class PathGuard {
     );
   }
 
-  assertNotBlocked(relPath: string): void {
-    if (this.isBlockedRelativePath(relPath)) {
+  assertNotBlocked(relPath: string, workspace?: Workspace): void {
+    if (this.isBlockedRelativePath(relPath, workspace)) {
       throw new CodexProError(`Path is blocked by safety rules: ${relPath}`);
     }
   }
@@ -206,14 +216,14 @@ export class PathGuard {
       }
     }
 
-    this.assertNotBlocked(relPath);
+    this.assertNotBlocked(relPath, workspace);
 
     if (realTarget) {
       if (!isSubpath(realTarget, workspace.root)) {
         throw new CodexProError(`Path resolves outside workspace root through a symlink: ${inputPath}`);
       }
       const realRel = displayPath(realTarget, workspace.root);
-      this.assertNotBlocked(realRel);
+      this.assertNotBlocked(realRel, workspace);
     }
 
     if (options.forWrite) {
@@ -231,7 +241,7 @@ export class PathGuard {
       }
       if (realParent) {
         const realParentRel = displayPath(realParent, workspace.root);
-        this.assertNotBlocked(realParentRel);
+        this.assertNotBlocked(realParentRel, workspace);
       }
     }
 

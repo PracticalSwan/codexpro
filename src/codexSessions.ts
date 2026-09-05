@@ -619,3 +619,132 @@ export async function readCodexSession(
     text
   };
 }
+
+
+export interface CodexSessionSearchMatch {
+  anchor: number;
+  end: number;
+  role: string;
+  tool?: string;
+  ts?: number;
+  snippet: string;
+}
+
+export interface CodexSessionSearchResult {
+  session: CodexSessionMeta;
+  matches: CodexSessionSearchMatch[];
+  truncated: boolean;
+  source_size_bytes: number;
+}
+
+function searchRecordFromLine(line: string, includeToolOutputs: boolean): { role: string; content: string; tool?: string; ts?: number } | undefined {
+  const value = parseJsonLine(line);
+  if (value?.type !== "response_item" || !value.payload) return undefined;
+  const payload = value.payload;
+  const ts = parseTimestamp(value.timestamp);
+  if (payload.type === "message") {
+    const content = extractText(payload.content);
+    if (!content.trim()) return undefined;
+    return { role: String(payload.role || "unknown"), content, ...(ts !== undefined ? { ts } : {}) };
+  }
+  if (payload.type === "function_call") {
+    const tool = String(payload.name || "unknown");
+    return { role: "assistant", content: `[Tool: ${tool}]`, tool, ...(ts !== undefined ? { ts } : {}) };
+  }
+  if (payload.type === "function_call_output" && includeToolOutputs) {
+    return { role: "tool", content: String(payload.output || ""), ...(ts !== undefined ? { ts } : {}) };
+  }
+  return undefined;
+}
+
+export async function searchCodexSession(
+  config: CodexProConfig,
+  options: {
+    sessionId?: string;
+    sourcePath?: string;
+    query: string;
+    role?: string;
+    tool?: string;
+    after?: number;
+    before?: number;
+    maxResults?: number;
+    maxSnippetBytes?: number;
+    includeToolOutputs?: boolean;
+  }
+): Promise<CodexSessionSearchResult> {
+  const session = await resolveSessionSource(config, options.sessionId, options.sourcePath);
+  const query = String(options.query ?? "").trim();
+  if (!query) throw new CodexProError("query is required.");
+  const queryLower = query.toLowerCase();
+  const role = options.role?.trim().toLowerCase();
+  const tool = options.tool?.trim().toLowerCase();
+  const maxResults = Math.max(1, Math.min(Number(options.maxResults ?? 30), 200));
+  const maxSnippetBytes = Math.max(32, Math.min(Number(options.maxSnippetBytes ?? 600), 4_000));
+  const sourceSizeBytes = (await fsp.stat(session.source_path)).size;
+  const matches: CodexSessionSearchMatch[] = [];
+  let visibleMatches = 0;
+  for await (const item of readJsonlLinesFromHead(session.source_path, 0, sourceSizeBytes)) {
+    const record = searchRecordFromLine(item.line, options.includeToolOutputs === true);
+    if (!record) continue;
+    if (role && record.role.toLowerCase() !== role) continue;
+    if (tool && record.tool?.toLowerCase() !== tool) continue;
+    if (options.after !== undefined && (record.ts === undefined || record.ts < options.after)) continue;
+    if (options.before !== undefined && (record.ts === undefined || record.ts > options.before)) continue;
+    if (!record.content.toLowerCase().includes(queryLower) && !record.tool?.toLowerCase().includes(queryLower)) continue;
+    visibleMatches += 1;
+    if (matches.length < maxResults) {
+      matches.push({
+        anchor: item.start,
+        end: item.end,
+        role: record.role,
+        ...(record.tool ? { tool: record.tool } : {}),
+        ...(record.ts !== undefined ? { ts: record.ts } : {}),
+        snippet: truncateUtf8(record.content.replace(/\s+/g, " ").trim(), maxSnippetBytes)
+      });
+    }
+    if (visibleMatches > maxResults) break;
+  }
+  return { session, matches, truncated: visibleMatches > matches.length, source_size_bytes: sourceSizeBytes };
+}
+
+export async function readCodexSessionAround(
+  config: CodexProConfig,
+  options: {
+    sessionId?: string;
+    sourcePath?: string;
+    anchor: number;
+    beforeMessages?: number;
+    afterMessages?: number;
+    maxTotalBytes?: number;
+    excludeToolOutputs?: boolean;
+    maxToolOutputBytes?: number;
+  }
+): Promise<CodexSessionReadResult> {
+  const session = await resolveSessionSource(config, options.sessionId, options.sourcePath);
+  const sourceSizeBytes = (await fsp.stat(session.source_path)).size;
+  const anchor = clampCursor(options.anchor, sourceSizeBytes, "head");
+  const beforeMessages = Math.max(0, Math.min(Number(options.beforeMessages ?? 8), 100));
+  const afterMessages = Math.max(1, Math.min(Number(options.afterMessages ?? 12), 120));
+  const maxTotalBytes = Math.max(4_000, Math.min(Number(options.maxTotalBytes ?? 80_000), 400_000));
+  const maxToolOutputBytes = Math.max(0, Math.min(Number(options.maxToolOutputBytes ?? DEFAULT_TOOL_OUTPUT_BYTES), 400_000));
+  const beforeBudget = Math.floor(maxTotalBytes * 0.4);
+  const afterBudget = maxTotalBytes - beforeBudget;
+  const common = { excludeToolOutputs: options.excludeToolOutputs === true, maxToolOutputBytes };
+  const before = beforeMessages > 0
+    ? await loadSessionMessages(session.source_path, { direction: "tail", cursor: anchor, maxMessages: beforeMessages, maxTotalBytes: beforeBudget, ...common })
+    : { messages: [] as CodexSessionMessage[], truncated: false };
+  const after = await loadSessionMessages(session.source_path, { direction: "head", cursor: anchor, maxMessages: afterMessages, maxTotalBytes: afterBudget, ...common });
+  const messages = [...before.messages, ...after.messages];
+  const transcript = messages.map((message) => `### ${message.role}${message.ts ? ` ${new Date(message.ts).toISOString()}` : ""}\n\n${message.content}`).join("\n\n");
+  return {
+    session,
+    messages,
+    truncated: Boolean(before.truncated || after.truncated),
+    direction: "head",
+    cursor: anchor,
+    resume_cursor: anchor,
+    has_more: false,
+    source_size_bytes: sourceSizeBytes,
+    text: ["# Codex Session Around", "", `Session: ${session.session_id}`, `Anchor: ${anchor}`, "", "## Transcript", "", transcript || "No readable transcript messages found."].join("\n")
+  };
+}

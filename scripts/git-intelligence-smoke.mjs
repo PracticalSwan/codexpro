@@ -1,0 +1,31 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { spawnSync } from "node:child_process";
+import { loadConfig } from "../dist/config.js";
+import { PathGuard } from "../dist/guard.js";
+import { buildPackageGraph } from "../dist/packageGraph.js";
+import { gitHistory, gitShow, gitBlame } from "../dist/gitOps.js";
+import { preflightChanges } from "../dist/preflightOps.js";
+const root=await fs.mkdtemp(path.join(os.tmpdir(),"codexpro-git-intel-"));
+const run=(a)=>{const r=spawnSync("git",a,{cwd:root,encoding:"utf8"});if(r.status!==0)throw new Error(r.stderr||r.stdout);};
+await fs.mkdir(path.join(root,"packages","a","src"),{recursive:true});
+await fs.mkdir(path.join(root,"packages","b"),{recursive:true});
+await fs.writeFile(path.join(root,"package.json"),JSON.stringify({private:true,workspaces:["packages/*"]}));
+await fs.writeFile(path.join(root,"packages","a","package.json"),JSON.stringify({name:"@x/a",version:"1.0.0"}));
+await fs.writeFile(path.join(root,"packages","b","package.json"),JSON.stringify({name:"@x/b",version:"1.0.0",dependencies:{"@x/a":"workspace:*"}}));
+await fs.writeFile(path.join(root,"packages","a","src","index.js"),"export const a=1;\n");
+run(["init"]); run(["add","."]); run(["-c","user.email=t@example.com","-c","user.name=T","commit","-m","initial"]);
+const config=loadConfig(["--root",root,"--allow-root",root]); const ws={id:"ws_git_intel",root,openedAt:new Date().toISOString()}; const guard=new PathGuard(config);
+try {
+ const graph=await buildPackageGraph(config,guard,ws);
+ assert(graph.packages.some(p=>p.name==="@x/a")); assert(graph.edges.some(e=>e.from==="@x/b"&&e.to==="@x/a"));
+ const history=gitHistory(config,guard,ws,{maxCount:5,path:"packages/a/src/index.js"}); assert.equal(history.commits.length,1);
+ const shown=gitShow(config,guard,ws,{revision:"HEAD",path:"packages/a/src/index.js"}); assert(shown.text.includes("export const a=1"));
+ const blame=gitBlame(config,guard,ws,{path:"packages/a/src/index.js"}); assert.equal(blame.lines[0].line,1);
+ await fs.writeFile(path.join(root,"packages","a","src","bad.txt"),"<<<<<<< HEAD\nTOKEN=ghp_abcdefghijklmnopqrstuvwxyz123456\n=======\nx\n>>>>>>> x\n");
+ const pre=await preflightChanges(config,guard,ws,{paths:["packages/a/src/bad.txt"],maxFileBytes:4096});
+ assert(pre.issues.some(i=>i.kind==="conflict_marker")); assert(pre.issues.some(i=>i.kind==="secret"));
+ console.log("git intelligence smoke passed");
+} finally { await fs.rm(root,{recursive:true,force:true}); }

@@ -167,7 +167,7 @@ function isAllowedPackageScript(command: string): boolean {
   return packageScriptPattern.test(command);
 }
 
-function assertSafeCommand(config: CodexProConfig, command: string): void {
+export function assertBashCommandAllowed(config: CodexProConfig, command: string): void {
   if (config.bashMode === "off") {
     throw new CodexProError("bash tool is disabled. Start with CODEXPRO_BASH_MODE=safe or CODEXPRO_BASH_MODE=full to enable it.");
   }
@@ -192,7 +192,7 @@ function assertSafeCommand(config: CodexProConfig, command: string): void {
   }
 }
 
-function assertBashSession(config: CodexProConfig, sessionId?: string): string | undefined {
+export function assertBashSession(config: CodexProConfig, sessionId?: string): string | undefined {
   const requested = sessionId?.trim();
   if (!config.bashSessionId) {
     if (config.requireBashSession) {
@@ -256,6 +256,15 @@ export function makeRestrictedBashEnv(
   };
   if (process.platform === "win32") {
     restricted.USERPROFILE = home;
+    const systemRoot = env.SystemRoot ?? env.SYSTEMROOT ?? env.WINDIR;
+    const defaultComSpec = systemRoot ? path.win32.join(systemRoot, 'System32', 'cmd.exe') : undefined;
+    const comSpec = env.ComSpec ?? env.COMSPEC ?? defaultComSpec;
+    if (comSpec && path.win32.isAbsolute(comSpec) && fs.existsSync(comSpec)) restricted.ComSpec = comSpec;
+    if (systemRoot && path.win32.isAbsolute(systemRoot)) {
+      restricted.SystemRoot = systemRoot;
+      restricted.WINDIR = env.WINDIR ?? systemRoot;
+    }
+    if (env.PATHEXT) restricted.PATHEXT = env.PATHEXT;
     const appData = isUsableAbsoluteDir(env.APPDATA);
     const localAppData = isUsableAbsoluteDir(env.LOCALAPPDATA);
     if (appData) restricted.APPDATA = appData;
@@ -485,7 +494,7 @@ export function decodeBashOutput(
   return decodeBashOutputDetailed(bytes, platform, allowTrailingIncompleteUtf8, detect).text;
 }
 
-function terminateProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
+export function terminateProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
   if (!child.pid) return;
   if (process.platform === "win32") {
     // Windows does not provide Unix-style cooperative signals to process trees.
@@ -512,7 +521,7 @@ export async function runBash(
 ): Promise<BashResult> {
   if (!command?.trim()) throw new CodexProError("command is required.");
   const bashSessionId = assertBashSession(config, options.sessionId);
-  assertSafeCommand(config, command);
+  assertBashCommandAllowed(config, command);
   const cwdResolved = guard.resolve(workspace, options.cwd ?? ".");
   const cwd = cwdResolved.absPath;
   const timeoutMs = Math.max(1_000, Math.min(options.timeoutMs ?? 30_000, config.maxBashTimeoutMs));

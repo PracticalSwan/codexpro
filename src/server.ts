@@ -10,15 +10,42 @@ import { repoTree, readTextFile, writeTextFile, editTextFile, ensureAiBridge, wi
 import { viewWorkspaceImage } from "./imageOps.js";
 import { importAttachmentFile } from "./importOps.js";
 import { searchWorkspace, searchBackendInfo } from "./searchOps.js";
-import { probeBashToolchain, resolveBashRuntime, runBash } from "./bashOps.js";
-import { gitDiff, gitDiffStatus, gitLog, gitRuntimeInfo, gitStatus } from "./gitOps.js";
+import { probeBashToolchain, resolveBashRuntime, runBash, assertBashSession } from "./bashOps.js";
+import { gitDiff, gitDiffStats as readGitDiffStats, gitDiffStatus, gitLog, gitRuntimeInfo, gitStatus, gitHistory, gitShow, gitBlame } from "./gitOps.js";
 import { readAiBridgeContext, readCodexContext, workspaceSummary } from "./workspaceOps.js";
 import { buildProContext, exportProContext } from "./proContext.js";
 import { codexproInventory, loadSkill } from "./capabilitiesOps.js";
-import { listCodexSessions, readCodexSession } from "./codexSessions.js";
+import { listCodexSessions, readCodexSession, searchCodexSession, readCodexSessionAround } from "./codexSessions.js";
 import { TOOL_CARD_LEGACY_URIS, TOOL_CARD_MIME_TYPE, TOOL_CARD_URI, toolCardWidgetHtml } from "./toolCardWidget.js";
 import { hasSecretValue, redactSensitiveText, redactStructured } from "./redact.js";
 import { inspectWorkspace, invalidateWorkspaceAnalysis, reviewWorkspaceChanges } from "./analysis/index.js";
+import { WorkspacePolicyRegistry } from "./policyOps.js";
+import { OperationStore } from "./operations/store.js";
+import { OperationManager } from "./operations/manager.js";
+import { prepareChangeSet, applyChangeSet, revertOperation, getPreparedChangeSet, workspaceForRevertOperation } from "./operations/changesets.js";
+import { TelemetryRegistry } from "./telemetry.js";
+import { connectionDiagnostics, toolSurfaceDiagnostics } from "./diagnosticsOps.js";
+import { WorkspaceProcessManager } from "./processOps.js";
+import { discoverTrustedChecks, runChecks, verifyChanges } from "./checksOps.js";
+import { readMany, searchMany, gatherContext } from "./contextOps.js";
+import { instructionsForPath } from "./instructionOps.js";
+import { WorkspaceEventTracker } from "./workspaceEvents.js";
+import { CodexProRuntimeState } from "./runtimeState.js";
+import { TaskStateStore } from "./taskStateOps.js";
+import { findFiles, resolveCommand } from "./searchBackends.js";
+import { resolveAnalysisProviders } from "./analysis/providers.js";
+import { syncCodeGraph } from "./analysis/codegraphProvider.js";
+import { buildPackageGraph } from "./packageGraph.js";
+import { preflightChanges } from "./preflightOps.js";
+import { gitStage, gitCommit, gitPush } from "./gitWriteOps.js";
+import { inspectArchive, extractArchive } from "./archiveOps.js";
+import { readDocument } from "./documentOps.js";
+import { exportWorkspaceFile } from "./exportOps.js";
+import { GoalStore } from "./goals/store.js";
+import { proposeGoal, approveGoal, startGoal, pauseGoal, resumeGoal, cancelGoal } from "./goals/runner.js";
+import { reviewGoal, projectGoal } from "./goals/projection.js";
+import { goalPlatformStatus } from "./goals/isolation.js";
+import type { GoalRecord } from "./goals/types.js";
 
 const STRUCTURED_STRING_MAX_CHARS = 30_000;
 
@@ -235,6 +262,8 @@ const SUPERTOOL_ACTION_ALIASES: Record<string, string> = {
 };
 
 const registeredToolHandlersByServer = new WeakMap<object, Map<string, CodexToolHandler>>();
+const workspaceToolPolicyByServer = new WeakMap<object, (name: string, args: any) => void>();
+const telemetryByServer = new WeakMap<object, TelemetryRegistry>();
 
 function rememberRegisteredToolHandler(server: McpServer, name: string, handler: CodexToolHandler): void {
   const key = server as object;
@@ -280,11 +309,23 @@ function registerToolCompat(
 ): void {
   const wrapped = async (args: any) => {
     const started = Date.now();
+    const telemetry = telemetryByServer.get(server as object);
+    telemetry?.record({ stage: "request_arrival", status: "ok", tool: name, backend: "mcp_tool" });
+    telemetry?.record({ stage: "dispatch", status: "ok", tool: name, backend: "mcp_tool" });
     try {
       const result = tagToolResult(await handler(args ?? {}), name, options);
-      logToolCall(name, result?.isError ? "error" : "ok", started);
+      const status = result?.isError ? "error" : "ok";
+      telemetry?.record({
+        stage: "completion",
+        status,
+        tool: name,
+        durationMs: Date.now() - started,
+        resultBytes: Buffer.byteLength(JSON.stringify(result ?? {}), "utf8")
+      });
+      logToolCall(name, status, started);
       return result;
     } catch (error) {
+      telemetry?.record({ stage: "completion", status: "error", tool: name, durationMs: Date.now() - started, errorBoundary: error instanceof Error ? error.message : String(error) });
       const result = tagToolResult(errorResult(error), name, options);
       logToolCall(name, "error", started);
       return result;
@@ -318,23 +359,50 @@ function registerToolCompat(
 const MINIMAL_TOOL_NAMES = [
   SUPERTOOL_NAME,
   "server_config",
+  "effective_policy",
+  "connection_diagnostics",
+  "tool_surface_diagnostics",
+  "local_telemetry",
+  "operation_status",
   "codexpro_self_test",
   "open_current_workspace",
   "open_workspace",
   "read",
   "write",
   "edit",
+  "prepare_change_set",
+  "apply_change_set",
+  "revert_operation",
   "apply_patch",
   "import_file",
+  "extract_archive",
+  "export_file",
   "bash",
+  "run_checks",
+  "verify_changes",
   "show_changes"
 ] as const;
 
 const STANDARD_TOOL_NAMES = [
   ...MINIMAL_TOOL_NAMES,
+  "start_workspace_process",
+  "workspace_process_status",
+  "read_workspace_process_output",
+  "stop_workspace_process",
   "inspect_workspace",
   "tree",
   "search",
+  "find_files",
+  "code_intelligence_status",
+  "inspect_archive",
+  "read_document",
+  "read_many",
+  "search_many",
+  "gather_context",
+  "instructions_for_path",
+  "workspace_events",
+  "save_task_snapshot",
+  "load_task_snapshot",
   "load_skill",
   "view_image",
   "read_handoff",
@@ -346,6 +414,11 @@ const STANDARD_TOOL_NAMES = [
 const FULL_TOOL_NAMES = [
   SUPERTOOL_NAME,
   "server_config",
+  "effective_policy",
+  "connection_diagnostics",
+  "tool_surface_diagnostics",
+  "local_telemetry",
+  "operation_status",
   "codexpro_self_test",
   "codexpro_inventory",
   "load_skill",
@@ -356,13 +429,55 @@ const FULL_TOOL_NAMES = [
   "inspect_workspace",
   "tree",
   "search",
+  "find_files",
+  "code_intelligence_status",
+  "inspect_archive",
+  "read_document",
+  "read_many",
+  "search_many",
+  "gather_context",
+  "instructions_for_path",
+  "workspace_events",
+  "save_task_snapshot",
+  "load_task_snapshot",
   "read",
   "view_image",
   "write",
   "edit",
+  "prepare_change_set",
+  "apply_change_set",
+  "revert_operation",
   "apply_patch",
   "import_file",
+  "extract_archive",
+  "export_file",
   "bash",
+  "run_checks",
+  "verify_changes",
+  "start_workspace_process",
+  "workspace_process_status",
+  "read_workspace_process_output",
+  "stop_workspace_process",
+  "goal_status",
+  "list_goals",
+  "propose_goal",
+  "approve_goal",
+  "start_goal",
+  "pause_goal",
+  "resume_goal",
+  "cancel_goal",
+  "review_goal",
+  "project_goal",
+  "codegraph_sync",
+  "git_history",
+  "git_show",
+  "git_blame",
+  "package_graph",
+  "change_impact",
+  "preflight_changes",
+  "git_stage",
+  "git_commit",
+  "git_push",
   "git_status",
   "git_diff",
   "show_changes",
@@ -379,22 +494,53 @@ const CONNECTION_TEST_HIDDEN_TOOLS = new Set<string>([
   "codexpro_self_test",
   "write",
   "edit",
+  "prepare_change_set",
+  "apply_change_set",
+  "revert_operation",
   "apply_patch",
   "import_file",
+  "extract_archive",
+  "export_file",
   "bash",
+  "run_checks",
+  "verify_changes",
+  "start_workspace_process",
+  "workspace_process_status",
+  "read_workspace_process_output",
+  "stop_workspace_process",
+  "codegraph_sync",
+  "git_stage",
+  "git_commit",
+  "git_push",
+  "save_task_snapshot",
   "export_pro_context",
   "handoff_to_agent",
   "handoff_to_codex"
 ]);
 
+const BASH_DEPENDENT_TOOL_NAMES = new Set<string>([
+  "bash",
+  "run_checks",
+  "verify_changes",
+  "start_workspace_process",
+  "workspace_process_status",
+  "read_workspace_process_output",
+  "stop_workspace_process"
+]);
+
+const GOAL_TOOL_NAMES = new Set<string>([
+  "goal_status", "list_goals", "propose_goal", "approve_goal", "start_goal",
+  "pause_goal", "resume_goal", "cancel_goal", "review_goal", "project_goal"
+]);
+
 function codexSessionToolNames(config: CodexProConfig): string[] {
   if (config.codexSessions === "off") return [];
   return config.codexSessions === "read"
-    ? ["codex_sessions", "read_codex_session"]
+    ? ["codex_sessions", "read_codex_session", "search_codex_session", "read_codex_session_around"]
     : ["codex_sessions"];
 }
 
-function toolNamesForMode(config: CodexProConfig): string[] {
+export function toolNamesForMode(config: CodexProConfig): string[] {
   const names: string[] =
     config.toolMode === "full"
       ? [...FULL_TOOL_NAMES]
@@ -402,14 +548,23 @@ function toolNamesForMode(config: CodexProConfig): string[] {
         ? [...MINIMAL_TOOL_NAMES]
         : [...STANDARD_TOOL_NAMES];
   if (config.bashMode === "off") {
-    const bashIndex = names.indexOf("bash");
-    if (bashIndex !== -1) names.splice(bashIndex, 1);
+    for (const bashTool of BASH_DEPENDENT_TOOL_NAMES) {
+      const toolIndex = names.indexOf(bashTool);
+      if (toolIndex !== -1) names.splice(toolIndex, 1);
+    }
   }
   if (config.writeMode !== "workspace") {
-    for (const writeTool of ["write", "edit", "apply_patch", "import_file"]) {
+    for (const writeTool of ["write", "edit", "prepare_change_set", "apply_change_set", "revert_operation", "apply_patch", "import_file", "extract_archive", "git_stage", "git_commit", "git_push"]) {
       const toolIndex = names.indexOf(writeTool);
       if (toolIndex !== -1) names.splice(toolIndex, 1);
     }
+  }
+  if (!config.allowGitPush) { const pushIndex = names.indexOf("git_push"); if (pushIndex !== -1) names.splice(pushIndex, 1); }
+  if (!config.codeGraphEnabled || config.writeMode !== "workspace") { const syncIndex = names.indexOf("codegraph_sync"); if (syncIndex !== -1) names.splice(syncIndex, 1); }
+  if (!config.artifactExportEnabled) { const exportIndex = names.indexOf("export_file"); if (exportIndex !== -1) names.splice(exportIndex, 1); }
+  const goalsAvailable = config.goalsEnabled && config.writeMode === "workspace" && config.bashMode !== "off" && !config.connectionTest && goalPlatformStatus(config.goalDir).available;
+  if (!goalsAvailable) {
+    for (const goalTool of GOAL_TOOL_NAMES) { const goalIndex = names.indexOf(goalTool); if (goalIndex !== -1) names.splice(goalIndex, 1); }
   }
   if (config.writeMode === "handoff" && !names.includes("handoff_to_agent")) names.push("handoff_to_agent");
   if (!config.analysisEnabled) {
@@ -439,16 +594,23 @@ function rememberRegisteredTool(server: McpServer, name: string): void {
   if (!names.includes(name)) names.push(name);
 }
 
-function registeredToolNames(server: McpServer): string[] {
+export function registeredToolNames(server: McpServer): string[] {
   return [...(registeredToolNamesByServer.get(server as object) ?? [])];
 }
 
 function shouldRegisterTool(config: CodexProConfig, name: string): boolean {
   if (config.connectionTest && CONNECTION_TEST_HIDDEN_TOOLS.has(name)) return false;
-  if (name === "bash" && config.bashMode === "off") return false;
-  if ((name === "write" || name === "edit" || name === "apply_patch" || name === "import_file") && config.writeMode !== "workspace") return false;
+  if (BASH_DEPENDENT_TOOL_NAMES.has(name) && config.bashMode === "off") return false;
+  if (["write", "edit", "prepare_change_set", "apply_change_set", "revert_operation", "apply_patch", "import_file", "extract_archive", "git_stage", "git_commit", "git_push"].includes(name) && config.writeMode !== "workspace") return false;
+  if (name === "git_push" && !config.allowGitPush) return false;
+  if (name === "codegraph_sync" && (!config.codeGraphEnabled || config.writeMode !== "workspace")) return false;
+  if (name === "export_file" && !config.artifactExportEnabled) return false;
+  if (GOAL_TOOL_NAMES.has(name)) {
+    if (!config.goalsEnabled || config.writeMode !== "workspace" || config.bashMode === "off" || config.connectionTest) return false;
+    if (!goalPlatformStatus(config.goalDir).available) return false;
+  }
   if (name === "codex_sessions") return config.codexSessions !== "off";
-  if (name === "read_codex_session") return config.codexSessions === "read";
+  if (["read_codex_session", "search_codex_session", "read_codex_session_around"].includes(name)) return config.codexSessions === "read";
   if (name === "inspect_workspace" && !config.analysisEnabled) return false;
   if (name === "handoff_to_agent" && config.writeMode === "handoff") return true;
   if (config.toolMode === "full") return true;
@@ -464,7 +626,11 @@ function registerCodexTool(
   handler: CodexToolHandler
 ): void {
   if (!shouldRegisterTool(config, name)) return;
-  const validatedHandler: CodexToolHandler = (args) => handler(validateToolArgs(name, options, args));
+  const validatedHandler: CodexToolHandler = (args) => {
+    const validatedArgs = validateToolArgs(name, options, args);
+    workspaceToolPolicyByServer.get(server as object)?.(name, validatedArgs);
+    return handler(validatedArgs);
+  };
   registerToolCompat(server, name, descriptorOptionsForConfig(config, name, options), validatedHandler);
   rememberRegisteredTool(server, name);
   rememberRegisteredToolHandler(server, name, validatedHandler);
@@ -963,14 +1129,112 @@ const LOCAL_WRITE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: false, des
 const BASH_ANNOTATIONS = { readOnlyHint: false, openWorldHint: true, destructiveHint: true, idempotentHint: false };
 const HANDOFF_WRITE_ANNOTATIONS = { readOnlyHint: false, openWorldHint: false, destructiveHint: false, idempotentHint: false };
 
+function publicGoalRecord(record: GoalRecord): Record<string, unknown> {
+  return {
+    id: record.id,
+    workspace_id: record.workspaceId,
+    title: record.title,
+    ...(record.summary ? { summary: record.summary } : {}),
+    state: record.state,
+    control: record.control,
+    fingerprint: record.fingerprint,
+    max_workers: record.maxWorkers,
+    created_at: record.createdAt,
+    updated_at: record.updatedAt,
+    source_head: record.sourceHead ?? null,
+    source_fingerprint: record.sourceFingerprint ?? null,
+    source_dirty_paths: record.sourceDirtyPaths ?? [],
+    isolation_active: Boolean(record.isolation),
+    review_fingerprint: record.reviewFingerprint ?? null,
+    reviewed_patch_sha256: record.reviewedPatchSha256 ?? null,
+    reviewed_paths: record.reviewedPaths ?? [],
+    projection_operation_id: record.projectionOperationId ?? null,
+    error: record.error ?? null,
+    tasks: record.tasks.map((task) => ({
+      id: task.id, title: task.title, kind: task.kind, depends_on: task.dependsOn,
+      state: task.state, operation_id: task.operationId ?? null, verification: task.verification ?? null
+    }))
+  };
+}
+
 export function createCodexProServer(
-  config: CodexProConfig,
-  options: { workspaceRegistry?: WorkspaceRegistry } = {}
+  globalConfig: CodexProConfig,
+  options: { workspaceRegistry?: WorkspaceRegistry; telemetryRegistry?: TelemetryRegistry; activeSessionCount?: () => number; runtimeState?: CodexProRuntimeState } = {}
 ): McpServer {
-  const workspaces = new WorkspaceManager(config, options.workspaceRegistry);
+  const policyRegistry = new WorkspacePolicyRegistry(globalConfig);
+  const config = policyRegistry.effectiveConfig(globalConfig.defaultRoot);
+  const configForWorkspace = (workspace: Workspace): CodexProConfig => policyRegistry.effectiveConfig(workspace.root);
+  const workspaces = new WorkspaceManager(config, options.workspaceRegistry, (workspace) => policyRegistry.ensure(workspace.root));
   const reviewCheckpoints = new Map<string, string>();
-  const guard = new PathGuard(config);
-  const server = new McpServer({ name: "CodexPro", version: "0.30.0" }, { instructions: serverInstructions(config) });
+  const guard = new PathGuard(config, configForWorkspace);
+  const telemetry = options.telemetryRegistry ?? new TelemetryRegistry({ maxEvents: 128 });
+  const runtimeState = options.runtimeState ?? new CodexProRuntimeState();
+  const ownsRuntimeState = !options.runtimeState;
+  const operationManagers = new Map<string, OperationManager>();
+  const operationManagerFor = (workspace: Workspace): OperationManager => {
+    const existing = operationManagers.get(workspace.id);
+    if (existing) return existing;
+    const manager = new OperationManager(new OperationStore({ baseDir: configForWorkspace(workspace).operationDir, maxReceipts: configForWorkspace(workspace).maxOperationReceipts }), workspace.id);
+    operationManagers.set(workspace.id, manager);
+    return manager;
+  };
+  const workspaceEventTrackerFor = (workspace: Workspace): WorkspaceEventTracker =>
+    runtimeState.eventTrackerFor(
+      workspace.id,
+      () => new WorkspaceEventTracker(configForWorkspace(workspace), guard, workspace)
+    );
+  const taskStores = new Map<string, TaskStateStore>();
+  const taskStoreFor = (workspace: Workspace): TaskStateStore => {
+    const existing = taskStores.get(workspace.id);
+    if (existing) return existing;
+    const workspaceConfig = configForWorkspace(workspace);
+    const store = new TaskStateStore({ baseDir: path.join(workspaceConfig.operationDir, "tasks", workspace.id), maxSnapshots: workspaceConfig.maxOperationReceipts });
+    taskStores.set(workspace.id, store);
+    return store;
+  };
+  const goalStores = new Map<string, GoalStore>();
+  const goalStoreFor = (workspace: Workspace): GoalStore => {
+    const existing = goalStores.get(workspace.id);
+    if (existing) return existing;
+    const workspaceConfig = configForWorkspace(workspace);
+    const store = new GoalStore({ baseDir: path.join(workspaceConfig.goalDir, workspace.id), maxGoals: workspaceConfig.maxGoals });
+    goalStores.set(workspace.id, store);
+    return store;
+  };
+  const processManagerFor = (workspace: Workspace): WorkspaceProcessManager =>
+    runtimeState.processManagerFor(
+      workspace.id,
+      () => new WorkspaceProcessManager({
+        config: configForWorkspace(workspace),
+        guard,
+        workspace,
+        operationManager: operationManagerFor(workspace)
+      })
+    );
+  const server = new McpServer({ name: "CodexPro", version: "0.32.3" }, { instructions: serverInstructions(config) });
+  const originalServerClose = server.close.bind(server);
+  let serverClosing = false;
+  (server as any).close = async () => {
+    if (serverClosing) return;
+    serverClosing = true;
+    if (ownsRuntimeState) await runtimeState.close();
+    await originalServerClose();
+  };
+  const lowLevelServer = (server as any).server;
+  const previousServerOnClose = lowLevelServer.onclose;
+  lowLevelServer.onclose = () => {
+    previousServerOnClose?.();
+    if (ownsRuntimeState) void runtimeState.close();
+  };
+  telemetryByServer.set(server as object, telemetry);
+  workspaceToolPolicyByServer.set(server as object, (name, args) => {
+    if (name === "open_workspace") return;
+    const workspace = workspaces.getWorkspace(typeof args?.workspace_id === "string" ? args.workspace_id : undefined);
+    const effective = configForWorkspace(workspace);
+    if (!shouldRegisterTool(effective, name)) {
+      throw new CodexProError(`Tool ${name} is disabled by the effective policy for this workspace.`);
+    }
+  });
   registeredToolNamesByServer.set(server as object, []);
   registerToolCardResource(server, config);
 
@@ -1076,6 +1340,7 @@ export function createCodexProServer(
       const bashRuntime = resolveBashRuntime(config);
       const gitRuntime = gitRuntimeInfo();
       const searchBackend = searchBackendInfo();
+      const goalPlatform = goalPlatformStatus(config.goalDir);
       const safeConfig = {
         defaultRoot: config.defaultRoot,
         allowedRoots: config.allowedRoots,
@@ -1096,6 +1361,16 @@ export function createCodexProServer(
         toolMode: config.toolMode,
         toolCards: config.toolCards,
         connectionTest: config.connectionTest,
+        allowGitPush: config.allowGitPush,
+        codeGraphEnabled: config.codeGraphEnabled,
+        codeGraphConfigured: Boolean(config.codeGraphExecutable || resolveCommand("codegraph")),
+        lspEnabled: config.lspEnabled,
+        lspConfigured: Boolean(config.lspExecutable),
+        goalsEnabled: config.goalsEnabled,
+        goalPlatform,
+        maxGoals: config.maxGoals,
+        maxGoalTasks: config.maxGoalTasks,
+        maxGoalWorkers: config.maxGoalWorkers,
         analysisEnabled: config.analysisEnabled,
         analysisLimits: config.analysisLimits,
         inheritEnv: config.inheritEnv,
@@ -1106,12 +1381,368 @@ export function createCodexProServer(
         maxOutputBytes: config.maxOutputBytes,
         maxBashObservedOutputBytes: config.maxBashObservedOutputBytes,
         maxBashTimeoutMs: config.maxBashTimeoutMs,
+        maxWorkspaceProcesses: config.maxWorkspaceProcesses,
+        maxProcessOutputBytes: config.maxProcessOutputBytes,
+        maxProcessReadBytes: config.maxProcessReadBytes,
+        maxCheckOutputBytes: config.maxCheckOutputBytes,
         maxSearchResults: config.maxSearchResults,
+        maxOperationBytes: config.maxOperationBytes,
+        maxOperationFiles: config.maxOperationFiles,
+        maxOperationDurationMs: config.maxOperationDurationMs,
+        maxOperationReceipts: config.maxOperationReceipts,
         blockedGlobs: config.blockedGlobs,
         registeredTools: registeredToolNames(server),
         registeredToolCount: registeredToolNames(server).length
       };
       return textResult(`# CodexPro Server Config\n\n${JSON.stringify(safeConfig, null, 2)}`, safeConfig);
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "effective_policy",
+    {
+      title: "Effective Workspace Policy",
+      description: "Show the configured and effective per-workspace safety policy without revealing workspace paths, tokens, or secret-bearing configuration.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use the workspace selected for this MCP session.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const summary = policyRegistry.describe(workspace.root);
+      return textResult(`# Effective Workspace Policy\n\n${JSON.stringify(summary, null, 2)}`, summary);
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "operation_status",
+    {
+      title: "Operation Status",
+      description: "Read a durable bounded receipt for a mutation in the selected workspace.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use the selected workspace."),
+        operation_id: z.string().regex(/^op_[A-Za-z0-9-]{1,80}$/).describe("Operation id returned by a mutation receipt.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const receipt = await operationManagerFor(workspace).status(args.operation_id);
+      if (!receipt) return textResult(`Operation not found: ${args.operation_id}`, { found: false, operation_id: args.operation_id });
+      return textResult(`# Operation Status\n\n${JSON.stringify(receipt, null, 2)}`, { found: true, operation: receipt });
+    }
+  );
+
+  registerCodexTool(config, server, "read_many", {
+    title: "Read Many", description: "Read multiple guarded text files with isolated per-item failures and one aggregate byte budget.",
+    inputSchema: { workspace_id: z.string().optional(), items: z.array(z.object({ path: z.string(), start_line: z.number().int().min(1).optional(), end_line: z.number().int().min(1).optional() })).min(1).max(64), max_total_bytes: z.number().int().min(1).optional() },
+    annotations: READ_ONLY_ANNOTATIONS
+  }, async (args) => {
+    const workspace = workspaces.getWorkspace(args.workspace_id); const workspaceConfig = configForWorkspace(workspace);
+    const result = await readMany({ config: workspaceConfig, guard, workspace, items: args.items.map((item: any) => ({ path: item.path, startLine: item.start_line, endLine: item.end_line })), maxTotalBytes: args.max_total_bytes });
+    return textResult(`# Read Many\n\n${JSON.stringify(result, null, 2)}`, { workspace_id: workspace.id, ...result });
+  });
+
+  registerCodexTool(config, server, "search_many", {
+    title: "Search Many", description: "Run multiple guarded lexical searches with isolated failures and aggregate result/byte budgets.",
+    inputSchema: { workspace_id: z.string().optional(), items: z.array(z.object({ query: z.string().min(1), root: z.string().optional(), regex: z.boolean().optional(), glob: z.string().optional() })).min(1).max(32), max_total_results: z.number().int().min(1).optional(), max_total_bytes: z.number().int().min(1).optional() },
+    annotations: READ_ONLY_ANNOTATIONS
+  }, async (args) => {
+    const workspace = workspaces.getWorkspace(args.workspace_id); const workspaceConfig = configForWorkspace(workspace);
+    const result = await searchMany({ config: workspaceConfig, guard, workspace, items: args.items, maxTotalResults: args.max_total_results, maxTotalBytes: args.max_total_bytes });
+    return textResult(`# Search Many\n\n${JSON.stringify(result, null, 2)}`, { workspace_id: workspace.id, ...result });
+  });
+
+  registerCodexTool(config, server, "instructions_for_path", {
+    title: "Instructions For Path", description: "Resolve the root-to-nearest applicable AGENTS-style instruction chain for one guarded workspace path.",
+    inputSchema: { workspace_id: z.string().optional(), path: z.string().describe("Workspace-relative target path.") }, annotations: READ_ONLY_ANNOTATIONS
+  }, async (args) => {
+    const workspace = workspaces.getWorkspace(args.workspace_id); const result = await instructionsForPath(configForWorkspace(workspace), guard, workspace, args.path);
+    return textResult(`# Instructions For Path\n\n${result.text}`, { workspace_id: workspace.id, ...result });
+  });
+
+  registerCodexTool(config, server, "gather_context", {
+    title: "Gather Context", description: "Gather bounded ranked context for one target path, prioritizing instructions, target content, Git state, and recent commits.",
+    inputSchema: { workspace_id: z.string().optional(), target_path: z.string().optional(), max_bytes: z.number().int().min(1000).optional() }, annotations: READ_ONLY_ANNOTATIONS
+  }, async (args) => {
+    const workspace = workspaces.getWorkspace(args.workspace_id); const result = await gatherContext({ config: configForWorkspace(workspace), guard, workspace, targetPath: args.target_path, maxBytes: args.max_bytes });
+    return textResult(`# Gather Context\n\n${result.text}`, { workspace_id: workspace.id, ...result });
+  });
+
+  registerCodexTool(config, server, "workspace_events", {
+    title: "Workspace Events", description: "Return a bounded create/edit/delete/rename delta since a prior opaque in-memory workspace cursor. Blocked paths never enter snapshots.",
+    inputSchema: { workspace_id: z.string().optional(), cursor: z.string().optional() }, annotations: READ_ONLY_ANNOTATIONS
+  }, async (args) => {
+    const workspace = workspaces.getWorkspace(args.workspace_id); const result = await workspaceEventTrackerFor(workspace).page(args.cursor);
+    return textResult(`# Workspace Events\n\n${JSON.stringify(result, null, 2)}`, { workspace_id: workspace.id, ...result });
+  });
+
+  registerCodexTool(config, server, "save_task_snapshot", {
+    title: "Save Task Snapshot", description: "Persist a strict bounded task checkpoint containing goal, inspected files, verification, decisions, and remaining work only. Hidden reasoning and arbitrary fields are rejected.",
+    inputSchema: { workspace_id: z.string().optional(), goal: z.string().min(1).max(1000), files_inspected: z.array(z.string()).max(128), verification: z.array(z.string()).max(128), decisions: z.array(z.string()).max(128), remaining_work: z.array(z.string()).max(128) }, annotations: HANDOFF_WRITE_ANNOTATIONS
+  }, async (args) => {
+    const workspace = workspaces.getWorkspace(args.workspace_id);
+    const execution = await operationManagerFor(workspace).execute({ kind: "task_snapshot" }, () => taskStoreFor(workspace).save({ goal: args.goal, filesInspected: args.files_inspected, verification: args.verification, decisions: args.decisions, remainingWork: args.remaining_work }), () => ({ items: 1, note: "task_snapshot_saved" }));
+    if (!execution.result) return textResult("Task snapshot operation replayed.", { operation: execution.receipt, replayed: true });
+    return textResult(`# Task Snapshot Saved\n\n${execution.result.id}`, { workspace_id: workspace.id, snapshot: execution.result, operation: execution.receipt });
+  });
+
+  registerCodexTool(config, server, "load_task_snapshot", {
+    title: "Load Task Snapshot", description: "Load one strict durable task checkpoint by id.",
+    inputSchema: { workspace_id: z.string().optional(), task_id: z.string().regex(/^task_[A-Za-z0-9-]{1,80}$/) }, annotations: READ_ONLY_ANNOTATIONS
+  }, async (args) => {
+    const workspace = workspaces.getWorkspace(args.workspace_id); const snapshot = await taskStoreFor(workspace).load(args.task_id);
+    return textResult(snapshot ? `# Task Snapshot\n\n${JSON.stringify(snapshot, null, 2)}` : `Task snapshot not found: ${args.task_id}`, { workspace_id: workspace.id, found: Boolean(snapshot), snapshot });
+  });
+
+  registerCodexTool(
+    config,
+    server,
+    "start_workspace_process",
+    {
+      title: "Start Workspace Process",
+      description: "Start one workspace-owned long-running process through the current Bash safety/session policy. Returns an opaque process id and operation receipt id; OS PIDs are never exposed.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use the selected workspace."),
+        command: z.string().min(1).max(20_000).describe("Command to launch under the effective Bash policy."),
+        cwd: z.string().optional().describe("Working directory relative to the workspace. Default: ."),
+        session_id: z.string().optional().describe("Matching Bash session id when the server requires one.")
+      },
+      annotations: BASH_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const processRecord = await processManagerFor(workspace).start({
+        command: String(args.command ?? ""),
+        cwd: args.cwd,
+        sessionId: args.session_id
+      });
+      return textResult(
+        `# Workspace Process Started\n\nProcess: ${processRecord.id}\nState: ${processRecord.state}\nCWD: ${processRecord.cwd}\nOperation: ${processRecord.operationId}`,
+        { workspace_id: workspace.id, process: processRecord }
+      );
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "workspace_process_status",
+    {
+      title: "Workspace Process Status",
+      description: "Read status for a process launched by this CodexPro server. Only opaque CodexPro process ids are accepted.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use the selected workspace."),
+        process_id: z.string().regex(/^proc_[A-Za-z0-9-]{1,80}$/).describe("Opaque process id returned by start_workspace_process.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const processRecord = processManagerFor(workspace).status(args.process_id);
+      return textResult(`# Workspace Process Status\n\n${JSON.stringify(processRecord, null, 2)}`, { workspace_id: workspace.id, process: processRecord });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "read_workspace_process_output",
+    {
+      title: "Read Workspace Process Output",
+      description: "Read one bounded stdout/stderr page from a workspace-owned process using an absolute output cursor.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use the selected workspace."),
+        process_id: z.string().regex(/^proc_[A-Za-z0-9-]{1,80}$/).describe("Opaque process id returned by start_workspace_process."),
+        cursor: z.number().int().min(0).optional().describe("Absolute byte cursor from a previous page. Omit for the oldest retained output."),
+        max_bytes: z.number().int().min(1).max(config.maxProcessReadBytes).optional().describe(`Maximum returned output bytes. Max: ${config.maxProcessReadBytes}.`)
+      },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const page = processManagerFor(workspace).readOutput(args.process_id, { cursor: args.cursor, maxBytes: args.max_bytes });
+      const text = [
+        "# Workspace Process Output", "", `Process: ${page.processId}`, `Cursor: ${page.cursor} -> ${page.nextCursor}`,
+        `Has more: ${page.hasMore}`, `Dropped before cursor: ${page.droppedBytes}`, "", "## stdout", "", page.stdout || "(empty)", "", "## stderr", "", page.stderr || "(empty)"
+      ].join("\n");
+      return textResult(text, { workspace_id: workspace.id, ...page });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "stop_workspace_process",
+    {
+      title: "Stop Workspace Process",
+      description: "Stop only a process previously launched and owned by this CodexPro server. Arbitrary OS PIDs are not accepted.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use the selected workspace."),
+        process_id: z.string().regex(/^proc_[A-Za-z0-9-]{1,80}$/).describe("Opaque process id returned by start_workspace_process.")
+      },
+      annotations: BASH_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const processRecord = await processManagerFor(workspace).stop(args.process_id);
+      return textResult(`# Workspace Process Stopped\n\n${JSON.stringify(processRecord, null, 2)}`, { workspace_id: workspace.id, process: processRecord });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "run_checks",
+    {
+      title: "Run Trusted Checks",
+      description: "List trusted existing project verification checks when check_ids is omitted, or run only the selected discovered check ids. Caller-supplied shell commands are not accepted.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use the selected workspace."),
+        check_ids: z.array(z.string().regex(/^check_[a-f0-9]{16}$/)).min(1).max(16).optional().describe("Trusted check ids returned by a previous run_checks discovery call."),
+        timeout_ms: z.number().int().min(1000).max(config.maxBashTimeoutMs).optional().describe(`Per-check timeout. Max: ${config.maxBashTimeoutMs} ms.`),
+        session_id: z.string().optional().describe("Matching Bash session id when the server requires one.")
+      },
+      annotations: BASH_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const workspaceConfig = configForWorkspace(workspace);
+      if (!args.check_ids?.length) {
+        const checks = await discoverTrustedChecks(workspaceConfig, guard, workspace);
+        return textResult(`# Trusted Checks\n\n${JSON.stringify(checks, null, 2)}`, { workspace_id: workspace.id, checks, executed: false });
+      }
+      const execution = await operationManagerFor(workspace).execute(
+        { kind: "run_checks" },
+        () => runChecks({
+          config: workspaceConfig,
+          guard,
+          workspace,
+          checkIds: args.check_ids,
+          timeoutMs: args.timeout_ms,
+          sessionId: args.session_id
+        }),
+        (value) => ({
+          items: value.results.length,
+          durationMs: value.results.reduce((total, result) => total + result.durationMs, 0),
+          note: value.ok ? "checks_passed" : "checks_failed"
+        })
+      );
+      if (!execution.result) return textResult("# Run Checks\n\nOperation replayed; checks were not repeated.", { operation: execution.receipt, replayed: true });
+      const result = execution.result;
+      return textResult(
+        `# Run Checks\n\nSelected: ${result.selectedChecks.length}\nPassed: ${result.ok}\nOperation: ${execution.receipt.id}`,
+        { workspace_id: workspace.id, ...result, operation: execution.receipt }
+      );
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "verify_changes",
+    {
+      title: "Verify Changes",
+      description: "Analyze changed workspace paths, select at most the smallest relevant trusted verification checks, and optionally run them. No arbitrary command input is accepted.",
+      inputSchema: {
+        workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use the selected workspace."),
+        changed_paths: z.array(z.string()).min(1).max(128).describe("Workspace-relative changed paths to analyze."),
+        run: z.boolean().optional().describe("Run the selected checks. Default: true."),
+        timeout_ms: z.number().int().min(1000).max(config.maxBashTimeoutMs).optional().describe(`Per-check timeout. Max: ${config.maxBashTimeoutMs} ms.`),
+        session_id: z.string().optional().describe("Matching Bash session id when the server requires one.")
+      },
+      annotations: BASH_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const workspaceConfig = configForWorkspace(workspace);
+      const shouldRun = args.run !== false;
+      const task = () => verifyChanges({
+        config: workspaceConfig,
+        guard,
+        workspace,
+        changedPaths: args.changed_paths,
+        run: shouldRun,
+        timeoutMs: args.timeout_ms,
+        sessionId: args.session_id
+      });
+      if (!shouldRun) {
+        const result = await task();
+        return textResult(
+          `# Verify Changes\n\nSelected checks: ${result.selectedChecks.map((check) => check.id).join(", ") || "none"}\nExecuted: false`,
+          { workspace_id: workspace.id, ...result, executed: false }
+        );
+      }
+      const execution = await operationManagerFor(workspace).execute(
+        { kind: "verify_changes" },
+        task,
+        (value) => ({
+          items: value.results.length,
+          durationMs: value.results.reduce((total, result) => total + result.durationMs, 0),
+          note: value.ok === false ? "verification_failed" : "verification_completed"
+        })
+      );
+      if (!execution.result) return textResult("# Verify Changes\n\nOperation replayed; verification was not repeated.", { operation: execution.receipt, replayed: true });
+      const result = execution.result;
+      return textResult(
+        `# Verify Changes\n\nSelected: ${result.selectedChecks.length}\nResult: ${result.ok}\nOperation: ${execution.receipt.id}`,
+        { workspace_id: workspace.id, ...result, executed: true, operation: execution.receipt }
+      );
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "connection_diagnostics",
+    {
+      title: "Connection Diagnostics",
+      description: "Show bounded local MCP request/dispatch/response health without prompts, file contents, tokens, or raw command output.",
+      inputSchema: {},
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async () => {
+      const result = connectionDiagnostics(telemetry.snapshot(), options.activeSessionCount?.() ?? 0);
+      return textResult(`# Connection Diagnostics\n\n${JSON.stringify(result, null, 2)}`, { ...result });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "tool_surface_diagnostics",
+    {
+      title: "Tool Surface Diagnostics",
+      description: "Compare effective workspace configuration with expected and actually registered CodexPro tools.",
+      inputSchema: { workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use the selected workspace.") },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const effective = configForWorkspace(workspace);
+      const result = toolSurfaceDiagnostics(effective, registeredToolNames(server), toolNamesForMode(effective));
+      return textResult(`# Tool Surface Diagnostics\n\n${JSON.stringify(result, null, 2)}`, { ...result });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "local_telemetry",
+    {
+      title: "Local Telemetry",
+      description: "Show bounded in-memory CodexPro counters and sanitized recent diagnostic events. Telemetry does not record prompts or file contents.",
+      inputSchema: {},
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async () => {
+      const result = telemetry.snapshot();
+      return textResult(`# Local Telemetry\n\n${JSON.stringify(result, null, 2)}`, { ...result });
     }
   );
 
@@ -1140,11 +1771,12 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
+      const workspaceConfig = configForWorkspace(workspace);
       const started = Date.now();
       type SelfTestStatus = "pass" | "warn" | "fail" | "skipped" | "info" | "degraded";
       const checks: Array<{ name: string; status: SelfTestStatus; detail: string }> = [];
       const filesTouched: string[] = [];
-      const probePath = `${config.contextDir}/codexpro-self-test.md`;
+      const probePath = `${workspaceConfig.contextDir}/codexpro-self-test.md`;
       const bashRuntime = resolveBashRuntime(config);
       const gitRuntime = gitRuntimeInfo();
       const searchBackend = searchBackendInfo();
@@ -1154,23 +1786,23 @@ export function createCodexProServer(
         checks.push({ name, status, detail: cleanOneLine(detail, detail, 260) });
       };
       const securityPosture =
-        config.bashMode === "full" || config.writeMode === "workspace" ? "elevated" : "standard";
+        workspaceConfig.bashMode === "full" || workspaceConfig.writeMode === "workspace" ? "elevated" : "standard";
 
       check("workspace", "pass", workspace.root);
-      check("tool mode", "pass", `${config.toolMode}; expected tools: ${toolNamesForMode(config).length}`);
+      check("tool mode", "pass", `${workspaceConfig.toolMode}; expected tools: ${toolNamesForMode(workspaceConfig).length}`);
       check(
         "write mode",
         "pass",
-        config.writeMode === "workspace" ? "workspace (elevated-risk local writes enabled)" : config.writeMode
+        workspaceConfig.writeMode === "workspace" ? "workspace (elevated-risk local writes enabled)" : workspaceConfig.writeMode
       );
       check(
         "bash mode",
         "pass",
-        config.bashMode === "full" ? "full (elevated-risk trusted-repo mode)" : config.bashMode
+        workspaceConfig.bashMode === "full" ? "full (elevated-risk trusted-repo mode)" : workspaceConfig.bashMode
       );
       check(
         "bash runtime",
-        config.bashMode === "off"
+        workspaceConfig.bashMode === "off"
           ? "skipped"
           : !bashRuntime.available
             ? "fail"
@@ -1204,20 +1836,20 @@ export function createCodexProServer(
             ? "token required when serving HTTP"
             : "token auth explicitly disabled"
       );
-      const expectedTools = toolNamesForMode(config).sort();
+      const expectedTools = toolNamesForMode(workspaceConfig).sort();
       const actualTools = registeredToolNames(server).sort();
       const missingTools = expectedTools.filter((name) => !actualTools.includes(name));
       const extraTools = actualTools.filter((name) => !expectedTools.includes(name));
       check(
         "registered tool set",
-        missingTools.length || extraTools.length ? "fail" : "pass",
+        missingTools.length ? "fail" : extraTools.length ? "info" : "pass",
         missingTools.length || extraTools.length
-          ? `missing: ${missingTools.join(", ") || "none"}; extra: ${extraTools.join(", ") || "none"}`
-          : `${actualTools.length} tools registered for ${config.toolMode} mode`
+          ? `missing: ${missingTools.join(", ") || "none"}; extra registered but policy-guarded: ${extraTools.join(", ") || "none"}`
+          : `${actualTools.length} tools registered for ${workspaceConfig.toolMode} mode`
       );
 
       try {
-        const inventory = await codexproInventory(config, workspace, {
+        const inventory = await codexproInventory(configForWorkspace(workspace), workspace, {
           includeGlobalSkills: parseBool(args.include_global_skills, true),
           includeMcpServers: true,
           maxSkills: limitInt(args.max_skills, 40, 1, 120)
@@ -1228,7 +1860,7 @@ export function createCodexProServer(
       }
 
       try {
-        const status = gitStatus(config, workspace);
+        const status = gitStatus(configForWorkspace(workspace), workspace);
         const gitFailed = looksLikeGitError(status);
         const changed = gitFailed ? 0 : changedStatusLines(status).length;
         check("git status", gitFailed ? "warn" : "pass", gitFailed ? status : `${changed} changed entries`);
@@ -1243,11 +1875,11 @@ export function createCodexProServer(
       let probeAbsPath: string | undefined;
 
       if (parseBool(args.write_probe, false)) {
-        if (config.writeMode === "off") {
+        if (workspaceConfig.writeMode === "off") {
           check("write/edit probe", "skipped", "skipped because CODEXPRO_WRITE_MODE=off");
         } else {
           try {
-            assertWriteToolAllowed(config, probePath);
+            assertWriteToolAllowed(workspaceConfig, probePath);
             const resolvedProbe = guard.resolve(workspace, probePath, { forWrite: true });
             probeAbsPath = resolvedProbe.absPath;
             try {
@@ -1273,12 +1905,12 @@ export function createCodexProServer(
               "marker: before",
               ""
             ].join("\n");
-            await writeTextFile(config, guard, workspace, probePath, content, { createDirs: true, overwrite: true });
+            await writeTextFile(configForWorkspace(workspace), guard, workspace, probePath, content, { createDirs: true, overwrite: true });
             probeWasWritten = true;
-            await editTextFile(config, guard, workspace, probePath, "marker: before", "marker: after", { expectedReplacements: 1 });
-            const readBack = await readTextFile(config, guard, workspace, probePath, { maxBytes: 20_000 });
+            await editTextFile(configForWorkspace(workspace), guard, workspace, probePath, "marker: before", "marker: after", { expectedReplacements: 1 });
+            const readBack = await readTextFile(configForWorkspace(workspace), guard, workspace, probePath, { maxBytes: 20_000 });
             if (!readBack.text.includes("marker: after")) throw new CodexProError("self-test edit marker was not found after edit.");
-            const scopedStatus = gitStatus(config, workspace, guard, probePath);
+            const scopedStatus = gitStatus(configForWorkspace(workspace), workspace, guard, probePath);
             const scopedFiles = changedStatusLines(scopedStatus);
             filesTouched.push(probePath);
             check(
@@ -1300,7 +1932,7 @@ export function createCodexProServer(
           if (!selectedPath) {
             for (const candidate of ["AGENTS.md", "README.md", "package.json", "pyproject.toml", "Cargo.toml", "go.mod"]) {
               try {
-                await readTextFile(config, guard, workspace, candidate, { maxBytes: 4_000 });
+                await readTextFile(configForWorkspace(workspace), guard, workspace, candidate, { maxBytes: 4_000 });
                 selectedPath = candidate;
                 break;
               } catch {
@@ -1308,7 +1940,7 @@ export function createCodexProServer(
               }
             }
           }
-          const context = await buildProContext(config, guard, workspace, {
+          const context = await buildProContext(configForWorkspace(workspace), guard, workspace, {
             title: "CodexPro Self Test Context",
             selectedPaths: selectedPath ? [selectedPath] : [],
             includeImportantFiles: false,
@@ -1362,10 +1994,10 @@ export function createCodexProServer(
 
       if (parseBool(args.bash_probe, true)) {
         try {
-          if (config.bashMode === "off") {
+          if (workspaceConfig.bashMode === "off") {
             check("bash policy", "skipped", "bash disabled");
           } else {
-            bashToolchain = probeBashToolchain(config, workspace);
+            bashToolchain = probeBashToolchain(workspaceConfig, workspace);
             const toolSummary = (["node", "npm", "npx", "git", "rg"] as const)
               .map((name) => {
                 const tool = bashToolchain?.tools[name];
@@ -1387,11 +2019,11 @@ export function createCodexProServer(
                 `dedicated=${gitRuntime.version || "unavailable"} (${gitRuntime.executable || "PATH"}); shell=${shellGit.version || "unavailable"} (${shellGit.path || "unavailable"})`
               );
             }
-            const bashProbeOptions = { timeoutMs: 10_000, sessionId: config.bashSessionId };
-            const pwd = await runBash(config, guard, workspace, "pwd", bashProbeOptions);
-            if (config.bashMode === "safe") {
+            const bashProbeOptions = { timeoutMs: 10_000, sessionId: workspaceConfig.bashSessionId };
+            const pwd = await runBash(configForWorkspace(workspace), guard, workspace, "pwd", bashProbeOptions);
+            if (workspaceConfig.bashMode === "safe") {
               try {
-                await runBash(config, guard, workspace, "ls $HOME", bashProbeOptions);
+                await runBash(configForWorkspace(workspace), guard, workspace, "ls $HOME", bashProbeOptions);
                 check("bash policy", "fail", "safe bash allowed environment expansion unexpectedly");
               } catch {
                 check("bash policy", pwd.exitCode === 0 ? "pass" : "warn", "safe bash allowed pwd and blocked environment expansion");
@@ -1427,7 +2059,7 @@ export function createCodexProServer(
         `Health: ${status}`,
         `Security posture: ${securityPosture}`,
         `Workspace: ${workspace.root}`,
-        `Mode: tools=${config.toolMode}, write=${config.writeMode}, bash=${config.bashMode}${config.bashSessionId ? `, bash_session=${config.bashSessionId}${config.requireBashSession ? " required" : ""}` : ""}`,
+        `Mode: tools=${workspaceConfig.toolMode}, write=${workspaceConfig.writeMode}, bash=${workspaceConfig.bashMode}${workspaceConfig.bashSessionId ? `, bash_session=${workspaceConfig.bashSessionId}${workspaceConfig.requireBashSession ? " required" : ""}` : ""}`,
         `Expected tools: ${expectedTools.length}`,
         `Registered tools: ${actualTools.length}`,
         `Duration: ${Date.now() - started} ms`,
@@ -1503,7 +2135,8 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
-      const inventory = await codexproInventory(config, workspace, {
+      const workspaceConfig = configForWorkspace(workspace);
+      const inventory = await codexproInventory(workspaceConfig, workspace, {
         includeGlobalSkills: parseBool(args.include_global_skills, true),
         includeMcpServers: parseBool(args.include_mcp_servers, true),
         maxSkills: limitInt(args.max_skills, 120, 1, 500)
@@ -1511,9 +2144,9 @@ export function createCodexProServer(
       return textResult(inventory.text, {
         workspace_id: workspace.id,
         root: workspace.root,
-        bash_mode: config.bashMode,
-        write_mode: config.writeMode,
-        tool_mode: config.toolMode,
+        bash_mode: workspaceConfig.bashMode,
+        write_mode: workspaceConfig.writeMode,
+        tool_mode: workspaceConfig.toolMode,
         skills: inventory.skills,
         skill_count: inventory.skills.length,
         mcp_servers: inventory.mcpServers,
@@ -1595,7 +2228,7 @@ export function createCodexProServer(
       const selectedWorkspaceId = workspaces.currentWorkspaceId();
       const current = workspaces.listWorkspaces();
       const text = current
-        .map((workspace) => `- ${workspace.id} — ${workspace.root}${workspace.id === selectedWorkspaceId ? " (selected)" : ""} (opened ${workspace.openedAt})`)
+        .map((workspace) => `- ${workspace.id} â€” ${workspace.root}${workspace.id === selectedWorkspaceId ? " (selected)" : ""} (opened ${workspace.openedAt})`)
         .join("\n");
       return textResult(text, {
         workspaces: current,
@@ -1628,7 +2261,8 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.selectDefaultWorkspace();
-      const summary = await workspaceSummary(config, guard, workspace, {
+      const workspaceConfig = configForWorkspace(workspace);
+      const summary = await workspaceSummary(workspaceConfig, guard, workspace, {
         includeTree: parseBool(args.include_tree, false),
         maxDepth: limitInt(args.max_depth, 2, 1, 8),
         includeSkills: parseBool(args.include_skills, false),
@@ -1638,6 +2272,8 @@ export function createCodexProServer(
       return textResult(summary.text, {
         workspace_id: summary.workspaceId,
         selected_workspace_id: summary.workspaceId,
+        selection_scope: "mcp_session",
+        cross_session_guidance: "Pass workspace_id explicitly after HTTP/ChatGPT MCP session turnover.",
         root: summary.root,
         agents_loaded: summary.agentsLoaded,
         agents_path: summary.agentsPath,
@@ -1646,9 +2282,9 @@ export function createCodexProServer(
         skill_counts: summary.skillCounts,
         tree: summary.tree,
         git_status: summary.gitStatus,
-        bash_mode: config.bashMode,
-        write_mode: config.writeMode,
-        tool_mode: config.toolMode
+        bash_mode: workspaceConfig.bashMode,
+        write_mode: workspaceConfig.writeMode,
+        tool_mode: workspaceConfig.toolMode
       });
     }
   );
@@ -1660,7 +2296,7 @@ export function createCodexProServer(
     {
       title: "Open Workspace",
       description:
-        "Open and select an allowed local project for this MCP session. Later tool calls may omit workspace_id to use this selection.",
+        "Open and select an allowed local project for this MCP session. Later calls in the same MCP session may omit workspace_id; across new HTTP/ChatGPT MCP sessions, pass the returned workspace_id explicitly or call open_workspace again.",
       inputSchema: {
         root: z.string().optional().describe("Project directory to open. Omit to use CODEXPRO_ROOT/current working directory. Supports ~/ paths."),
         path: z.string().optional().describe("Alias for root. Useful for clients that naturally send path instead of root."),
@@ -1683,7 +2319,8 @@ export function createCodexProServer(
         throw new CodexProError("open_workspace accepts either root or path. If both are provided, they must match.");
       }
       const workspace = workspaces.openWorkspace(args.root ?? args.path);
-      const summary = await workspaceSummary(config, guard, workspace, {
+      const workspaceConfig = configForWorkspace(workspace);
+      const summary = await workspaceSummary(workspaceConfig, guard, workspace, {
         includeTree: args.include_tree !== false,
         maxDepth: limitInt(args.max_depth, 3, 1, 8),
         maxEntries: limitInt(args.max_files, 500, 1, 3000),
@@ -1694,6 +2331,8 @@ export function createCodexProServer(
       return textResult(summary.text, {
         workspace_id: summary.workspaceId,
         selected_workspace_id: summary.workspaceId,
+        selection_scope: "mcp_session",
+        cross_session_guidance: "Pass workspace_id explicitly after HTTP/ChatGPT MCP session turnover.",
         root: summary.root,
         agents_loaded: summary.agentsLoaded,
         agents_path: summary.agentsPath,
@@ -1702,9 +2341,9 @@ export function createCodexProServer(
         skill_counts: summary.skillCounts,
         tree: summary.tree,
         git_status: summary.gitStatus,
-        bash_mode: config.bashMode,
-        write_mode: config.writeMode,
-        tool_mode: config.toolMode
+        bash_mode: workspaceConfig.bashMode,
+        write_mode: workspaceConfig.writeMode,
+        tool_mode: workspaceConfig.toolMode
       });
     }
   );
@@ -1732,14 +2371,15 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
-      const summary = await workspaceSummary(config, guard, workspace, {
+      const workspaceConfig = configForWorkspace(workspace);
+      const summary = await workspaceSummary(workspaceConfig, guard, workspace, {
         includeTree: true,
         maxDepth: limitInt(args.max_depth, 3, 1, 8),
         maxEntries: limitInt(args.max_files, 500, 1, 3000),
         includeSkills: parseBool(args.include_skills, false),
         includeGlobalSkills: parseBool(args.include_global_skills, false)
       });
-      const ai = await readAiBridgeContext(config, guard, workspace);
+      const ai = await readAiBridgeContext(configForWorkspace(workspace), guard, workspace);
       const text = `${summary.text}\n\n## AI handoff context\n\n${ai.text}`;
       const aiContextTruncated = ai.text.length > STRUCTURED_STRING_MAX_CHARS;
       const aiContextText = aiContextTruncated
@@ -1758,9 +2398,9 @@ export function createCodexProServer(
         recent_commits: summary.recentCommits,
         ai_context_files: ai.files,
         ai_context: { files: ai.files, text: aiContextText, truncated: aiContextTruncated },
-        bash_mode: config.bashMode,
-        write_mode: config.writeMode,
-        tool_mode: config.toolMode
+        bash_mode: workspaceConfig.bashMode,
+        write_mode: workspaceConfig.writeMode,
+        tool_mode: workspaceConfig.toolMode
       });
     }
   );
@@ -1791,7 +2431,7 @@ export function createCodexProServer(
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
       if (args.path) guard.resolve(workspace, args.path);
-      const result = await inspectWorkspace(config, guard, workspace);
+      const result = await inspectWorkspace(configForWorkspace(workspace), guard, workspace);
       const prefix = typeof args.path === "string" && args.path.trim()
         ? guard.resolve(workspace, args.path).relPath.replace(/^\.\/?$/, "")
         : "";
@@ -1874,7 +2514,7 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
-      const result = await repoTree(config, guard, workspace, {
+      const result = await repoTree(configForWorkspace(workspace), guard, workspace, {
         path: args.path ?? ".",
         maxDepth: limitInt(args.max_depth, 4, 1, 12),
         includeHidden: parseBool(args.include_hidden, false),
@@ -1912,7 +2552,7 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
-      const result = await searchWorkspace(config, guard, workspace, {
+      const result = await searchWorkspace(configForWorkspace(workspace), guard, workspace, {
         query: args.query,
         regex: parseBool(args.regex, false),
         root: args.path ?? ".",
@@ -1958,7 +2598,7 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
-      const result = await readTextFile(config, guard, workspace, args.path, {
+      const result = await readTextFile(configForWorkspace(workspace), guard, workspace, args.path, {
         startLine: args.start_line,
         endLine: args.end_line,
         maxBytes: args.max_bytes
@@ -1984,7 +2624,7 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
-      const result = await viewWorkspaceImage(config, guard, workspace, args.path, args.max_bytes);
+      const result = await viewWorkspaceImage(configForWorkspace(workspace), guard, workspace, args.path, args.max_bytes);
       const dimensions = result.width && result.height ? `${result.width}x${result.height}` : "unknown";
       return {
         content: [
@@ -2011,6 +2651,77 @@ export function createCodexProServer(
   registerCodexTool(
     config,
     server,
+    "prepare_change_set",
+    {
+      title: "Prepare Change Set",
+      description: "Prepare an atomic multi-file text change set with SHA-256 preconditions. No files are changed until apply_change_set succeeds.",
+      inputSchema: {
+        workspace_id: z.string().optional(),
+        idempotency_key: z.string().min(1).max(256).optional(),
+        changes: z.array(z.object({
+          path: z.string(),
+          content: z.string(),
+          expected_sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional()
+        })).min(1).max(config.maxOperationFiles)
+      },
+      annotations: LOCAL_WRITE_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const workspaceConfig = configForWorkspace(workspace);
+      const prepared = await prepareChangeSet({
+        operationManager: operationManagerFor(workspace), config: workspaceConfig, guard, workspace,
+        idempotencyKey: args.idempotency_key,
+        changes: args.changes.map((change: any) => ({ path: change.path, content: change.content, expectedSha256: change.expected_sha256 }))
+      });
+      return textResult(`# Prepared Change Set\n\nID: ${prepared.id}\nFiles: ${prepared.paths.length}\nBytes: ${prepared.totalBytes}`, { change_set: prepared });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "apply_change_set",
+    {
+      title: "Apply Change Set",
+      description: "Atomically apply a prepared change set after rechecking every SHA-256 precondition.",
+      inputSchema: { workspace_id: z.string().optional(), change_set_id: z.string().regex(/^cs_[A-Za-z0-9-]{1,80}$/) },
+      annotations: LOCAL_WRITE_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const prepared = getPreparedChangeSet(args.change_set_id);
+      if (!prepared) throw new CodexProError(`Unknown or expired change set id: ${args.change_set_id}`);
+      if (prepared.workspaceId !== workspace.id) throw new CodexProError("Change set belongs to a different workspace.");
+      const receipt = await applyChangeSet(args.change_set_id);
+      if (receipt.state === "completed") invalidateWorkspaceAnalysis(workspace.id);
+      return textResult(`# Apply Change Set\n\nOperation: ${receipt.id}\nState: ${receipt.state}`, { operation: receipt, change_set: getPreparedChangeSet(args.change_set_id) });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "revert_operation",
+    {
+      title: "Revert Operation",
+      description: "Safely revert an applied transactional change set only when affected files still match the recorded post-operation hashes.",
+      inputSchema: { workspace_id: z.string().optional(), operation_id: z.string().regex(/^op_[A-Za-z0-9-]{1,80}$/) },
+      annotations: LOCAL_WRITE_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const workspaceId = workspaceForRevertOperation(args.operation_id);
+      if (workspaceId && workspaceId !== workspace.id) throw new CodexProError("Operation belongs to a different workspace.");
+      const receipt = await revertOperation(args.operation_id);
+      invalidateWorkspaceAnalysis(workspace.id);
+      return textResult(`# Revert Operation\n\nOperation: ${receipt.id}\nState: ${receipt.state}`, { operation: receipt, reverted_operation_id: args.operation_id });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
     "write",
     {
       title: "Write File",
@@ -2021,7 +2732,8 @@ export function createCodexProServer(
         content: z.string().describe("Complete file contents to write."),
         create_dirs: z.boolean().optional().describe("Create parent directories if missing. Default: true."),
         overwrite: z.boolean().optional().describe("Allow overwriting existing files. Default: true."),
-        expected_sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional().describe("Optional SHA-256 from read. Fails instead of overwriting if another session changed the file.")
+        expected_sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional().describe("Optional SHA-256 from read. Fails instead of overwriting if another session changed the file."),
+        idempotency_key: z.string().min(1).max(256).optional().describe("Optional retry key. Reusing it returns the existing durable operation instead of repeating the mutation."),
       },
       annotations: LOCAL_WRITE_ANNOTATIONS,
       _meta: {
@@ -2033,12 +2745,16 @@ export function createCodexProServer(
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
       const resolved = guard.resolve(workspace, args.path, { forWrite: true });
-      assertWriteToolAllowed(config, resolved.relPath);
-      const result = await writeTextFile(config, guard, workspace, args.path, String(args.content ?? ""), {
-        createDirs: args.create_dirs !== false,
-        overwrite: args.overwrite !== false,
-        expectedSha256: args.expected_sha256
-      });
+      assertWriteToolAllowed(configForWorkspace(workspace), resolved.relPath);
+      const execution = await operationManagerFor(workspace).execute(
+        { kind: "write", idempotencyKey: args.idempotency_key },
+        () => writeTextFile(configForWorkspace(workspace), guard, workspace, args.path, String(args.content ?? ""), {
+          createDirs: args.create_dirs !== false, overwrite: args.overwrite !== false, expectedSha256: args.expected_sha256
+        }),
+        (value) => ({ paths: [value.path], bytes: value.bytes, additions: value.diff.additions, deletions: value.diff.deletions, afterHashes: { [value.path]: value.sha256 } })
+      );
+      if (execution.replayed || !execution.result) return textResult("# Write File\n\nOperation " + execution.receipt.id + " already " + execution.receipt.state + "; mutation not repeated.", { operation: execution.receipt, replayed: true });
+      const result = execution.result;
       if (result.diff.changed) invalidateWorkspaceAnalysis(workspace.id);
       const text = `# Write File\n\nPath: ${result.path}\nExisted before: ${result.existed}\nBytes: ${result.bytes}\nSHA-256: ${result.sha256}\nDiff stats: +${result.diff.additions} -${result.diff.deletions}${diffBlock(result.diff.diff)}`;
       return textResult(text, {
@@ -2050,7 +2766,8 @@ export function createCodexProServer(
         sha256: result.sha256,
         additions: result.diff.additions,
         deletions: result.diff.deletions,
-        diff: result.diff.diff
+        diff: result.diff.diff,
+        operation: execution.receipt
       });
     }
   );
@@ -2069,7 +2786,8 @@ export function createCodexProServer(
         new_text: z.string().describe("Replacement text."),
         replace_all: z.boolean().optional().describe("Replace all occurrences. Default: false."),
         expected_replacements: z.number().int().min(1).optional().describe("Fail if actual replacement count differs."),
-        expected_sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional().describe("Optional SHA-256 from read. Fails if another session changed the file.")
+        expected_sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional().describe("Optional SHA-256 from read. Fails if another session changed the file."),
+        idempotency_key: z.string().min(1).max(256).optional().describe("Optional retry key. Reusing it returns the existing durable operation instead of repeating the mutation."),
       },
       annotations: LOCAL_WRITE_ANNOTATIONS,
       _meta: {
@@ -2081,12 +2799,16 @@ export function createCodexProServer(
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
       const resolved = guard.resolve(workspace, args.path, { forWrite: true });
-      assertWriteToolAllowed(config, resolved.relPath);
-      const result = await editTextFile(config, guard, workspace, args.path, String(args.old_text ?? ""), String(args.new_text ?? ""), {
-        replaceAll: parseBool(args.replace_all, false),
-        expectedReplacements: args.expected_replacements,
-        expectedSha256: args.expected_sha256
-      });
+      assertWriteToolAllowed(configForWorkspace(workspace), resolved.relPath);
+      const execution = await operationManagerFor(workspace).execute(
+        { kind: "edit", idempotencyKey: args.idempotency_key },
+        () => editTextFile(configForWorkspace(workspace), guard, workspace, args.path, String(args.old_text ?? ""), String(args.new_text ?? ""), {
+          replaceAll: parseBool(args.replace_all, false), expectedReplacements: args.expected_replacements, expectedSha256: args.expected_sha256
+        }),
+        (value) => ({ paths: [value.path], bytes: value.bytes, additions: value.diff.additions, deletions: value.diff.deletions, afterHashes: { [value.path]: value.sha256 } })
+      );
+      if (execution.replayed || !execution.result) return textResult("# Edit File\n\nOperation " + execution.receipt.id + " already " + execution.receipt.state + "; mutation not repeated.", { operation: execution.receipt, replayed: true });
+      const result = execution.result;
       if (result.diff.changed) invalidateWorkspaceAnalysis(workspace.id);
       const text = `# Edit File\n\nPath: ${result.path}\nReplacements: ${result.replacements}\nBytes: ${result.bytes}\nSHA-256: ${result.sha256}\nDiff stats: +${result.diff.additions} -${result.diff.deletions}${diffBlock(result.diff.diff)}`;
       return textResult(text, {
@@ -2098,7 +2820,8 @@ export function createCodexProServer(
         sha256: result.sha256,
         additions: result.diff.additions,
         deletions: result.diff.deletions,
-        diff: result.diff.diff
+        diff: result.diff.diff,
+        operation: execution.receipt
       });
     }
   );
@@ -2113,7 +2836,8 @@ export function createCodexProServer(
         "Apply one unified diff patch inside the workspace. Paths are validated before applying. Prefer edit for tiny replacements and apply_patch for multi-file diffs.",
       inputSchema: {
         workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use the workspace selected for this MCP session."),
-        patch: z.string().describe("Unified diff patch to apply. File paths must stay inside the workspace and avoid blocked paths.")
+        patch: z.string().describe("Unified diff patch to apply. File paths must stay inside the workspace and avoid blocked paths."),
+        idempotency_key: z.string().min(1).max(256).optional().describe("Optional retry key. Reusing it returns the existing durable operation instead of repeating the mutation."),
       },
       annotations: LOCAL_WRITE_ANNOTATIONS,
       _meta: {
@@ -2124,7 +2848,13 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
-      const result = await applyWorkspacePatch(config, guard, workspace, String(args.patch ?? ""));
+      const execution = await operationManagerFor(workspace).execute(
+        { kind: "apply_patch", idempotencyKey: args.idempotency_key },
+        () => applyWorkspacePatch(configForWorkspace(workspace), guard, workspace, String(args.patch ?? "")),
+        (value) => ({ paths: value.paths, additions: value.additions, deletions: value.deletions })
+      );
+      if (execution.replayed || !execution.result) return textResult("# Apply Patch\n\nOperation " + execution.receipt.id + " already " + execution.receipt.state + "; mutation not repeated.", { operation: execution.receipt, replayed: true });
+      const result = execution.result;
       if (result.changed) invalidateWorkspaceAnalysis(workspace.id);
       const text = [
         "# Apply Patch",
@@ -2143,7 +2873,8 @@ export function createCodexProServer(
         additions: result.additions,
         deletions: result.deletions,
         changed: result.changed,
-        diff: result.diff
+        diff: result.diff,
+        operation: execution.receipt
       });
     }
   );
@@ -2168,7 +2899,8 @@ export function createCodexProServer(
           .describe("ChatGPT Apps SDK file reference from openai/fileParams."),
         destination: z.string().describe("Destination path relative to the workspace root."),
         overwrite: z.boolean().optional().describe("Replace an existing destination file. Default: false."),
-        expected_sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional().describe("Optional SHA-256 of the attachment bytes. Import fails on mismatch.")
+        expected_sha256: z.string().regex(/^[a-f0-9]{64}$/i).optional().describe("Optional SHA-256 of the attachment bytes. Import fails on mismatch."),
+        idempotency_key: z.string().min(1).max(256).optional().describe("Optional retry key. Reusing it returns the existing durable operation instead of repeating the mutation."),
       },
       annotations: LOCAL_WRITE_ANNOTATIONS,
       _meta: {
@@ -2181,13 +2913,16 @@ export function createCodexProServer(
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
       const resolved = guard.resolve(workspace, args.destination, { forWrite: true });
-      assertWriteToolAllowed(config, resolved.relPath);
-      const result = await importAttachmentFile(config, guard, workspace, {
-        file: args.file,
-        destination: String(args.destination ?? ""),
-        overwrite: args.overwrite === true,
-        expectedSha256: args.expected_sha256
-      });
+      assertWriteToolAllowed(configForWorkspace(workspace), resolved.relPath);
+      const execution = await operationManagerFor(workspace).execute(
+        { kind: "import_file", idempotencyKey: args.idempotency_key },
+        () => importAttachmentFile(configForWorkspace(workspace), guard, workspace, {
+          file: args.file, destination: String(args.destination ?? ""), overwrite: args.overwrite === true, expectedSha256: args.expected_sha256
+        }),
+        (value) => ({ paths: [value.path], bytes: value.bytes, afterHashes: { [value.path]: value.sha256 } })
+      );
+      if (execution.replayed || !execution.result) return textResult("# Import File\n\nOperation " + execution.receipt.id + " already " + execution.receipt.state + "; mutation not repeated.", { operation: execution.receipt, replayed: true });
+      const result = execution.result;
       invalidateWorkspaceAnalysis(workspace.id);
       const text = [
         "# Import File",
@@ -2213,8 +2948,260 @@ export function createCodexProServer(
         verified: result.verified,
         file_id: result.file_id,
         file_name: result.file_name,
-        overwritten: result.overwritten
+        overwritten: result.overwritten,
+        operation: execution.receipt
       });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "goal_status",
+    {
+      title: "Goal Status",
+      description: "Read one durable Goal without exposing its private worktree path or persisted runtime snapshot.",
+      inputSchema: { workspace_id: z.string().optional(), goal_id: z.string().describe("Goal id returned by propose_goal.") },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const record = await goalStoreFor(workspace).require(String(args.goal_id ?? ""));
+      const result = publicGoalRecord(record);
+      return textResult(`# Goal Status\n\n${JSON.stringify(result, null, 2)}`, result);
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "list_goals",
+    {
+      title: "List Goals",
+      description: "List bounded durable Goals for the selected workspace. Private Goal storage/worktree paths are omitted.",
+      inputSchema: { workspace_id: z.string().optional() },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const goals = (await goalStoreFor(workspace).list(workspace.id)).map(publicGoalRecord);
+      return textResult(`# Goals\n\n${goals.length ? goals.map((goal) => `${goal.id} â€” ${goal.state} â€” ${goal.title}`).join("\n") : "No Goals."}`, { workspace_id: workspace.id, goals, count: goals.length });
+    }
+  );
+
+  const goalTaskSchema = z.object({
+    id: z.string().min(1).max(64), title: z.string().min(1).max(160), kind: z.enum(["command", "check"]),
+    command: z.string().max(2000).optional(), check_id: z.string().max(128).optional(), depends_on: z.array(z.string().min(1).max(64)).max(64).optional()
+  });
+
+  registerCodexTool(
+    config,
+    server,
+    "propose_goal",
+    {
+      title: "Propose Goal",
+      description: "Persist a bounded multi-step Goal proposal. This does not execute tasks; approval and start are separate explicit operations.",
+      inputSchema: {
+        workspace_id: z.string().optional(), title: z.string().min(1).max(160), summary: z.string().max(1000).optional(),
+        max_workers: z.number().int().min(1).max(8).optional(), tasks: z.array(goalTaskSchema).min(1).max(256)
+      },
+      annotations: HANDOFF_WRITE_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const workspaceConfig = configForWorkspace(workspace);
+      const record = await proposeGoal(goalStoreFor(workspace), {
+        workspace, title: args.title, summary: args.summary, maxWorkers: args.max_workers,
+        tasks: args.tasks.map((task: any) => ({ id: task.id, title: task.title, kind: task.kind, command: task.command, checkId: task.check_id, dependsOn: task.depends_on ?? [] }))
+      }, { maxTasks: workspaceConfig.maxGoalTasks, maxWorkers: workspaceConfig.maxGoalWorkers });
+      const result = publicGoalRecord(record);
+      return textResult(`# Goal Proposed\n\nID: ${record.id}\nFingerprint: ${record.fingerprint}\nTasks: ${record.tasks.length}\n\nApprove this exact fingerprint before execution.`, result);
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "approve_goal",
+    {
+      title: "Approve Goal",
+      description: "Approve the exact immutable Goal proposal fingerprint. Approval still does not start execution.",
+      inputSchema: { workspace_id: z.string().optional(), goal_id: z.string(), fingerprint: z.string().regex(/^[a-f0-9]{64}$/i) },
+      annotations: HANDOFF_WRITE_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const record = await approveGoal(goalStoreFor(workspace), String(args.goal_id), String(args.fingerprint));
+      return textResult(`# Goal Approved\n\n${record.id} is approved but not started.`, publicGoalRecord(record));
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "start_goal",
+    {
+      title: "Start Goal",
+      description: "Start an approved Goal in a detached Git worktree. The detached worker may survive this MCP session and stops at the review boundary.",
+      inputSchema: { workspace_id: z.string().optional(), goal_id: z.string(), session_id: z.string().optional().describe("Required when this CodexPro profile uses a Bash session guard.") },
+      annotations: BASH_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const workspaceConfig = configForWorkspace(workspace);
+      assertBashSession(workspaceConfig, args.session_id);
+      const record = await startGoal(workspaceConfig, goalStoreFor(workspace), workspace, String(args.goal_id));
+      return textResult(`# Goal Started\n\n${record.id} is running in isolated execution. Source projection is not automatic.`, publicGoalRecord(record));
+    }
+  );
+
+  for (const [name, title, action] of [
+    ["pause_goal", "Pause Goal", pauseGoal], ["resume_goal", "Resume Goal", resumeGoal], ["cancel_goal", "Cancel Goal", cancelGoal]
+  ] as const) {
+    registerCodexTool(
+      config, server, name,
+      { title, description: `${title} by updating durable scheduler control state. This does not project changes into the source workspace.`, inputSchema: { workspace_id: z.string().optional(), goal_id: z.string() }, annotations: LOCAL_WRITE_ANNOTATIONS },
+      async (args) => {
+        const workspace = workspaces.getWorkspace(args.workspace_id);
+        const record = await action(goalStoreFor(workspace), String(args.goal_id));
+        return textResult(`# ${title}\n\nState: ${record.state}`, publicGoalRecord(record));
+      }
+    );
+  }
+
+  registerCodexTool(
+    config,
+    server,
+    "review_goal",
+    {
+      title: "Review Goal",
+      description: "Review isolated Goal changes, run safety preflight, and pin a patch fingerprint. Does not alter the source workspace.",
+      inputSchema: { workspace_id: z.string().optional(), goal_id: z.string() },
+      annotations: HANDOFF_WRITE_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await reviewGoal(configForWorkspace(workspace), guard, goalStoreFor(workspace), workspace, String(args.goal_id));
+      const publicRecord = publicGoalRecord(result.record);
+      const preview = previewText(result.patch, 120, 30_000);
+      return textResult(`# Goal Review\n\nPaths: ${result.paths.join(", ") || "none"}\nPatch SHA-256: ${result.patchSha256}\nReview fingerprint: ${result.reviewFingerprint}\n\n\`\`\`diff\n${preview}\n\`\`\``, { ...publicRecord, paths: result.paths, patch_sha256: result.patchSha256, review_fingerprint: result.reviewFingerprint, preflight: result.preflight });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "project_goal",
+    {
+      title: "Project Goal Result",
+      description: "Explicitly project the exact reviewed isolated patch into the unchanged source workspace. Requires source HEAD/fingerprint, review fingerprint, and authorize=true. Never commits or pushes.",
+      inputSchema: {
+        workspace_id: z.string().optional(), goal_id: z.string(), expected_source_head: z.string().regex(/^[a-f0-9]{40,64}$/i),
+        expected_source_fingerprint: z.string().regex(/^[a-f0-9]{64}$/i), review_fingerprint: z.string().regex(/^[a-f0-9]{64}$/i), authorize: z.literal(true)
+      },
+      annotations: LOCAL_WRITE_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const record = await projectGoal({
+        config: configForWorkspace(workspace), guard, store: goalStoreFor(workspace), workspace, operationManager: operationManagerFor(workspace),
+        id: String(args.goal_id), expectedSourceHead: String(args.expected_source_head), expectedSourceFingerprint: String(args.expected_source_fingerprint),
+        reviewFingerprint: String(args.review_fingerprint), authorize: args.authorize === true
+      });
+      invalidateWorkspaceAnalysis(workspace.id);
+      return textResult(`# Goal Projected\n\n${record.id} projected through operation ${record.projectionOperationId}. No commit or push was performed.`, publicGoalRecord(record));
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "inspect_archive",
+    {
+      title: "Inspect Archive",
+      description: "Inspect a bounded ZIP archive manifest without extracting it. Rejects unsafe members, ZIP64, encryption, unsupported compression, and configured size/ratio limits.",
+      inputSchema: {
+        workspace_id: z.string().optional(),
+        path: z.string().describe("ZIP archive path relative to the workspace root.")
+      },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await inspectArchive(configForWorkspace(workspace), guard, workspace, String(args.path ?? ""));
+      return textResult(`# Archive Manifest\n\n${result.entries.map((entry) => `${entry.directory ? "dir" : "file"} ${entry.name} (${entry.expandedBytes} bytes)`).join("\n") || "Empty archive."}`, { workspace_id: workspace.id, ...result });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "read_document",
+    {
+      title: "Read Document",
+      description: "Read bounded text and metadata from PDF, DOCX, PPTX, or XLSX without executing macros, embedded code, or external applications.",
+      inputSchema: {
+        workspace_id: z.string().optional(),
+        path: z.string().describe("Document path relative to the workspace root."),
+        max_output_bytes: z.number().int().min(1000).optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await readDocument(configForWorkspace(workspace), guard, workspace, { path: String(args.path ?? ""), maxOutputBytes: args.max_output_bytes });
+      return textResult(`# Document\n\nFormat: ${result.format}\nSections: ${result.sections}\nBytes: ${result.bytes}\n\n${result.text}`, { workspace_id: workspace.id, ...result });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "extract_archive",
+    {
+      title: "Extract Archive",
+      description: "Transactionally extract a validated ZIP archive into a new workspace directory. The destination must not already exist.",
+      inputSchema: {
+        workspace_id: z.string().optional(),
+        path: z.string().describe("ZIP archive path relative to the workspace root."),
+        destination: z.string().describe("New destination directory relative to the workspace root."),
+        idempotency_key: z.string().min(1).max(256).optional()
+      },
+      annotations: LOCAL_WRITE_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const workspaceConfig = configForWorkspace(workspace);
+      const destination = guard.resolve(workspace, String(args.destination ?? ""), { forWrite: true });
+      assertWriteToolAllowed(workspaceConfig, destination.relPath);
+      const execution = await operationManagerFor(workspace).execute(
+        { kind: "extract_archive", idempotencyKey: args.idempotency_key },
+        () => extractArchive(workspaceConfig, guard, workspace, { archivePath: String(args.path ?? ""), destination: destination.relPath }),
+        (value) => ({ paths: [value.path], bytes: value.expandedBytes, items: value.entries })
+      );
+      if (execution.replayed || !execution.result) return textResult(`# Extract Archive\n\nOperation ${execution.receipt.id} already ${execution.receipt.state}; extraction not repeated.`, { operation: execution.receipt, replayed: true });
+      invalidateWorkspaceAnalysis(workspace.id);
+      return textResult(`# Extract Archive\n\nDestination: ${execution.result.path}\nEntries: ${execution.result.entries}\nExpanded bytes: ${execution.result.expandedBytes}`, { workspace_id: workspace.id, ...execution.result, operation: execution.receipt });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "export_file",
+    {
+      title: "Export Workspace File",
+      description: "Return one bounded workspace file as an embedded MCP resource. Hidden unless CODEXPRO_ARTIFACT_EXPORT=1 is explicitly enabled.",
+      inputSchema: { workspace_id: z.string().optional(), path: z.string().describe("File path relative to the workspace root.") },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await exportWorkspaceFile(configForWorkspace(workspace), guard, workspace, { path: String(args.path ?? "") });
+      return {
+        content: [{ type: "resource", resource: { uri: result.uri, mimeType: result.mimeType, blob: result.blob } }],
+        structuredContent: { workspace_id: workspace.id, uri: result.uri, name: result.name, mime_type: result.mimeType, bytes: result.bytes, sha256: result.sha256 }
+      };
     }
   );
 
@@ -2239,7 +3226,8 @@ export function createCodexProServer(
           .min(1000)
           .max(config.maxBashTimeoutMs)
           .optional()
-          .describe(`Timeout in milliseconds. Default: 30000. Max: ${config.maxBashTimeoutMs}.`)
+          .describe(`Timeout in milliseconds. Default: 30000. Max: ${config.maxBashTimeoutMs}.`),
+        idempotency_key: z.string().min(1).max(256).optional().describe("Optional retry key. Reusing it returns the existing durable operation instead of repeating the mutation."),
       },
       annotations: BASH_ANNOTATIONS,
       _meta: {
@@ -2250,15 +3238,72 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
-      const result = await runBash(config, guard, workspace, String(args.command ?? ""), {
-        cwd: args.cwd,
-        timeoutMs: args.timeout_ms,
-        sessionId: args.session_id
-      });
-      const text = bashTextResult(config, result);
-      return textResult(text, { workspace_id: workspace.id, root: workspace.root, ...result, bash_session_id: result.bashSessionId ?? null });
+      const workspaceConfig = configForWorkspace(workspace);
+      const execution = await operationManagerFor(workspace).execute(
+        { kind: "bash", idempotencyKey: args.idempotency_key },
+        () => runBash(workspaceConfig, guard, workspace, String(args.command ?? ""), { cwd: args.cwd, timeoutMs: args.timeout_ms, sessionId: args.session_id }),
+        (value) => ({ durationMs: value.durationMs, exitCode: value.exitCode })
+      );
+      if (execution.replayed || !execution.result) return textResult("# Bash\n\nOperation " + execution.receipt.id + " already " + execution.receipt.state + "; command not repeated.", { operation: execution.receipt, replayed: true });
+      const result = execution.result;
+      const text = bashTextResult(workspaceConfig, result);
+      return textResult(text, { workspace_id: workspace.id, root: workspace.root, ...result, bash_session_id: result.bashSessionId ?? null, operation: execution.receipt });
     }
   );
+
+  registerCodexTool(config, server, "find_files", {
+    title:"Find Files",description:"Fuzzy-search guarded workspace file paths with a built-in bounded fallback; optional external fast finders are never required.",
+    inputSchema:{workspace_id:z.string().optional(),query:z.string().min(1).max(1000),root:z.string().optional(),max_results:z.number().int().min(1).max(config.maxSearchResults).optional()},annotations:READ_ONLY_ANNOTATIONS
+  }, async(args)=>{const workspace=workspaces.getWorkspace(args.workspace_id);const result=await findFiles(configForWorkspace(workspace),guard,workspace,{query:args.query,root:args.root,maxResults:args.max_results});return textResult(`# Find Files\n\n${result.matches.map(m=>`${m.path} (${Math.round(m.score)})`).join("\n")||"No matching files."}`,{workspace_id:workspace.id,...result});});
+
+  registerCodexTool(config, server, "code_intelligence_status", {
+    title:"Code Intelligence Status",description:"Show built-in analysis and optional CodeGraph/LSP availability without installing or starting unavailable tools.",
+    inputSchema:{workspace_id:z.string().optional()},annotations:READ_ONLY_ANNOTATIONS
+  }, async(args)=>{const workspace=workspaces.getWorkspace(args.workspace_id);const workspaceConfig=configForWorkspace(workspace);const providers=await resolveAnalysisProviders(workspaceConfig,workspace);const result={built_in_analysis:workspaceConfig.analysisEnabled,file_finders:{node:true,fff:Boolean(resolveCommand("fff")),ffgrep:Boolean(resolveCommand("ffgrep"))},providers};return textResult(`# Code Intelligence Status\n\n${JSON.stringify(result,null,2)}`,{workspace_id:workspace.id,...result});});
+
+  registerCodexTool(config, server, "codegraph_sync", {
+    title:"CodeGraph Sync",description:"Explicitly sync an already installed and enabled CodeGraph index. Never installs or initializes CodeGraph.",
+    inputSchema:{workspace_id:z.string().optional(),idempotency_key:z.string().min(1).max(256).optional()},annotations:LOCAL_WRITE_ANNOTATIONS
+  }, async(args)=>{const workspace=workspaces.getWorkspace(args.workspace_id);const execution=await operationManagerFor(workspace).execute({kind:"codegraph_sync",idempotencyKey:args.idempotency_key},()=>syncCodeGraph(configForWorkspace(workspace),workspace),()=>({note:"CodeGraph index synced"}));return textResult(`# CodeGraph Sync\n\nOperation ${execution.receipt.id} ${execution.receipt.state}.`,{workspace_id:workspace.id,operation:execution.receipt,replayed:execution.replayed,...(execution.result??{})});});
+
+  registerCodexTool(config, server, "git_history", {
+    title: "Git History", description: "Read bounded structured commit history, optionally scoped to one guarded workspace path.",
+    inputSchema: { workspace_id: z.string().optional(), path: z.string().optional(), max_count: z.number().int().min(1).max(100).optional() }, annotations: READ_ONLY_ANNOTATIONS
+  }, async (args) => { const workspace=workspaces.getWorkspace(args.workspace_id); const result=gitHistory(configForWorkspace(workspace),guard,workspace,{path:args.path,maxCount:args.max_count}); return textResult(`# Git History\n\n${result.commits.map(c=>`${c.shortSha} ${c.subject}`).join("\n")||"(no commits)"}`,{workspace_id:workspace.id,...result}); });
+
+  registerCodexTool(config, server, "git_show", {
+    title: "Git Show", description: "Read one bounded Git revision, optionally scoped to one guarded path.",
+    inputSchema: { workspace_id:z.string().optional(), revision:z.string().optional(), path:z.string().optional() }, annotations: READ_ONLY_ANNOTATIONS
+  }, async(args)=>{const workspace=workspaces.getWorkspace(args.workspace_id); const result=gitShow(configForWorkspace(workspace),guard,workspace,{revision:args.revision,path:args.path}); return textResult(`# Git Show\n\n${result.text}`,{workspace_id:workspace.id,...result});});
+
+  registerCodexTool(config, server, "git_blame", {
+    title:"Git Blame", description:"Read bounded structured blame lines for one guarded workspace file.",
+    inputSchema:{workspace_id:z.string().optional(),path:z.string().min(1),revision:z.string().optional(),max_lines:z.number().int().min(1).max(2000).optional()},annotations:READ_ONLY_ANNOTATIONS
+  }, async(args)=>{const workspace=workspaces.getWorkspace(args.workspace_id);const result=gitBlame(configForWorkspace(workspace),guard,workspace,{path:args.path,revision:args.revision,maxLines:args.max_lines});return textResult(`# Git Blame\n\n${result.lines.map(l=>`${l.line} ${l.commit.slice(0,10)} ${l.author}: ${l.text}`).join("\n")}`,{workspace_id:workspace.id,...result});});
+
+  registerCodexTool(config, server, "package_graph", {
+    title:"Package Graph",description:"Discover bounded npm/Python/Cargo/Go package topology without executing package managers.",inputSchema:{workspace_id:z.string().optional()},annotations:READ_ONLY_ANNOTATIONS
+  }, async(args)=>{const workspace=workspaces.getWorkspace(args.workspace_id);const result=await buildPackageGraph(configForWorkspace(workspace),guard,workspace);return textResult(`# Package Graph\n\n${result.packages.map(p=>`${p.name} (${p.ecosystem}) ${p.path}`).join("\n")||"No package manifests found."}`,{workspace_id:workspace.id,...result});});
+
+  registerCodexTool(config, server, "change_impact", {
+    title:"Change Impact",description:"Analyze guarded changed paths, related tests, risks, package dependents, and trusted verification recommendations.",inputSchema:{workspace_id:z.string().optional(),changed_paths:z.array(z.string()).min(1).max(config.maxOperationFiles)},annotations:READ_ONLY_ANNOTATIONS
+  }, async(args)=>{const workspace=workspaces.getWorkspace(args.workspace_id);const result=await reviewWorkspaceChanges(configForWorkspace(workspace),guard,workspace,{changedPaths:args.changed_paths});return textResult(`# Change Impact\n\n${JSON.stringify(result,null,2)}`,{workspace_id:workspace.id,...result});});
+
+  registerCodexTool(config, server, "preflight_changes", {
+    title:"Pre-commit Safety Scan",description:"Scan only explicitly listed guarded files for blocked paths, secret-like additions, conflict markers, binary content, and size limits.",inputSchema:{workspace_id:z.string().optional(),paths:z.array(z.string()).min(1).max(config.maxOperationFiles),max_file_bytes:z.number().int().min(1024).optional()},annotations:READ_ONLY_ANNOTATIONS
+  }, async(args)=>{const workspace=workspaces.getWorkspace(args.workspace_id);const result=await preflightChanges(configForWorkspace(workspace),guard,workspace,{paths:args.paths,maxFileBytes:args.max_file_bytes});return textResult(`# Preflight Changes\n\n${result.ok?"PASS":"ISSUES FOUND"}\n${result.issues.map(i=>`${i.path}: ${i.kind} - ${i.detail}`).join("\n")}`,{workspace_id:workspace.id,...result});});
+
+  registerCodexTool(config, server, "git_stage", {
+    title:"Git Stage",description:"Stage only explicit guarded workspace paths when the current HEAD matches the caller's expected HEAD.",inputSchema:{workspace_id:z.string().optional(),paths:z.array(z.string()).min(1).max(config.maxOperationFiles),expected_head:z.string().regex(/^[a-f0-9]{40,64}$/i),idempotency_key:z.string().min(1).max(256).optional()},annotations:LOCAL_WRITE_ANNOTATIONS
+  }, async(args)=>{const workspace=workspaces.getWorkspace(args.workspace_id);const execution=await gitStage(configForWorkspace(workspace),guard,workspace,operationManagerFor(workspace),{paths:args.paths,expectedHead:args.expected_head,idempotencyKey:args.idempotency_key});return textResult(`# Git Stage\n\nOperation ${execution.receipt.id} ${execution.receipt.state}.`,{workspace_id:workspace.id,operation:execution.receipt,replayed:execution.replayed,...(execution.result??{})});});
+
+  registerCodexTool(config, server, "git_commit", {
+    title:"Git Commit",description:"Commit only when HEAD, branch, and the complete staged path set exactly match caller expectations.",inputSchema:{workspace_id:z.string().optional(),message:z.string().min(1).max(300),expected_head:z.string().regex(/^[a-f0-9]{40,64}$/i),expected_branch:z.string().min(1).max(200),expected_staged_paths:z.array(z.string()).min(1).max(config.maxOperationFiles),idempotency_key:z.string().min(1).max(256).optional()},annotations:LOCAL_WRITE_ANNOTATIONS
+  }, async(args)=>{const workspace=workspaces.getWorkspace(args.workspace_id);for(const candidate of args.expected_staged_paths) guard.resolve(workspace,candidate);const execution=await gitCommit(configForWorkspace(workspace),guard,workspace,operationManagerFor(workspace),{message:args.message,expectedHead:args.expected_head,expectedBranch:args.expected_branch,expectedStagedPaths:args.expected_staged_paths,idempotencyKey:args.idempotency_key});return textResult(`# Git Commit\n\nOperation ${execution.receipt.id} ${execution.receipt.state}.`,{workspace_id:workspace.id,operation:execution.receipt,replayed:execution.replayed,...(execution.result??{})});});
+
+  registerCodexTool(config, server, "git_push", {
+    title:"Git Push",description:"Push the checked-out branch without force only when push is explicitly enabled and expected HEAD/branch still match.",inputSchema:{workspace_id:z.string().optional(),remote:z.string().min(1).max(200),branch:z.string().min(1).max(200),expected_head:z.string().regex(/^[a-f0-9]{40,64}$/i),expected_branch:z.string().min(1).max(200),idempotency_key:z.string().min(1).max(256).optional()},annotations:BASH_ANNOTATIONS
+  }, async(args)=>{const workspace=workspaces.getWorkspace(args.workspace_id);const execution=await gitPush(configForWorkspace(workspace),guard,workspace,operationManagerFor(workspace),{remote:args.remote,branch:args.branch,expectedHead:args.expected_head,expectedBranch:args.expected_branch,idempotencyKey:args.idempotency_key});return textResult(`# Git Push\n\nOperation ${execution.receipt.id} ${execution.receipt.state}.`,{workspace_id:workspace.id,operation:execution.receipt,replayed:execution.replayed,...(execution.result??{})});});
 
   registerCodexTool(
     config,
@@ -2281,7 +3326,7 @@ export function createCodexProServer(
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
       const scopedPath = typeof args.path === "string" ? args.path : undefined;
-      const status = gitStatus(config, workspace, guard, scopedPath);
+      const status = gitStatus(configForWorkspace(workspace), workspace, guard, scopedPath);
       const statusError = looksLikeGitError(status) ? status : "";
       const changedFiles = statusError ? [] : changedStatusLines(status);
       return textResult(status, {
@@ -2318,10 +3363,20 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
-      const rawDiff = normalizeGitOutput(gitDiff(config, guard, workspace, args.path, parseBool(args.staged, false)));
-      const diffError = rawDiff && looksLikeGitError(rawDiff) ? rawDiff : "";
-      const stats = diffError ? { additions: 0, deletions: 0, changed: false } : diffStats(rawDiff);
+      const staged = parseBool(args.staged, false);
       const includeDiff = parseBool(args.include_diff, true);
+      let rawDiff = "";
+      let diffError = "";
+      let stats: { additions: number; deletions: number; changed: boolean };
+      if (includeDiff) {
+        rawDiff = normalizeGitOutput(gitDiff(configForWorkspace(workspace), guard, workspace, args.path, staged));
+        diffError = rawDiff && looksLikeGitError(rawDiff) ? rawDiff : "";
+        stats = diffError ? { additions: 0, deletions: 0, changed: false } : diffStats(rawDiff);
+      } else {
+        const statsOnly = readGitDiffStats(configForWorkspace(workspace), guard, workspace, args.path, staged);
+        diffError = statsOnly.error ?? "";
+        stats = { additions: statsOnly.additions, deletions: statsOnly.deletions, changed: statsOnly.changed };
+      }
       const text = diffError
         ? diffError
         : includeDiff
@@ -2331,7 +3386,7 @@ export function createCodexProServer(
             "",
             `Workspace: ${workspace.root}`,
             `Path: ${args.path ?? "workspace diff"}`,
-            `Staged: ${parseBool(args.staged, false)}`,
+            `Staged: ${staged}`,
             `Diff stats: +${stats.additions} -${stats.deletions}`,
             "",
             "Raw diff omitted by include_diff=false."
@@ -2340,13 +3395,13 @@ export function createCodexProServer(
         workspace_id: workspace.id,
         root: workspace.root,
         path: args.path ?? "workspace diff",
-        staged: parseBool(args.staged, false),
+        staged,
         include_diff: includeDiff,
         diff_error: diffError || undefined,
         additions: stats.additions,
         deletions: stats.deletions,
         changed: !diffError && stats.changed,
-        diff: diffError || includeDiff ? rawDiff : ""
+        diff: diffError || (includeDiff ? rawDiff : "")
       });
     }
   );
@@ -2378,15 +3433,15 @@ export function createCodexProServer(
       const scopedPath = typeof args.path === "string" ? args.path : undefined;
       const staged = parseBool(args.staged, false);
       const normalizedScopedPath = scopedPath?.trim() ? guard.resolve(workspace, scopedPath).relPath : undefined;
-      const status = normalizeGitOutput(gitDiffStatus(config, guard, workspace, normalizedScopedPath, staged));
+      const status = normalizeGitOutput(gitDiffStatus(configForWorkspace(workspace), guard, workspace, normalizedScopedPath, staged));
       const includeDiff = parseBool(args.include_diff, true);
-      const rawDiff = normalizeGitOutput(gitDiff(config, guard, workspace, normalizedScopedPath, staged));
+      const rawDiff = normalizeGitOutput(gitDiff(configForWorkspace(workspace), guard, workspace, normalizedScopedPath, staged));
       const statusError = looksLikeGitError(status) ? status : "";
       const diffError = rawDiff && looksLikeGitError(rawDiff) ? rawDiff : "";
       const diff = diffError ? "" : rawDiff;
       const stats = diffStats(diff);
       const changedFiles = statusError ? [] : changedStatusLines(status);
-      const untrackedFingerprint = statusError ? "" : await untrackedReviewFingerprint(config, guard, workspace, changedFiles);
+      const untrackedFingerprint = statusError ? "" : await untrackedReviewFingerprint(configForWorkspace(workspace), guard, workspace, changedFiles);
       const since = args.since === "workspace" ? "workspace" : "last_shown";
       const markReviewed = parseBool(args.mark_reviewed, true);
       const checkpointKey = reviewCheckpointKey(workspace, { path: normalizedScopedPath, staged });
@@ -2400,7 +3455,7 @@ export function createCodexProServer(
       let analysis: Record<string, unknown> | undefined;
       if (config.analysisEnabled && changedPaths.length && !checkpointHit) {
         try {
-          const impact = await reviewWorkspaceChanges(config, guard, workspace, { changedPaths });
+          const impact = await reviewWorkspaceChanges(configForWorkspace(workspace), guard, workspace, { changedPaths });
           analysis = {
             schema_version: impact.schemaVersion,
             changed_paths: impact.changedPaths,
@@ -2487,7 +3542,7 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
-      const context = await readAiBridgeContext(config, guard, workspace);
+      const context = await readAiBridgeContext(configForWorkspace(workspace), guard, workspace);
       return textResult(context.text, {
         workspace_id: workspace.id,
         root: workspace.root,
@@ -2543,7 +3598,7 @@ export function createCodexProServer(
 
       const readState = async (): Promise<Record<string, any> | undefined> => {
         try {
-          const raw = await readRawTextFileBounded(config, guard, workspace, stateRel);
+          const raw = await readRawTextFileBounded(configForWorkspace(workspace), guard, workspace, stateRel);
           const parsed = JSON.parse(raw);
           return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : undefined;
         } catch {
@@ -2579,7 +3634,7 @@ export function createCodexProServer(
 
       const excerpt = async (rel: string, maxChars: number, tailLines?: number): Promise<string | undefined> => {
         try {
-          const raw = await readRawTextFileBounded(config, guard, workspace, rel);
+          const raw = await readRawTextFileBounded(configForWorkspace(workspace), guard, workspace, rel);
           const body = tailLines
             ? raw.split(/\r?\n/).filter(Boolean).slice(-tailLines).join("\n")
             : raw;
@@ -2692,7 +3747,7 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
-      const context = await readCodexContext(config, guard, workspace, {
+      const context = await readCodexContext(configForWorkspace(workspace), guard, workspace, {
         targetPath: args.target_path,
         includeAiBridge: args.include_ai_bridge,
         includeGit: args.include_git,
@@ -2743,7 +3798,7 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
-      const result = await exportProContext(config, guard, workspace, {
+      const result = await exportProContext(configForWorkspace(workspace), guard, workspace, {
         title: args.title,
         selectedPaths: args.selected_paths,
         extraGlobs: args.extra_globs,
@@ -2878,7 +3933,8 @@ export function createCodexProServer(
         model: z.string().optional().describe("Optional model identifier to include in the handoff plan."),
         title: z.string().optional().describe("Short task title."),
         plan: z.string().describe("Detailed implementation plan for the local agent."),
-        append: z.boolean().optional().describe("Append to existing current-plan.md instead of overwriting. Default: false.")
+        append: z.boolean().optional().describe("Append to existing current-plan.md instead of overwriting. Default: false."),
+        idempotency_key: z.string().min(1).max(256).optional().describe("Optional retry key. Reusing it returns the existing operation instead of rewriting handoff files.")
       },
       annotations: HANDOFF_WRITE_ANNOTATIONS,
       _meta: {
@@ -2889,15 +3945,17 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
-      const result = await writeAgentHandoff(config, guard, workspace, {
-        agent: args.agent ?? "custom",
-        agentName: args.agent_name,
-        model: args.model,
-        title: cleanOneLine(args.title, "Agent implementation plan"),
-        plan: String(args.plan ?? ""),
-        append: parseBool(args.append, false),
-        eventName: "handoff_to_agent"
-      });
+      const execution = await operationManagerFor(workspace).execute(
+        { kind: "handoff_to_agent", idempotencyKey: args.idempotency_key },
+        () => writeAgentHandoff(configForWorkspace(workspace), guard, workspace, {
+          agent: args.agent ?? "custom", agentName: args.agent_name, model: args.model,
+          title: cleanOneLine(args.title, "Agent implementation plan"), plan: String(args.plan ?? ""),
+          append: parseBool(args.append, false), eventName: "handoff_to_agent"
+        }),
+        (value) => ({ paths: [value.planPath, value.statusPath, value.diffPath, value.executionLogPath], additions: value.writeResult.diff.additions, deletions: value.writeResult.diff.deletions })
+      );
+      if (execution.replayed || !execution.result) return textResult("# Handoff To Agent\n\nOperation " + execution.receipt.id + " already " + execution.receipt.state + "; handoff not repeated.", { operation: execution.receipt, replayed: true });
+      const result = execution.result;
 
       const text = `# Handoff To Agent
 
@@ -2926,7 +3984,8 @@ ${result.prompt}
         execution_log_path: result.executionLogPath,
         additions: result.writeResult.diff.additions,
         deletions: result.writeResult.diff.deletions,
-        diff: result.writeResult.diff.diff
+        diff: result.writeResult.diff.diff,
+        operation: execution.receipt
       });
     }
   );
@@ -2942,7 +4001,8 @@ ${result.prompt}
         workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use the workspace selected for this MCP session."),
         title: z.string().optional().describe("Short task title."),
         plan: z.string().describe("Detailed implementation plan for Codex."),
-        append: z.boolean().optional().describe("Append to existing current-plan.md instead of overwriting. Default: false.")
+        append: z.boolean().optional().describe("Append to existing current-plan.md instead of overwriting. Default: false."),
+        idempotency_key: z.string().min(1).max(256).optional().describe("Optional retry key. Reusing it returns the existing operation instead of rewriting handoff files.")
       },
       annotations: HANDOFF_WRITE_ANNOTATIONS,
       _meta: {
@@ -2953,13 +4013,16 @@ ${result.prompt}
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
-      const result = await writeAgentHandoff(config, guard, workspace, {
-        agent: "codex",
-        title: cleanOneLine(args.title, "Codex implementation plan"),
-        plan: String(args.plan ?? ""),
-        append: parseBool(args.append, false),
-        eventName: "handoff_to_codex"
-      });
+      const execution = await operationManagerFor(workspace).execute(
+        { kind: "handoff_to_codex", idempotencyKey: args.idempotency_key },
+        () => writeAgentHandoff(configForWorkspace(workspace), guard, workspace, {
+          agent: "codex", title: cleanOneLine(args.title, "Codex implementation plan"), plan: String(args.plan ?? ""),
+          append: parseBool(args.append, false), eventName: "handoff_to_codex"
+        }),
+        (value) => ({ paths: [value.planPath, value.statusPath, value.diffPath, value.executionLogPath], additions: value.writeResult.diff.additions, deletions: value.writeResult.diff.deletions })
+      );
+      if (execution.replayed || !execution.result) return textResult("# Handoff To Codex\n\nOperation " + execution.receipt.id + " already " + execution.receipt.state + "; handoff not repeated.", { operation: execution.receipt, replayed: true });
+      const result = execution.result;
       const text = `# Handoff To Codex
 
 Wrote ${result.planPath}.
@@ -2984,10 +4047,22 @@ ${result.prompt}
         execution_log_path: result.executionLogPath,
         additions: result.writeResult.diff.additions,
         deletions: result.writeResult.diff.deletions,
-        diff: result.writeResult.diff.diff
+        diff: result.writeResult.diff.diff,
+        operation: execution.receipt
       });
     }
   );
+
+
+  registerCodexTool(config, server, "search_codex_session", {
+    title:"Search Codex Session",description:"Stream-search an opted-in local Codex transcript and return bounded snippets with stable byte anchors for read-around.",
+    inputSchema:{session_id:z.string().optional(),source_path:z.string().optional(),query:z.string().min(1).max(2000),role:z.string().optional(),tool:z.string().optional(),after:z.number().optional(),before:z.number().optional(),max_results:z.number().int().min(1).max(200).optional(),max_snippet_bytes:z.number().int().min(32).max(4000).optional(),include_tool_outputs:z.boolean().optional()},annotations:SESSION_READ_ANNOTATIONS
+  }, async(args)=>{const result=await searchCodexSession(config,{sessionId:args.session_id,sourcePath:args.source_path,query:args.query,role:args.role,tool:args.tool,after:args.after,before:args.before,maxResults:args.max_results,maxSnippetBytes:args.max_snippet_bytes,includeToolOutputs:args.include_tool_outputs});return textResult(`# Codex Session Search\n\n${result.matches.map(m=>`${m.anchor} ${m.role}${m.tool?`/${m.tool}`:""}: ${m.snippet}`).join("\n")||"No matches."}`,{...result});});
+
+  registerCodexTool(config, server, "read_codex_session_around", {
+    title:"Read Codex Session Around",description:"Read a bounded message window around a byte anchor returned by search_codex_session.",
+    inputSchema:{session_id:z.string().optional(),source_path:z.string().optional(),anchor:z.number().int().min(0),before_messages:z.number().int().min(0).max(100).optional(),after_messages:z.number().int().min(1).max(120).optional(),max_total_bytes:z.number().int().min(4000).max(400000).optional(),exclude_tool_outputs:z.boolean().optional(),max_tool_output_bytes:z.number().int().min(0).max(400000).optional()},annotations:SESSION_READ_ANNOTATIONS
+  }, async(args)=>{const result=await readCodexSessionAround(config,{sessionId:args.session_id,sourcePath:args.source_path,anchor:args.anchor,beforeMessages:args.before_messages,afterMessages:args.after_messages,maxTotalBytes:args.max_total_bytes,excludeToolOutputs:args.exclude_tool_outputs,maxToolOutputBytes:args.max_tool_output_bytes});return textResult(result.text,{session:result.session,messages:result.messages,truncated:result.truncated,anchor:result.cursor,source_size_bytes:result.source_size_bytes});});
 
   return server;
 }

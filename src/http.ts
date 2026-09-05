@@ -18,7 +18,10 @@ import {
   type WorkspaceProfile
 } from "./profileStore.js";
 import { redactSensitiveText, redactStructured } from "./redact.js";
-import { createCodexProServer } from "./server.js";
+import { createCodexProServer, registeredToolNames, toolNamesForMode } from "./server.js";
+import { CodexProRuntimeState } from "./runtimeState.js";
+import { TelemetryRegistry } from "./telemetry.js";
+import { diagnosticsSnapshot } from "./diagnosticsOps.js";
 import { WorkspaceRegistry } from "./guard.js";
 
 function escapeHtml(value: unknown): string {
@@ -57,6 +60,19 @@ const TOOL_MODES = ["standard", "minimal", "full"] as const;
 
 const textField = (max: number) =>
   z.preprocess((value) => (typeof value === "string" ? value.trim() : value), z.string().max(max).optional());
+const argsField = z.preprocess((value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (Array.isArray(parsed)) return parsed;
+  } catch {
+    // Fall through to simple whitespace-delimited arguments.
+  }
+  return trimmed.split(/\s+/);
+}, z.array(z.string().max(4096)).max(32).optional());
 
 const AdminProfilePatch = z.object({
   tunnel: z.enum(TUNNELS).optional(),
@@ -76,6 +92,18 @@ const AdminProfilePatch = z.object({
   toolMode: z.enum(TOOL_MODES).optional(),
   toolCards: z.boolean().optional(),
   widgetDomain: textField(2048),
+  analysisEnabled: z.boolean().optional(),
+  artifactExportEnabled: z.boolean().optional(),
+  goalsEnabled: z.boolean().optional(),
+  codeGraphEnabled: z.boolean().optional(),
+  codeGraphExecutable: textField(4096),
+  codeGraphArgs: argsField,
+  lspEnabled: z.boolean().optional(),
+  lspExecutable: textField(4096),
+  lspArgs: argsField,
+  allowGitPush: z.boolean().optional(),
+  inheritEnv: z.boolean().optional(),
+  connectionTest: z.boolean().optional(),
   tunnelName: textField(128),
   ngrokConfig: textField(4096),
   cloudflareConfig: textField(4096),
@@ -104,6 +132,18 @@ interface ProfileFormValues {
   toolMode: "minimal" | "standard" | "full";
   toolCards: boolean;
   widgetDomain: string;
+  analysisEnabled: boolean;
+  artifactExportEnabled: boolean;
+  goalsEnabled: boolean;
+  codeGraphEnabled: boolean;
+  codeGraphExecutable: string;
+  codeGraphArgs: string[];
+  lspEnabled: boolean;
+  lspExecutable: string;
+  lspArgs: string[];
+  allowGitPush: boolean;
+  inheritEnv: boolean;
+  connectionTest: boolean;
   noInstallCloudflared: boolean;
 }
 
@@ -181,6 +221,18 @@ function profileValues(config: CodexProConfig, profile = readWorkspaceProfile(co
     toolMode: oneOf(profile.toolMode ?? config.toolMode, TOOL_MODES, config.toolMode),
     toolCards: Boolean(profile.toolCards ?? config.toolCards),
     widgetDomain: String(profile.widgetDomain ?? config.widgetDomain),
+    analysisEnabled: Boolean(profile.analysisEnabled ?? config.analysisEnabled),
+    artifactExportEnabled: Boolean(profile.artifactExportEnabled ?? config.artifactExportEnabled),
+    goalsEnabled: Boolean(profile.goalsEnabled ?? config.goalsEnabled),
+    codeGraphEnabled: Boolean(profile.codeGraphEnabled ?? config.codeGraphEnabled),
+    codeGraphExecutable: String(profile.codeGraphExecutable ?? config.codeGraphExecutable ?? ""),
+    codeGraphArgs: Array.isArray(profile.codeGraphArgs) ? profile.codeGraphArgs : config.codeGraphArgs,
+    lspEnabled: Boolean(profile.lspEnabled ?? config.lspEnabled),
+    lspExecutable: String(profile.lspExecutable ?? config.lspExecutable ?? ""),
+    lspArgs: Array.isArray(profile.lspArgs) ? profile.lspArgs : config.lspArgs,
+    allowGitPush: Boolean(profile.allowGitPush ?? config.allowGitPush),
+    inheritEnv: Boolean(profile.inheritEnv ?? config.inheritEnv),
+    connectionTest: Boolean(profile.connectionTest ?? config.connectionTest),
     noInstallCloudflared: Boolean(profile.noInstallCloudflared)
   };
 }
@@ -302,21 +354,34 @@ function profileForm(config: CodexProConfig): string {
           <p>Save the default access level for the next launch. These settings do not mutate the process that is already running.</p>
           <div class="form-grid">
             <label><span>Bash</span><select name="bash">${selectOptions(BASH_MODES, values.bash)}</select></label>
+            <label><span>Bash transcript</span><select name="bashTranscript">${selectOptions(BASH_TRANSCRIPTS, values.bashTranscript)}</select></label>
             <label><span>Write mode</span><select name="write">${selectOptions(WRITE_MODES, values.write)}</select></label>
             <label><span>Tool mode</span><select name="toolMode">${selectOptions(TOOL_MODES, values.toolMode)}</select></label>
             <label><span>Codex sessions</span><select name="codexSessions">${selectOptions(CODEX_SESSIONS, values.codexSessions)}</select></label>
             <label><span>Codex directory</span><input name="codexDir" value="${escapeHtml(values.codexDir)}"></label>
             <label><span>Bash session</span><input name="bashSession" value="${escapeHtml(values.bashSession)}"></label>
+            <label><span>Widget origin</span><input name="widgetDomain" value="${escapeHtml(values.widgetDomain)}"></label>
           </div>
           <label class="check-row"><input name="toolCards" type="checkbox" value="true"${values.toolCards ? " checked" : ""}><span>Enable ChatGPT tool cards</span></label>
           <label class="check-row"><input name="requireBashSession" type="checkbox" value="true"${values.requireBashSession ? " checked" : ""}><span>Require matching bash session id</span></label>
         </fieldset>
-        <fieldset class="profile-group readonly-group">
-          <legend>Read-only this run</legend>
-          <div class="readonly-grid">
-            <div><span>Bash transcript</span><code>${escapeHtml(values.bashTranscript)}</code></div>
-            <div><span>Widget origin</span><code>${escapeHtml(values.widgetDomain)}</code></div>
+        <fieldset class="profile-group">
+          <legend>Capabilities</legend>
+          <p>Feature gates and optional intelligence providers for the next launch. Protected paths and authentication secrets remain outside this form.</p>
+          <div class="form-grid">
+            <label><span>CodeGraph executable</span><input name="codeGraphExecutable" value="${escapeHtml(values.codeGraphExecutable)}" placeholder="codegraph"></label>
+            <label><span>CodeGraph args</span><input name="codeGraphArgs" value="${escapeHtml(JSON.stringify(values.codeGraphArgs))}" placeholder="[]"></label>
+            <label><span>LSP executable</span><input name="lspExecutable" value="${escapeHtml(values.lspExecutable)}"></label>
+            <label><span>LSP args</span><input name="lspArgs" value="${escapeHtml(JSON.stringify(values.lspArgs))}" placeholder="[]"></label>
           </div>
+          <label class="check-row"><input name="analysisEnabled" type="checkbox" value="true"${values.analysisEnabled ? " checked" : ""}><span>Enable built-in repository analysis</span></label>
+          <label class="check-row"><input name="artifactExportEnabled" type="checkbox" value="true"${values.artifactExportEnabled ? " checked" : ""}><span>Enable artifact export</span></label>
+          <label class="check-row"><input name="goalsEnabled" type="checkbox" value="true"${values.goalsEnabled ? " checked" : ""}><span>Enable Durable Goals</span></label>
+          <label class="check-row"><input name="codeGraphEnabled" type="checkbox" value="true"${values.codeGraphEnabled ? " checked" : ""}><span>Enable CodeGraph</span></label>
+          <label class="check-row"><input name="lspEnabled" type="checkbox" value="true"${values.lspEnabled ? " checked" : ""}><span>Enable LSP provider</span></label>
+          <label class="check-row"><input name="allowGitPush" type="checkbox" value="true"${values.allowGitPush ? " checked" : ""}><span>Allow guarded Git push</span></label>
+          <label class="check-row"><input name="inheritEnv" type="checkbox" value="true"${values.inheritEnv ? " checked" : ""}><span>Allow Bash subprocesses to inherit the full parent environment</span></label>
+          <label class="check-row"><input name="connectionTest" type="checkbox" value="true"${values.connectionTest ? " checked" : ""}><span>Enable connection-test mode</span></label>
         </fieldset>
         <div class="actions">
           <button type="submit" class="primary">Save profile</button>
@@ -374,6 +439,18 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
     toolMode: next.toolMode,
     toolCards: next.toolCards,
     ...(next.widgetDomain ? { widgetDomain: next.widgetDomain } : {}),
+    analysisEnabled: next.analysisEnabled,
+    artifactExportEnabled: next.artifactExportEnabled,
+    goalsEnabled: next.goalsEnabled,
+    codeGraphEnabled: next.codeGraphEnabled,
+    ...(next.codeGraphExecutable ? { codeGraphExecutable: next.codeGraphExecutable } : {}),
+    codeGraphArgs: next.codeGraphArgs,
+    lspEnabled: next.lspEnabled,
+    ...(next.lspExecutable ? { lspExecutable: next.lspExecutable } : {}),
+    lspArgs: next.lspArgs,
+    allowGitPush: next.allowGitPush,
+    inheritEnv: next.inheritEnv,
+    connectionTest: next.connectionTest,
     ...(existing.allowedRoots?.length ? { allowedRoots: existing.allowedRoots } : {}),
     ...(next.noInstallCloudflared ? { noInstallCloudflared: true } : {})
   };
@@ -399,6 +476,18 @@ function profileResponse(config: CodexProConfig): Record<string, unknown> {
       toolMode: config.toolMode,
       toolCards: config.toolCards,
       widgetDomain: config.widgetDomain,
+      analysisEnabled: config.analysisEnabled,
+      artifactExportEnabled: config.artifactExportEnabled,
+      goalsEnabled: config.goalsEnabled,
+      codeGraphEnabled: config.codeGraphEnabled,
+      codeGraphExecutable: config.codeGraphExecutable ?? "",
+      codeGraphArgs: config.codeGraphArgs,
+      lspEnabled: config.lspEnabled,
+      lspExecutable: config.lspExecutable ?? "",
+      lspArgs: config.lspArgs,
+      allowGitPush: config.allowGitPush,
+      inheritEnv: config.inheritEnv,
+      connectionTest: config.connectionTest,
       authEnabled: Boolean(config.authToken)
     }
   });
@@ -416,7 +505,7 @@ const LOCAL_FAVICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 6
   <rect x="8" y="8" width="48" height="48" rx="12" fill="#ffffff" fill-opacity=".12" stroke="#ffffff" stroke-opacity=".38"/>
   <path d="M38.4 40.3c-1.8 1.1-3.9 1.7-6.3 1.7-6.1 0-10.3-4.2-10.3-10s4.2-10 10.4-10c2.4 0 4.5.6 6.2 1.7l-2.1 4.1c-1.1-.7-2.3-1-3.8-1-2.9 0-4.9 2.1-4.9 5.2s2 5.2 4.9 5.2c1.5 0 2.8-.4 3.9-1.1l2 4.2Z" fill="#ffffff"/>
 </svg>`;
-const CODEXPRO_VERSION = "0.30.0";
+const CODEXPRO_VERSION = "0.32.3";
 
 function printHelp(): void {
   console.log(`CodexPro MCP HTTP server
@@ -460,8 +549,8 @@ function onboardingPage(config: CodexProConfig): string {
   <link rel="icon" href="/favicon.ico">
   <title>CodexPro Local Control - ChatGPT Workspace Agent</title>
   <style>
-    /* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V5 */
-    /* Hallmark · macrostructure: Workbench · genre: modern-minimal · theme: CC Switch-inspired light manager · tone: technical admin · nav: section switcher · footer: Ft2 · contrast: pass (40-41) · mobile: pass (34, 49, 50-57) */
+    /* Hallmark Â· pre-emit critique: P5 H5 E5 S5 R5 V5 */
+    /* Hallmark Â· macrostructure: Workbench Â· genre: modern-minimal Â· theme: CC Switch-inspired light manager Â· tone: technical admin Â· nav: section switcher Â· footer: Ft2 Â· contrast: pass (40-41) Â· mobile: pass (34, 49, 50-57) */
     :root {
       color-scheme: light;
       --font-display: "Geist", "Aptos", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -1232,6 +1321,7 @@ function onboardingPage(config: CodexProConfig): string {
     <nav class="section-tabs" aria-label="Admin sections">
       <a href="#profile" aria-current="page">Profile</a>
       <a href="#status">Status</a>
+      <a href="#diagnostics">Diagnostics</a>
       <a href="#connect">ChatGPT</a>
       <a href="#access">Access</a>
       <a href="#cli">CLI</a>
@@ -1292,11 +1382,22 @@ function onboardingPage(config: CodexProConfig): string {
           <ul class="scope-list">
             <li><strong>/setup</strong><span>this setup and settings page</span></li>
             <li><strong>/admin/profile</strong><span>saved workspace profile API</span></li>
+            <li><strong>/admin/diagnostics</strong><span>sanitized local telemetry and tool-surface diagnostics</span></li>
             <li><strong>/healthz</strong><span>authenticated status check</span></li>
             <li><strong>/mcp</strong><span>MCP endpoint for ChatGPT and local clients</span></li>
           </ul>
         </section>
       </aside>
+    </section>
+    <section class="panel details-panel" id="diagnostics">
+      <div class="section-head">
+        <div>
+          <h2>Diagnostics</h2>
+          <p>Local-only connection, tool-surface, and bounded telemetry state. Prompts, source contents, tokens, and raw command output are not recorded.</p>
+        </div>
+        <button type="button" class="copy-mini" data-refresh-diagnostics>Refresh</button>
+      </div>
+      <pre class="mono" data-diagnostics-output>Loading diagnostics...</pre>
     </section>
     <section class="panel cli-panel details-panel" id="cli">
       <div class="section-head">
@@ -1342,6 +1443,21 @@ function onboardingPage(config: CodexProConfig): string {
         }
       });
     });
+    const diagnosticsOutput = document.querySelector("[data-diagnostics-output]");
+    const refreshDiagnostics = async () => {
+      if (!diagnosticsOutput) return;
+      try {
+        const headers = connectorToken ? { Authorization: "Bearer " + connectorToken } : {};
+        const response = await fetch("/admin/diagnostics", { headers });
+        if (!response.ok) throw new Error("Diagnostics request failed: " + response.status);
+        diagnosticsOutput.textContent = JSON.stringify(await response.json(), null, 2);
+      } catch (error) {
+        diagnosticsOutput.textContent = error instanceof Error ? error.message : String(error);
+      }
+    };
+    document.querySelector("[data-refresh-diagnostics]")?.addEventListener("click", refreshDiagnostics);
+    refreshDiagnostics();
+
     const profileForm = document.querySelector("[data-profile-form]");
     const tunnelSelect = document.querySelector("[data-tunnel-select]");
     const hostnameInput = document.querySelector("[data-hostname-input]");
@@ -1404,6 +1520,7 @@ function onboardingPage(config: CodexProConfig): string {
           port: Number(data.port),
           mode: data.mode,
           bash: data.bash,
+          bashTranscript: data.bashTranscript,
           write: data.write,
           toolMode: data.toolMode,
           toolCards: Boolean(form.elements.toolCards?.checked),
@@ -1411,6 +1528,19 @@ function onboardingPage(config: CodexProConfig): string {
           codexDir: data.codexDir,
           bashSession: data.bashSession,
           requireBashSession: Boolean(form.elements.requireBashSession?.checked),
+          widgetDomain: data.widgetDomain,
+          analysisEnabled: Boolean(form.elements.analysisEnabled?.checked),
+          artifactExportEnabled: Boolean(form.elements.artifactExportEnabled?.checked),
+          goalsEnabled: Boolean(form.elements.goalsEnabled?.checked),
+          codeGraphEnabled: Boolean(form.elements.codeGraphEnabled?.checked),
+          codeGraphExecutable: data.codeGraphExecutable,
+          codeGraphArgs: data.codeGraphArgs,
+          lspEnabled: Boolean(form.elements.lspEnabled?.checked),
+          lspExecutable: data.lspExecutable,
+          lspArgs: data.lspArgs,
+          allowGitPush: Boolean(form.elements.allowGitPush?.checked),
+          inheritEnv: Boolean(form.elements.inheritEnv?.checked),
+          connectionTest: Boolean(form.elements.connectionTest?.checked),
           noInstallCloudflared: Boolean(form.elements.noInstallCloudflared?.checked)
         };
         if (status) status.textContent = "Saving...";
@@ -1457,6 +1587,8 @@ async function main(): Promise<void> {
   }
 
   const app = express();
+  const telemetry = new TelemetryRegistry({ maxEvents: 128 });
+  let latestRegisteredTools: string[] = [];
   const logRequests = process.env.CODEXPRO_LOG_REQUESTS === "1";
   const authFailureWindow = new Map<string, { count: number; resetAt: number }>();
   const authFailureLimit = 10;
@@ -1586,6 +1718,25 @@ async function main(): Promise<void> {
     res.status(401).send("Unauthorized");
   });
 
+  app.use((req, res, next) => {
+    if (req.path !== "/mcp") { next(); return; }
+    telemetry.record({ stage: "request_arrival", status: "ok", backend: "http" });
+    let finished = false;
+    res.on("finish", () => {
+      finished = true;
+      telemetry.record({ stage: "response", status: res.statusCode >= 500 ? "error" : "ok", backend: "http" });
+    });
+    res.on("close", () => {
+      if (finished) return;
+      if (req.method === "GET") {
+        telemetry.record({ stage: "response", status: res.statusCode >= 500 ? "error" : "ok", backend: "http", sessionState: "stream_closed" });
+        return;
+      }
+      telemetry.record({ stage: "response", status: "error", backend: "http", errorBoundary: "response closed before finish" });
+    });
+    next();
+  });
+
   type TransportRecord = {
     transport: StreamableHTTPServerTransport;
     createdAt: number;
@@ -1594,6 +1745,7 @@ async function main(): Promise<void> {
 
   const transports = new Map<string, TransportRecord>();
   const workspaceRegistry = new WorkspaceRegistry();
+  const runtimeState = new CodexProRuntimeState();
   const sessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   function requestSessionId(req: Request): string | undefined {
@@ -1675,6 +1827,16 @@ async function main(): Promise<void> {
     });
   });
 
+  app.get("/admin/diagnostics", (_req, res) => {
+    res.json(diagnosticsSnapshot(
+      config,
+      telemetry.snapshot(),
+      latestRegisteredTools,
+      toolNamesForMode(config),
+      transports.size
+    ));
+  });
+
   app.get("/admin/profile", (_req, res) => {
     res.json(profileResponse(config));
   });
@@ -1731,15 +1893,25 @@ async function main(): Promise<void> {
           if (closedSessionId) transports.delete(closedSessionId);
         };
 
-        const server = createCodexProServer(config, { workspaceRegistry });
+        const server = createCodexProServer(config, {
+          workspaceRegistry,
+          telemetryRegistry: telemetry,
+          activeSessionCount: () => transports.size,
+          runtimeState
+        });
+        latestRegisteredTools = registeredToolNames(server);
         await server.connect(transport);
       } else {
         sendSessionError(res, sessionId);
         return;
       }
 
+      const dispatchStarted = Date.now();
+      telemetry.record({ stage: "dispatch", status: "ok", backend: "http" });
       await transport.handleRequest(req, res, req.body);
+      telemetry.record({ stage: "completion", status: "ok", backend: "http", durationMs: Date.now() - dispatchStarted });
     } catch (error) {
+      telemetry.record({ stage: "completion", status: "error", backend: "http", errorBoundary: error instanceof Error ? error.message : String(error) });
       console.error(error instanceof Error ? error.stack ?? error.message : String(error));
       if (!res.headersSent) {
         res.status(500).json({
@@ -1758,7 +1930,15 @@ async function main(): Promise<void> {
       sendSessionError(res, sessionId);
       return;
     }
-    await transport.handleRequest(req, res);
+    const dispatchStarted = Date.now();
+    telemetry.record({ stage: "dispatch", status: "ok", backend: "http" });
+    try {
+      await transport.handleRequest(req, res);
+      telemetry.record({ stage: "completion", status: "ok", backend: "http", durationMs: Date.now() - dispatchStarted });
+    } catch (error) {
+      telemetry.record({ stage: "completion", status: "error", backend: "http", errorBoundary: error instanceof Error ? error.message : String(error) });
+      throw error;
+    }
   };
 
   app.get("/mcp", handleSessionRequest);
@@ -1798,7 +1978,7 @@ async function main(): Promise<void> {
     next(error);
   });
 
-  app.listen(config.port, config.host, () => {
+  const httpServer = app.listen(config.port, config.host, () => {
     console.error(`[CodexPro] HTTP MCP listening on http://${config.host}:${config.port}/mcp`);
     console.error(`[CodexPro] defaultRoot=${config.defaultRoot}`);
     console.error(`[CodexPro] allowedRoots=${config.allowedRoots.join(", ")}`);
@@ -1806,6 +1986,27 @@ async function main(): Promise<void> {
     console.error(`[CodexPro] writeMode=${config.writeMode}`);
     console.error(`[CodexPro] widgetDomain=${config.widgetDomain}`);
   });
+
+  let shuttingDown = false;
+  const shutdown = async (): Promise<void> => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    clearInterval(pruneTimer);
+    for (const record of transports.values()) closeTransport(record);
+    transports.clear();
+    await runtimeState.close();
+    await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+  };
+  const requestShutdown = (): void => {
+    const forceTimer = setTimeout(() => process.exit(1), 6000);
+    forceTimer.unref();
+    void shutdown().then(
+      () => { clearTimeout(forceTimer); process.exit(0); },
+      (error) => { clearTimeout(forceTimer); console.error(error instanceof Error ? error.stack ?? error.message : String(error)); process.exit(1); }
+    );
+  };
+  process.once("SIGINT", requestShutdown);
+  process.once("SIGTERM", requestShutdown);
 }
 
 main().catch((error) => {

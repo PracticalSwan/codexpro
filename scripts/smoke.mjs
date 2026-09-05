@@ -123,7 +123,7 @@ const oversizedSourceBeforeRead = await fs.stat(oversizedCodexSessionPath);
 const byteBoundaryCodexSessionId = '019cc364-dddd-7666-8777-123456789aaa';
 await fs.writeFile(path.join(codexSessionDir, `rollout-2026-06-15T01-02-03-${byteBoundaryCodexSessionId}.jsonl`), [
   JSON.stringify({ timestamp: '2026-06-15T01:02:03Z', type: 'session_meta', payload: { id: byteBoundaryCodexSessionId, cwd: tmp } }),
-  JSON.stringify({ timestamp: '2026-06-15T01:02:04Z', type: 'response_item', payload: { type: 'message', role: 'assistant', content: `${'a'.repeat(3999)}😀` } })
+  JSON.stringify({ timestamp: '2026-06-15T01:02:04Z', type: 'response_item', payload: { type: 'message', role: 'assistant', content: `${'a'.repeat(3999)}ðŸ˜€` } })
 ].join('\n') + '\n', 'utf8');
 const unreadableCodexSessionPath = path.join(codexSessionDir, 'rollout-2026-06-17T01-02-03-019cc366-bbbb-7444-8555-123456789aaa.jsonl');
 await fs.writeFile(unreadableCodexSessionPath, [
@@ -178,8 +178,8 @@ await fs.mkdir(path.join(tmp, 'test'), { recursive: true });
 await fs.writeFile(path.join(tmp, 'test', 'auth.test.ts'), "import { authenticate } from '../src/auth.js';\nvoid authenticate('test');\n", 'utf8');
 await fs.mkdir(path.join(tmp, 'docs'), { recursive: true });
 await fs.writeFile(path.join(tmp, 'docs', 'security-storage-model.md'), 'storage threat model before\n', 'utf8');
-await fs.writeFile(path.join(tmp, 'é.ts'), 'export const accent = 1;\n', 'utf8');
-await fs.writeFile(path.join(tmp, '旧名.ts'), 'export const renamed = true;\n', 'utf8');
+await fs.writeFile(path.join(tmp, 'Ã©.ts'), 'export const accent = 1;\n', 'utf8');
+await fs.writeFile(path.join(tmp, 'æ—§å.ts'), 'export const renamed = true;\n', 'utf8');
 await fs.writeFile(
   path.join(tmp, 'search-overflow.txt'),
   Array.from({ length: 800 }, (_, index) => `overflow-marker-${String(index).padStart(4, '0')} ${'x'.repeat(80)}`).join('\n') + '\n',
@@ -211,7 +211,7 @@ try {
   symlinkEscapePath = 'secret-link-dir/secret.txt';
   await fs.symlink(outside, path.join(tmp, 'secret-link-dir'), 'junction');
 }
-for (const args of [['init'], ['config', 'core.quotePath', 'true'], ['add', 'demo.txt', 'other.txt', 'patch-race.txt', 'AGENTS.md', 'package.json', 'src/auth.ts', 'test/auth.test.ts', 'docs/security-storage-model.md', 'search-overflow.txt', 'é.ts', '旧名.ts']]) {
+for (const args of [['init'], ['config', 'core.quotePath', 'true'], ['add', 'demo.txt', 'other.txt', 'patch-race.txt', 'AGENTS.md', 'package.json', 'src/auth.ts', 'test/auth.test.ts', 'docs/security-storage-model.md', 'search-overflow.txt', 'Ã©.ts', 'æ—§å.ts']]) {
   const result = spawnSync('git', args, { cwd: tmp, encoding: 'utf8' });
   if (result.status !== 0) {
     throw new Error(`git ${args.join(' ')} failed: ${result.stderr || result.stdout}`);
@@ -252,9 +252,36 @@ const supertool = tools.tools.find((tool) => tool.name === 'codexpro');
 if (supertool?.annotations?.destructiveHint === true || supertool?.annotations?.openWorldHint === true) {
   throw new Error(`mixed-capability supertool advertised worst-case destructive/open-world annotations: ${JSON.stringify(supertool.annotations)}`);
 }
-for (const expected of ['server_config', 'codexpro_self_test', 'codexpro_inventory', 'list_workspaces', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'inspect_workspace', 'tree', 'search', 'load_skill', 'read', 'view_image', 'write', 'edit', 'apply_patch', 'import_file', 'bash', 'git_status', 'git_diff', 'show_changes', 'read_handoff', 'wait_for_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
+for (const expected of ['server_config', 'codexpro_self_test', 'codexpro_inventory', 'list_workspaces', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'inspect_workspace', 'tree', 'search', 'find_files', 'code_intelligence_status', 'inspect_archive', 'read_document', 'load_skill', 'read', 'view_image', 'write', 'edit', 'apply_patch', 'import_file', 'extract_archive', 'bash', 'run_checks', 'verify_changes', 'start_workspace_process', 'workspace_process_status', 'read_workspace_process_output', 'stop_workspace_process', 'git_history', 'git_show', 'git_blame', 'package_graph', 'change_impact', 'preflight_changes', 'git_stage', 'git_commit', 'git_status', 'git_diff', 'show_changes', 'read_handoff', 'wait_for_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
   if (!toolNames.includes(expected)) throw new Error(`missing tool: ${expected}`);
 }
+if (toolNames.includes('git_push')) throw new Error('git_push should be hidden when CODEXPRO_ALLOW_GIT_PUSH is not enabled');
+if (toolNames.includes('codegraph_sync')) throw new Error('codegraph_sync should be hidden when CodeGraph is not explicitly enabled');
+if (toolNames.includes('export_file')) throw new Error('export_file should be hidden when CODEXPRO_ARTIFACT_EXPORT is not enabled');
+const documentSurfaceError = await client.request('tools/call', { name: 'read_document', arguments: { path: 'demo.txt' } });
+if (!documentSurfaceError.isError || !/unsupported document format/i.test(documentSurfaceError.content?.[0]?.text ?? '')) throw new Error('read_document MCP surface did not enforce document format validation');
+const foundFiles = await client.request('tools/call', { name: 'find_files', arguments: { query: 'auth', max_results: 10 } });
+if (foundFiles.isError || !foundFiles.structuredContent.matches?.some?.((item) => item.path === 'src/auth.ts')) {
+  throw new Error(`find_files did not use the built-in bounded fallback: ${JSON.stringify(foundFiles.structuredContent)}`);
+}
+const intelligenceStatus = await client.request('tools/call', { name: 'code_intelligence_status', arguments: {} });
+if (intelligenceStatus.isError || intelligenceStatus.structuredContent.built_in_analysis !== true) {
+  throw new Error(`code_intelligence_status did not preserve built-in analysis: ${JSON.stringify(intelligenceStatus.structuredContent)}`);
+}
+if (intelligenceStatus.structuredContent.providers?.some?.((item) => item.available === true && (item.id === 'codegraph' || item.id === 'lsp'))) {
+  throw new Error(`optional intelligence provider unexpectedly enabled by default: ${JSON.stringify(intelligenceStatus.structuredContent.providers)}`);
+}
+const exportClient = new McpStdioClient('node', ['dist/stdio.js', '--root', tmp, '--allow-root', tmp, '--tool-mode', 'full'], {
+  cwd: path.resolve('.'), env: { ...process.env, CODEXPRO_ROOT: tmp, CODEXPRO_ALLOWED_ROOTS: tmp, CODEXPRO_ARTIFACT_EXPORT: '1' }
+});
+await exportClient.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'codexpro-export-smoke', version: '0.1.0' } });
+exportClient.notify('notifications/initialized');
+const exportTools = await exportClient.request('tools/list', {});
+if (!exportTools.tools.some((tool) => tool.name === 'export_file')) throw new Error('export_file missing after explicit export opt-in');
+const exportedPixel = await exportClient.request('tools/call', { name: 'export_file', arguments: { path: 'pixel.png' } });
+const exportedResource = exportedPixel.content?.find?.((part) => part.type === 'resource')?.resource;
+if (exportedPixel.isError || exportedResource?.mimeType !== 'image/png' || !exportedResource?.blob || !/^codexpro-export:\/\//.test(exportedResource.uri ?? '')) throw new Error(`export_file did not return a bounded embedded resource: ${JSON.stringify(exportedPixel.structuredContent)}`);
+await exportClient.close();
 const diagnosticConfig = await client.request('tools/call', { name: 'server_config', arguments: {} });
 if (!diagnosticConfig.structuredContent.bashRuntime?.runtime || !diagnosticConfig.structuredContent.bashRuntime?.executable) {
   throw new Error(`server_config omitted bash runtime diagnostics: ${JSON.stringify(diagnosticConfig.structuredContent)}`);
@@ -426,6 +453,18 @@ for (const legacyToolCardUri of legacyToolCardUris) {
   }
 }
 const current = await client.request('tools/call', { name: 'open_current_workspace', arguments: { include_tree: false } });
+const plan05Checks = await client.request('tools/call', { name: 'run_checks', arguments: { workspace_id: current?.structuredContent?.workspace_id } });
+if (plan05Checks.isError || !plan05Checks.structuredContent.checks?.some?.((check) => check.command === 'npm test')) {
+  throw new Error(`run_checks did not expose trusted npm test discovery: ${JSON.stringify(plan05Checks.structuredContent)}`);
+}
+const plan05Verify = await client.request('tools/call', { name: 'verify_changes', arguments: { workspace_id: current?.structuredContent?.workspace_id, changed_paths: ['src/auth.ts'], run: false } });
+if (plan05Verify.isError || plan05Verify.structuredContent.executed !== false || plan05Verify.structuredContent.selectedChecks?.length > 2) {
+  throw new Error(`verify_changes planning contract failed: ${JSON.stringify(plan05Verify.structuredContent)}`);
+}
+const unknownProcess = await client.request('tools/call', { name: 'workspace_process_status', arguments: { workspace_id: current?.structuredContent?.workspace_id, process_id: 'proc_not-owned' } });
+if (unknownProcess.isError !== true || !JSON.stringify(unknownProcess).match(/Unknown process id/i)) {
+  throw new Error(`workspace_process_status accepted an unknown process: ${JSON.stringify(unknownProcess)}`);
+}
 const realTmp = await fs.realpath(tmp);
 const realOpenedRoot = await fs.realpath(current.structuredContent.root);
 if (realOpenedRoot.toLowerCase() !== realTmp.toLowerCase()) throw new Error(`open_current_workspace opened ${current.structuredContent.root}, expected ${realTmp}`);
@@ -446,6 +485,9 @@ const alternate = await client.request('tools/call', {
   name: 'open_workspace',
   arguments: { root: alternateWorkspace, include_tree: false }
 });
+if (alternate.structuredContent.selection_scope !== 'mcp_session' || !String(alternate.structuredContent.cross_session_guidance ?? '').includes('workspace_id')) {
+  throw new Error('open_workspace did not expose session-local selection guidance: ' + JSON.stringify(alternate.structuredContent));
+}
 const selectedRead = await client.request('tools/call', {
   name: 'read',
   arguments: { path: 'selected.txt' }
@@ -1041,18 +1083,18 @@ if (demoChanges.structuredContent.changed_files?.some?.((line) => line.includes(
 if (JSON.stringify(demoChanges.structuredContent.analysis?.changed_paths) !== JSON.stringify(['demo.txt'])) {
   throw new Error(`path-scoped show_changes leaked unrelated analysis: ${JSON.stringify(demoChanges.structuredContent.analysis)}`);
 }
-await fs.writeFile(path.join(tmp, 'é.ts'), 'export const accent = 2;\n', 'utf8');
-const utf8Changes = await client.request('tools/call', { name: 'show_changes', arguments: { workspace_id: ws, path: 'é.ts', since: 'workspace' } });
-if (JSON.stringify(utf8Changes.structuredContent.analysis?.changed_paths) !== JSON.stringify(['é.ts'])) {
+await fs.writeFile(path.join(tmp, 'Ã©.ts'), 'export const accent = 2;\n', 'utf8');
+const utf8Changes = await client.request('tools/call', { name: 'show_changes', arguments: { workspace_id: ws, path: 'Ã©.ts', since: 'workspace' } });
+if (JSON.stringify(utf8Changes.structuredContent.analysis?.changed_paths) !== JSON.stringify(['Ã©.ts'])) {
   throw new Error(`show_changes did not decode a Git-quoted UTF-8 path: ${JSON.stringify(utf8Changes.structuredContent.analysis)}`);
 }
-const renameResult = spawnSync('git', ['mv', '旧名.ts', '新名.ts'], { cwd: tmp, encoding: 'utf8' });
+const renameResult = spawnSync('git', ['mv', 'æ—§å.ts', 'æ–°å.ts'], { cwd: tmp, encoding: 'utf8' });
 if (renameResult.status !== 0) throw new Error(`git mv UTF-8 path failed: ${renameResult.stderr || renameResult.stdout}`);
 const utf8RenameChanges = await client.request('tools/call', { name: 'show_changes', arguments: { workspace_id: ws, staged: true, since: 'workspace' } });
-if (!utf8RenameChanges.structuredContent.analysis?.changed_paths?.includes?.('新名.ts')) {
+if (!utf8RenameChanges.structuredContent.analysis?.changed_paths?.includes?.('æ–°å.ts')) {
   throw new Error(`show_changes did not decode a Git-quoted UTF-8 rename: ${JSON.stringify(utf8RenameChanges.structuredContent.analysis)}`);
 }
-const restoreRenameResult = spawnSync('git', ['mv', '新名.ts', '旧名.ts'], { cwd: tmp, encoding: 'utf8' });
+const restoreRenameResult = spawnSync('git', ['mv', 'æ–°å.ts', 'æ—§å.ts'], { cwd: tmp, encoding: 'utf8' });
 if (restoreRenameResult.status !== 0) throw new Error(`git mv UTF-8 fixture restore failed: ${restoreRenameResult.stderr || restoreRenameResult.stdout}`);
 const cleanPathChanges = await client.request('tools/call', { name: 'show_changes', arguments: { workspace_id: ws, path: 'package.json' } });
 if (cleanPathChanges.structuredContent.changed || cleanPathChanges.structuredContent.changed_files?.length || cleanPathChanges.structuredContent.diff.includes('demo.txt')) {
@@ -1572,7 +1614,7 @@ await codexSessionsClient.request('initialize', {
 codexSessionsClient.notify('notifications/initialized');
 const codexSessionTools = await codexSessionsClient.request('tools/list', {});
 const codexSessionToolNames = codexSessionTools.tools.map((tool) => tool.name);
-for (const expectedName of ['codex_sessions', 'read_codex_session']) {
+for (const expectedName of ['codex_sessions', 'read_codex_session', 'search_codex_session', 'read_codex_session_around']) {
   if (!codexSessionToolNames.includes(expectedName)) {
     throw new Error(`codex session opt-in mode missing ${expectedName}: ${codexSessionToolNames.join(', ')}`);
   }
@@ -1591,6 +1633,21 @@ const codexTranscript = await codexSessionsClient.request('tools/call', {
 });
 if (!codexTranscript.content?.[0]?.text?.includes('Fix the smoke session browser') || !codexTranscript.content?.[0]?.text?.includes('[Tool: bash]')) {
   throw new Error(`read_codex_session did not return bounded transcript text: ${codexTranscript.content?.[0]?.text}`);
+}
+const sessionSearch = await codexSessionsClient.request('tools/call', {
+  name: 'search_codex_session',
+  arguments: { session_id: session.session_id, query: 'session browser', role: 'user', max_results: 5 }
+});
+const sessionMatch = sessionSearch.structuredContent.matches?.[0];
+if (!sessionMatch || !Number.isInteger(sessionMatch.anchor) || !sessionMatch.snippet.includes('session browser')) {
+  throw new Error(`search_codex_session did not return a stable bounded anchor: ${JSON.stringify(sessionSearch.structuredContent)}`);
+}
+const sessionAround = await codexSessionsClient.request('tools/call', {
+  name: 'read_codex_session_around',
+  arguments: { session_id: session.session_id, anchor: sessionMatch.anchor, before_messages: 1, after_messages: 3, max_total_bytes: 12000 }
+});
+if (!sessionAround.content?.[0]?.text?.includes('Fix the smoke session browser')) {
+  throw new Error(`read_codex_session_around did not include the anchored message: ${sessionAround.content?.[0]?.text}`);
 }
 const topOneSessions = await codexSessionsClient.request('tools/call', { name: 'codex_sessions', arguments: { max_sessions: 1 } });
 if (topOneSessions.structuredContent.sessions?.some?.((item) => item.session_id === olderCodexSessionId)) {
@@ -1844,6 +1901,42 @@ if (!/not a git repository|git unavailable|fatal:/i.test(nonGitPayload)) {
 }
 nonGitClient.close();
 
+const largeDiffRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-large-diff-'));
+for (const args of [
+  ['init'],
+  ['config', 'user.email', 'codexpro-smoke@example.com'],
+  ['config', 'user.name', 'CodexPro Smoke']
+]) {
+  const result = spawnSync('git', args, { cwd: largeDiffRoot, encoding: 'utf8' });
+  if (result.status !== 0) throw new Error(`large-diff git ${args.join(' ')} failed: ${result.stderr || result.stdout}`);
+}
+const largeDiffPath = path.join(largeDiffRoot, 'large.txt');
+const largeDiffLines = 600;
+await fs.writeFile(largeDiffPath, Array.from({ length: largeDiffLines }, (_, i) => `before-${i}`).join('\n') + '\n', 'utf8');
+for (const args of [['add', 'large.txt'], ['commit', '-m', 'baseline']]) {
+  const result = spawnSync('git', args, { cwd: largeDiffRoot, encoding: 'utf8' });
+  if (result.status !== 0) throw new Error(`large-diff git ${args.join(' ')} failed: ${result.stderr || result.stdout}`);
+}
+await fs.writeFile(
+  largeDiffPath,
+  Array.from({ length: largeDiffLines }, (_, i) => `after-${i}-${'x'.repeat(32)}`).join('\n') + '\n',
+  'utf8'
+);
+const largeDiffClient = new McpStdioClient('node', ['dist/stdio.js', '--root', largeDiffRoot, '--allow-root', largeDiffRoot, '--tool-mode', 'full'], {
+  cwd: path.resolve('.'),
+  env: { ...process.env, CODEXPRO_ROOT: largeDiffRoot, CODEXPRO_ALLOWED_ROOTS: largeDiffRoot, CODEXPRO_MAX_OUTPUT_BYTES: '4000' }
+});
+await largeDiffClient.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'codexpro-large-diff-smoke', version: '0.1.0' } });
+largeDiffClient.notify('notifications/initialized');
+const largeStatsOnlyDiff = await largeDiffClient.request('tools/call', { name: 'git_diff', arguments: { include_diff: false } });
+if (largeStatsOnlyDiff.structuredContent.diff_error || !largeStatsOnlyDiff.structuredContent.changed || largeStatsOnlyDiff.structuredContent.diff !== '') {
+  throw new Error(`git_diff include_diff=false materialized an oversized raw diff: ${JSON.stringify(largeStatsOnlyDiff.structuredContent)}`);
+}
+if (largeStatsOnlyDiff.structuredContent.additions !== largeDiffLines || largeStatsOnlyDiff.structuredContent.deletions !== largeDiffLines) {
+  throw new Error(`git_diff include_diff=false returned wrong large-diff stats: ${JSON.stringify(largeStatsOnlyDiff.structuredContent)}`);
+}
+largeDiffClient.close();
+
 const wideRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-wide-root-'));
 const nestedRepo = path.join(wideRoot, 'project-b');
 await fs.mkdir(path.join(nestedRepo, 'src'), { recursive: true });
@@ -1897,4 +1990,4 @@ if (!lowerContext.content?.[0]?.text?.includes('Lowercase instruction file loade
   throw new Error('codex_context did not include lowercase agents.md content');
 }
 lowerClient.close();
-console.log('✓ smoke test passed');
+console.log('âœ“ smoke test passed');

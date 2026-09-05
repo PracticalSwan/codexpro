@@ -169,6 +169,8 @@ export interface ChangeAnalysis {
   dependentFiles: ImpactFile[];
   relatedTests: ImpactFile[];
   riskSignals: AnalysisRiskSignal[];
+  affectedPackages?: string[];
+  dependentPackages?: string[];
   recommendedCommands: AnalysisCommandRecommendation[];
   coverage: AnalysisCoverage;
   warnings: string[];

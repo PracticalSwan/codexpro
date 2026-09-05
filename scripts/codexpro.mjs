@@ -731,7 +731,14 @@ function saveRuntimeConnection(root, details, options = {}) {
     requireBashSession: Boolean(options.requireBashSession),
     write: options.write ?? '',
     toolMode: options.toolMode ?? '',
-    toolCards: Boolean(options.toolCards)
+    toolCards: Boolean(options.toolCards),
+    analysisEnabled: Boolean(options.analysisEnabled),
+    artifactExportEnabled: Boolean(options.artifactExportEnabled),
+    goalsEnabled: Boolean(options.goalsEnabled),
+    codeGraphEnabled: Boolean(options.codeGraphEnabled),
+    lspEnabled: Boolean(options.lspEnabled),
+    allowGitPush: Boolean(options.allowGitPush),
+    inheritEnv: Boolean(options.inheritEnv)
   };
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
   try {
@@ -795,6 +802,17 @@ function optionBool(args, profile, field, envNames = [], fallback = false) {
   }
   if (profile?.[field] !== undefined && profile[field] !== '') return boolFromValue(profile[field], fallback);
   return fallback;
+}
+
+function jsonArgsEnv(value) {
+  if (Array.isArray(value)) return JSON.stringify(value.map(String));
+  const raw = String(value ?? '').trim();
+  if (!raw) return '[]';
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return JSON.stringify(parsed.map(String));
+  } catch {}
+  return JSON.stringify(raw.split(/\s+/));
 }
 
 function hasToolCardsInput(args, profile = {}) {
@@ -3892,6 +3910,15 @@ async function main() {
   const root = realDir(args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
   let profile = args.noProfile ? {} : loadWorkspaceProfile(root);
   profile = await maybeConfigureFirstRun(root, args, profile);
+  if (!connectionTest && optionBool(args, profile, 'connectionTest', ['CODEXPRO_CONNECTION_TEST'], false)) {
+    connectionTest = true;
+    args.mode = 'agent';
+    args.toolMode = 'standard';
+    args.write = 'off';
+    args.bash = 'off';
+    args.toolCards = 'off';
+    args.logRequests = true;
+  }
   const effectiveArgs = { ...profile, ...args };
   if (profile.profilePath && !args.noProfile) {
     statusLine('ok', `Using saved profile: ${profile.profilePath}`);
@@ -3940,6 +3967,17 @@ async function main() {
   const toolMode = optionValue(args, profile, 'toolMode', ['CODEXPRO_TOOL_MODE'], 'standard');
   const widgetDomain = optionValue(args, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], 'https://rebel0789.github.io');
   const toolCards = optionBool(args, profile, 'toolCards', ['CODEXPRO_TOOL_CARDS'], false);
+  const analysisEnabled = optionBool(args, profile, 'analysisEnabled', ['CODEXPRO_ANALYSIS'], true);
+  const artifactExportEnabled = optionBool(args, profile, 'artifactExportEnabled', ['CODEXPRO_ARTIFACT_EXPORT'], false);
+  const goalsEnabled = optionBool(args, profile, 'goalsEnabled', ['CODEXPRO_GOALS'], false);
+  const codeGraphEnabled = optionBool(args, profile, 'codeGraphEnabled', ['CODEXPRO_CODEGRAPH'], false);
+  const codeGraphExecutable = String(optionValue(args, profile, 'codeGraphExecutable', ['CODEXPRO_CODEGRAPH_EXECUTABLE'], '') ?? '').trim();
+  const codeGraphArgs = jsonArgsEnv(optionValue(args, profile, 'codeGraphArgs', ['CODEXPRO_CODEGRAPH_ARGS'], []));
+  const lspEnabled = optionBool(args, profile, 'lspEnabled', ['CODEXPRO_LSP'], false);
+  const lspExecutable = String(optionValue(args, profile, 'lspExecutable', ['CODEXPRO_LSP_EXECUTABLE'], '') ?? '').trim();
+  const lspArgs = jsonArgsEnv(optionValue(args, profile, 'lspArgs', ['CODEXPRO_LSP_ARGS'], []));
+  const allowGitPush = optionBool(args, profile, 'allowGitPush', ['CODEXPRO_ALLOW_GIT_PUSH'], false);
+  const inheritEnv = optionBool(args, profile, 'inheritEnv', ['CODEXPRO_INHERIT_ENV'], false);
   validateChoice('bash', bash, ['off', 'safe', 'full']);
   validateChoice('write', write, ['off', 'handoff', 'workspace']);
   validateChoice('tool-mode', toolMode, ['minimal', 'standard', 'full']);
@@ -3968,11 +4006,24 @@ async function main() {
     CODEXPRO_WIDGET_DOMAIN: widgetDomain,
     CODEXPRO_TOOL_CARDS: toolCards ? '1' : '0',
     CODEXPRO_CONNECTION_TEST: connectionTest ? '1' : '0',
+    CODEXPRO_ANALYSIS: analysisEnabled ? '1' : '0',
+    CODEXPRO_ARTIFACT_EXPORT: artifactExportEnabled ? '1' : '0',
+    CODEXPRO_GOALS: goalsEnabled ? '1' : '0',
+    CODEXPRO_CODEGRAPH: codeGraphEnabled ? '1' : '0',
+    CODEXPRO_CODEGRAPH_ARGS: codeGraphArgs,
+    CODEXPRO_LSP: lspEnabled ? '1' : '0',
+    CODEXPRO_LSP_ARGS: lspArgs,
+    CODEXPRO_ALLOW_GIT_PUSH: allowGitPush ? '1' : '0',
+    CODEXPRO_INHERIT_ENV: inheritEnv ? '1' : '0',
     CODEXPRO_MODE: mode,
     CODEXPRO_TUNNEL_MODE: tunnel === 'none' ? '0' : '1',
     CODEXPRO_ALLOW_NO_HTTP_TOKEN: args.noAuth ? '1' : '0'
   };
   if (codexDir) serverEnv.CODEXPRO_CODEX_DIR = codexDir;
+  if (codeGraphExecutable) serverEnv.CODEXPRO_CODEGRAPH_EXECUTABLE = codeGraphExecutable;
+  else delete serverEnv.CODEXPRO_CODEGRAPH_EXECUTABLE;
+  if (lspExecutable) serverEnv.CODEXPRO_LSP_EXECUTABLE = lspExecutable;
+  else delete serverEnv.CODEXPRO_LSP_EXECUTABLE;
   if (args.logRequests || process.env.CODEXPRO_LOG_REQUESTS === '1') serverEnv.CODEXPRO_LOG_REQUESTS = '1';
   if (args.allowHome) serverEnv.CODEXPRO_ALLOW_HOME = '1';
   if (token) serverEnv.CODEXPRO_HTTP_TOKEN = token;
@@ -4040,6 +4091,13 @@ async function main() {
     requireBashSession,
     toolCards,
     connectionTest,
+    analysisEnabled,
+    artifactExportEnabled,
+    goalsEnabled,
+    codeGraphEnabled,
+    lspEnabled,
+    allowGitPush,
+    inheritEnv,
     runtimePid: server.pid ?? null
   };
 

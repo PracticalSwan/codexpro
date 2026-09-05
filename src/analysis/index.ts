@@ -8,6 +8,7 @@ import { extractWorkspaceFiles } from "./extract.js";
 import { buildRelationships } from "./graph.js";
 import { inventoryWorkspace } from "./inventory.js";
 import { classifySearchIntent, emptySearchGroups, groupForFile, sortStructuredMatches } from "./rank.js";
+import { searchOptionalAnalysisProviders } from "./providers.js";
 import type { AnalysisSearchIntent, StructuredSearchMatch, StructuredSearchResult, WorkspaceAnalysis } from "./types.js";
 
 function cacheKey(workspace: Workspace, fingerprint: string, config: CodexProConfig): string {
@@ -197,6 +198,17 @@ export async function searchWorkspaceStructured(
     }
   }
 
+  try {
+    const optional = await searchOptionalAnalysisProviders(config, guard, workspace, query, intent, Math.max(0, resultLimit));
+    warnings.push(...optional.warnings);
+    for (const match of optional.matches) {
+      const existing = matches.find((candidate) => candidate.path === match.path && candidate.line === match.line && candidate.text === match.text);
+      if (!existing && matches.length < candidateLimit) matches.push(match);
+    }
+  } catch (error) {
+    warnings.push(`Optional analysis providers unavailable: ${redactSensitiveText(error instanceof Error ? error.message : String(error))}`);
+  }
+
   if (candidateLimitReached) warnings.push(`Grouped search retained the first ${candidateLimit} candidates before ranking.`);
 
   for (const match of sortStructuredMatches(matches).slice(0, resultLimit)) groups[match.group].push(match);
@@ -218,5 +230,5 @@ export async function searchWorkspaceStructured(
 
 export { invalidateWorkspaceAnalysis } from "./cache.js";
 export { reviewWorkspaceChanges } from "./impact.js";
-export { listAnalysisProviders, normalizeProviderPaths, registerAnalysisProvider } from "./providers.js";
+export { listAnalysisProviders, normalizeProviderPaths, registerAnalysisProvider, resolveAnalysisProviders, searchOptionalAnalysisProviders } from "./providers.js";
 export type * from "./types.js";

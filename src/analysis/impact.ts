@@ -5,6 +5,7 @@ import type { PathGuard, Workspace } from "../guard.js";
 import { classifyFileRole, detectRiskSignals } from "./classify.js";
 import { inspectWorkspace } from "./index.js";
 import type { ChangeAnalysis, AnalysisCommandRecommendation, AnalysisRiskSignal } from "./types.js";
+import { buildPackageGraph, packagesForChangedPaths } from "../packageGraph.js";
 
 const RISK_LABELS: Record<AnalysisRiskSignal["id"], string> = {
   "public-api": "Public API",
@@ -92,6 +93,13 @@ async function nativeRecommendations(guard: PathGuard, workspace: Workspace): Pr
   return recommendations;
 }
 
+export async function discoverVerificationCommands(
+  guard: PathGuard,
+  workspace: Workspace
+): Promise<AnalysisCommandRecommendation[]> {
+  return [...await packageRecommendations(guard, workspace), ...await nativeRecommendations(guard, workspace)];
+}
+
 export async function reviewWorkspaceChanges(
   config: CodexProConfig,
   guard: PathGuard,
@@ -158,6 +166,8 @@ export async function reviewWorkspaceChanges(
     .sort((a, b) => a.path.localeCompare(b.path));
   const impactLimited = dependentFiles.length > resultLimit || relatedTests.length > resultLimit;
 
+  const packageImpact = packagesForChangedPaths(await buildPackageGraph(config, guard, workspace), changedPaths);
+
   return {
     schemaVersion: 1,
     changedPaths,
@@ -165,7 +175,9 @@ export async function reviewWorkspaceChanges(
     dependentFiles: dependentFiles.slice(0, resultLimit),
     relatedTests: relatedTests.slice(0, resultLimit),
     riskSignals,
-    recommendedCommands: [...await packageRecommendations(guard, workspace), ...await nativeRecommendations(guard, workspace)],
+    affectedPackages: packageImpact.affectedPackages,
+    dependentPackages: packageImpact.dependentPackages,
+    recommendedCommands: await discoverVerificationCommands(guard, workspace),
     coverage: analysis.coverage,
     warnings: [
       ...analysis.warnings,

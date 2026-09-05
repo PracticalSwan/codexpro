@@ -33,14 +33,45 @@ export interface CodexProConfig {
   maxOutputBytes: number;
   maxBashObservedOutputBytes: number;
   maxBashTimeoutMs: number;
+  maxWorkspaceProcesses: number;
+  maxProcessOutputBytes: number;
+  maxProcessReadBytes: number;
+  maxCheckOutputBytes: number;
   maxImportBytes: number;
   maxSearchResults: number;
   maxHttpSessions: number;
   httpSessionTtlMs: number;
+  maxOperationBytes: number;
+  maxOperationFiles: number;
+  maxOperationDurationMs: number;
+  maxOperationReceipts: number;
+  operationDir: string;
   blockedGlobs: string[];
   contextDir: string;
   toolCards: boolean;
   connectionTest: boolean;
+  allowGitPush: boolean;
+  codeGraphEnabled: boolean;
+  codeGraphExecutable?: string;
+  codeGraphArgs: string[];
+  codeGraphMaxStaleMs: number;
+  lspEnabled: boolean;
+  lspExecutable?: string;
+  lspArgs: string[];
+  lspTimeoutMs: number;
+  maxArchiveCompressedBytes: number;
+  maxArchiveEntries: number;
+  maxArchiveExpandedBytes: number;
+  maxArchiveCompressionRatio: number;
+  maxDocumentBytes: number;
+  maxDocumentOutputBytes: number;
+  artifactExportEnabled: boolean;
+  maxExportBytes: number;
+  goalsEnabled: boolean;
+  goalDir: string;
+  maxGoals: number;
+  maxGoalTasks: number;
+  maxGoalWorkers: number;
   analysisEnabled: boolean;
   analysisLimits: AnalysisLimits;
 }
@@ -257,6 +288,23 @@ function isLoopbackHost(host: string): boolean {
   return host === "127.0.0.1" || host === "localhost" || host === "::1";
 }
 
+function jsonStringArrayFrom(value: string | undefined, label: string): string[] {
+  if (!value?.trim()) return [];
+  let parsed: unknown;
+  try { parsed = JSON.parse(value); } catch { throw new Error(`${label} must be a JSON array of strings.`); }
+  if (!Array.isArray(parsed) || parsed.length > 32 || parsed.some((item) => typeof item !== "string" || item.length > 1000 || /[\0\r\n]/.test(item))) {
+    throw new Error(`${label} must be a JSON array of up to 32 one-line strings.`);
+  }
+  return parsed as string[];
+}
+
+function optionalCommand(value: string | undefined, label: string): string | undefined {
+  const raw = value?.trim();
+  if (!raw) return undefined;
+  if (raw.length > 1000 || /[\0\r\n]/.test(raw)) throw new Error(`${label} must be one line.`);
+  return expandHome(raw);
+}
+
 export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   const args = parseArgs(argv);
 
@@ -320,6 +368,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   if (requireBashSession && !bashSessionId) {
     throw new Error("CODEXPRO_REQUIRE_BASH_SESSION requires CODEXPRO_BASH_SESSION_ID or --bash-session.");
   }
+  const maxReadBytes = numberFrom(process.env.CODEXPRO_MAX_READ_BYTES, 180_000, 4_000, 2_000_000);
   const maxOutputBytes = numberFrom(process.env.CODEXPRO_MAX_OUTPUT_BYTES, 120_000, 4_000, 2_000_000);
   const maxBashObservedOutputBytes = Math.max(
     maxOutputBytes + 1,
@@ -344,20 +393,51 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     writeMode: writeModeFrom(writeArg ?? process.env.CODEXPRO_WRITE_MODE),
     toolMode: toolModeFrom(toolModeArg ?? process.env.CODEXPRO_TOOL_MODE),
     inheritEnv: process.env.CODEXPRO_INHERIT_ENV === "1",
-    maxReadBytes: numberFrom(process.env.CODEXPRO_MAX_READ_BYTES, 180_000, 4_000, 2_000_000),
+    maxReadBytes,
     maxWriteBytes: numberFrom(process.env.CODEXPRO_MAX_WRITE_BYTES, 1_000_000, 1_000, 10_000_000),
     maxOutputBytes,
     maxBashObservedOutputBytes,
     // Default hard cap is 10 minutes. Operators can raise up to 15 minutes.
     maxBashTimeoutMs: numberFrom(process.env.CODEXPRO_MAX_BASH_TIMEOUT_MS, 600_000, 1_000, 900_000),
+    maxWorkspaceProcesses: numberFrom(process.env.CODEXPRO_MAX_WORKSPACE_PROCESSES, 8, 1, 64),
+    maxProcessOutputBytes: numberFrom(process.env.CODEXPRO_MAX_PROCESS_OUTPUT_BYTES, 2_000_000, 64_000, 64_000_000),
+    maxProcessReadBytes: numberFrom(process.env.CODEXPRO_MAX_PROCESS_READ_BYTES, 120_000, 4_000, 2_000_000),
+    maxCheckOutputBytes: numberFrom(process.env.CODEXPRO_MAX_CHECK_OUTPUT_BYTES, maxOutputBytes, 4_000, 2_000_000),
     maxImportBytes: numberFrom(process.env.CODEXPRO_MAX_IMPORT_BYTES, 5_000_000, 1_000, 50_000_000),
     maxSearchResults: numberFrom(process.env.CODEXPRO_MAX_SEARCH_RESULTS, 200, 5, 2_000),
     maxHttpSessions: numberFrom(process.env.CODEXPRO_MAX_HTTP_SESSIONS, 64, 1, 512),
     httpSessionTtlMs: numberFrom(process.env.CODEXPRO_HTTP_SESSION_TTL_MS, 30 * 60_000, 60_000, 24 * 60 * 60_000),
+    maxOperationBytes: numberFrom(process.env.CODEXPRO_MAX_OPERATION_BYTES, 20_000_000, 1_000, 200_000_000),
+    maxOperationFiles: numberFrom(process.env.CODEXPRO_MAX_OPERATION_FILES, 128, 1, 2_048),
+    maxOperationDurationMs: numberFrom(process.env.CODEXPRO_MAX_OPERATION_DURATION_MS, 600_000, 1_000, 900_000),
+    maxOperationReceipts: numberFrom(process.env.CODEXPRO_MAX_OPERATION_RECEIPTS, 256, 8, 2_048),
+    operationDir: expandHome(process.env.CODEXPRO_OPERATION_DIR || path.join(os.homedir(), ".codexpro", "operations")),
     blockedGlobs: [...DEFAULT_BLOCKED_GLOBS, ...extraBlockedGlobs],
     contextDir: contextDirFrom(process.env.CODEXPRO_CONTEXT_DIR),
     toolCards: boolFrom(toolCardsArg ?? process.env.CODEXPRO_TOOL_CARDS, false),
     connectionTest: boolFrom(process.env.CODEXPRO_CONNECTION_TEST, false),
+    allowGitPush: boolFrom(process.env.CODEXPRO_ALLOW_GIT_PUSH, false),
+    codeGraphEnabled: boolFrom(process.env.CODEXPRO_CODEGRAPH, false),
+    codeGraphExecutable: optionalCommand(process.env.CODEXPRO_CODEGRAPH_EXECUTABLE, "CODEXPRO_CODEGRAPH_EXECUTABLE"),
+    codeGraphArgs: jsonStringArrayFrom(process.env.CODEXPRO_CODEGRAPH_ARGS, "CODEXPRO_CODEGRAPH_ARGS"),
+    codeGraphMaxStaleMs: numberFrom(process.env.CODEXPRO_CODEGRAPH_MAX_STALE_MS, 15 * 60_000, 1_000, 7 * 24 * 60 * 60_000),
+    lspEnabled: boolFrom(process.env.CODEXPRO_LSP, false),
+    lspExecutable: optionalCommand(process.env.CODEXPRO_LSP_EXECUTABLE, "CODEXPRO_LSP_EXECUTABLE"),
+    lspArgs: jsonStringArrayFrom(process.env.CODEXPRO_LSP_ARGS, "CODEXPRO_LSP_ARGS"),
+    lspTimeoutMs: numberFrom(process.env.CODEXPRO_LSP_TIMEOUT_MS, 5_000, 500, 60_000),
+    maxArchiveCompressedBytes: numberFrom(process.env.CODEXPRO_MAX_ARCHIVE_COMPRESSED_BYTES, 50_000_000, 64_000, 500_000_000),
+    maxArchiveEntries: numberFrom(process.env.CODEXPRO_MAX_ARCHIVE_ENTRIES, 1_024, 1, 10_000),
+    maxArchiveExpandedBytes: numberFrom(process.env.CODEXPRO_MAX_ARCHIVE_EXPANDED_BYTES, 100_000_000, 64_000, 1_000_000_000),
+    maxArchiveCompressionRatio: numberFrom(process.env.CODEXPRO_MAX_ARCHIVE_COMPRESSION_RATIO, 100, 1, 10_000),
+    maxDocumentBytes: numberFrom(process.env.CODEXPRO_MAX_DOCUMENT_BYTES, 20_000_000, 4_000, 200_000_000),
+    maxDocumentOutputBytes: numberFrom(process.env.CODEXPRO_MAX_DOCUMENT_OUTPUT_BYTES, maxReadBytes, 1_000, 2_000_000),
+    artifactExportEnabled: boolFrom(process.env.CODEXPRO_ARTIFACT_EXPORT, false),
+    maxExportBytes: numberFrom(process.env.CODEXPRO_MAX_EXPORT_BYTES, 5_000_000, 1_000, 50_000_000),
+    goalsEnabled: boolFrom(process.env.CODEXPRO_GOALS, false),
+    goalDir: expandHome(process.env.CODEXPRO_GOAL_DIR || path.join(os.homedir(), ".codexpro", "goals")),
+    maxGoals: numberFrom(process.env.CODEXPRO_MAX_GOALS, 128, 1, 1024),
+    maxGoalTasks: numberFrom(process.env.CODEXPRO_MAX_GOAL_TASKS, 64, 1, 256),
+    maxGoalWorkers: numberFrom(process.env.CODEXPRO_MAX_GOAL_WORKERS, 4, 1, 8),
     analysisEnabled: boolFrom(process.env.CODEXPRO_ANALYSIS, true),
     analysisLimits: {
       maxInventoryFiles: numberFrom(process.env.CODEXPRO_ANALYSIS_MAX_INVENTORY_FILES, DEFAULT_ANALYSIS_LIMITS.maxInventoryFiles, 100, 100_000),

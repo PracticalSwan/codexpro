@@ -33,6 +33,18 @@ export interface WorkspaceProfile {
   toolMode?: ToolMode | string;
   toolCards?: boolean;
   widgetDomain?: string;
+  analysisEnabled?: boolean;
+  artifactExportEnabled?: boolean;
+  goalsEnabled?: boolean;
+  codeGraphEnabled?: boolean;
+  codeGraphExecutable?: string;
+  codeGraphArgs?: string[];
+  lspEnabled?: boolean;
+  lspExecutable?: string;
+  lspArgs?: string[];
+  allowGitPush?: boolean;
+  inheritEnv?: boolean;
+  connectionTest?: boolean;
   noInstallCloudflared?: boolean;
   allowedRoots?: string[];
 }
@@ -55,6 +67,13 @@ export interface RuntimeConnection {
   write?: WriteMode | string;
   toolMode?: ToolMode | string;
   toolCards?: boolean;
+  analysisEnabled?: boolean;
+  artifactExportEnabled?: boolean;
+  goalsEnabled?: boolean;
+  codeGraphEnabled?: boolean;
+  lspEnabled?: boolean;
+  allowGitPush?: boolean;
+  inheritEnv?: boolean;
 }
 
 export function codexProHome(): string {

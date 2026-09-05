@@ -160,7 +160,7 @@ async function runRipgrep(config: CodexProConfig, guard: PathGuard, workspace: W
         const absPath = path.resolve(value.data?.path?.text ?? "");
         const rel = path.relative(workspace.root, absPath).split(path.sep).join("/");
         if (rel.startsWith("..")) continue;
-        if (guard.isBlockedRelativePath(rel)) continue;
+        if (guard.isBlockedRelativePath(rel, workspace)) continue;
         visibleMatches += 1;
         if (matches.length >= options.maxResults) continue;
         const lineText = String(value.data?.lines?.text ?? "").replace(/\r?\n$/, "");

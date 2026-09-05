@@ -66,7 +66,10 @@ With workspace write mode (the normal agent setup):
 - read, search, and inspect the repo
 - edit with `write`, `edit`, or guarded `apply_patch`
 - import ChatGPT attachments with `import_file`
-- run allowlisted checks with `bash`
+- run allowlisted checks with `bash`, `run_checks`, or `verify_changes`
+- own bounded long-running workspace processes through opaque handles
+- inspect Git history/package impact and use guarded explicit-path Git writes
+- inspect bounded archives/documents and use optional code-intelligence adapters
 - review diffs with `show_changes`
 - write plans under `.ai-bridge`
 - export a context bundle for chats that cannot call tools
@@ -137,12 +140,25 @@ chmod 600 ~/.codexpro/http-token
 
 Prefer `Authorization: Bearer <token>` when the client supports headers. The `?codexpro_token=` query form is a personal compatibility fallback.
 
+## Durable operations and diagnostics
+
+State-changing tools can accept an optional `idempotency_key` and return a durable operation receipt. Use `operation_status` to recover the final state after a lost MCP response. Full workspace-write mode also exposes `prepare_change_set`, `apply_change_set`, and `revert_operation` for SHA-guarded multi-file changes. Revert data is intentionally memory-only, so restart removes the source preimages while durable receipt metadata remains bounded under `~/.codexpro/operations`.
+
+Use `connection_diagnostics`, `tool_surface_diagnostics`, and `local_telemetry` to inspect local MCP health without collecting prompts or source contents. The authenticated local control page includes the same sanitized diagnostics, and `/admin/diagnostics` provides the machine-readable view.
+
+The authenticated control page can also save the non-secret operator profile for the next start: tunnel/runtime modes, Bash transcript, Codex-session access, analysis, artifact export, Durable Goals, CodeGraph/LSP provider settings, Git-push gating, and environment inheritance. Authentication tokens remain hidden.
+
+## Durable Goals (opt-in)
+
+Set `CODEXPRO_GOALS=1` to enable durable dependency-aware Goal tools in full/workspace-write/Bash mode. Goals execute in detached Git worktrees, can survive the initiating MCP connection, and always stop for explicit review before any source projection. Projection requires pinned source/review fingerprints plus `authorize=true`; it never commits or pushes. See [docs/goals.md](docs/goals.md).
+
 ## Safety defaults
 
 - Public tunnels require a CodexPro HTTP token (min 24 bytes)
 - Writes stay hidden unless write mode is `workspace`
 - Safe bash is the default
 - Blocked paths cover `.env`, keys, `.git`, build caches, and similar
+- Workspaces may add a tightening-only `.codexpro-policy.json`; see [docs/workspace-policy.md](docs/workspace-policy.md)
 - Attachment import only accepts ChatGPT Apps SDK file objects from approved HTTPS hosts
 
 Read [SECURITY.md](SECURITY.md) before exposing a tunnel.

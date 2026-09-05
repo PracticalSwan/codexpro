@@ -7,6 +7,7 @@ import type { CodexProConfig } from "./config.js";
 import type { Workspace } from "./guard.js";
 import { CodexProError, displayPath, normalizeRelPath, PathGuard } from "./guard.js";
 import { hasSecretValue, redactSensitiveText } from "./redact.js";
+import { withResourceLease } from "./operations/locks.js";
 
 export interface TreeOptions {
   path?: string;
@@ -43,57 +44,25 @@ export function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
 }
 
-const fileWriteLocks = new Map<string, Promise<void>>();
-
 function normalizeLockKey(absPath: string): string {
   const normalized = path.normalize(absPath);
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
 async function canonicalWriteKey(absPath: string): Promise<string> {
-  try {
-    return normalizeLockKey(await fsp.realpath(absPath));
-  } catch {}
-
+  try { return normalizeLockKey(await fsp.realpath(absPath)); } catch {}
   let current = path.dirname(absPath);
   const suffix = [path.basename(absPath)];
   while (path.dirname(current) !== current) {
-    try {
-      return normalizeLockKey(path.join(await fsp.realpath(current), ...suffix));
-    } catch {
-      suffix.unshift(path.basename(current));
-      current = path.dirname(current);
-    }
+    try { return normalizeLockKey(path.join(await fsp.realpath(current), ...suffix)); }
+    catch { suffix.unshift(path.basename(current)); current = path.dirname(current); }
   }
   return normalizeLockKey(path.resolve(absPath));
 }
 
-async function acquireFileWriteLock(absPath: string): Promise<() => void> {
-  const key = await canonicalWriteKey(absPath);
-  const previous = fileWriteLocks.get(key) ?? Promise.resolve();
-  let releaseCurrent!: () => void;
-  const current = new Promise<void>((resolve) => {
-    releaseCurrent = resolve;
-  });
-  fileWriteLocks.set(key, current);
-  await previous;
-  return () => {
-    releaseCurrent();
-    if (fileWriteLocks.get(key) === current) fileWriteLocks.delete(key);
-  };
-}
-
 export async function withFileWriteLocks<T>(absPaths: string[], task: () => Promise<T> | T): Promise<T> {
-  const releases: Array<() => void> = [];
-  const orderedPaths = [...new Set(absPaths)].sort((left, right) => left.localeCompare(right));
-  try {
-    for (const absPath of orderedPaths) {
-      releases.push(await acquireFileWriteLock(absPath));
-    }
-    return await task();
-  } finally {
-    for (const release of releases.reverse()) release();
-  }
+  const keys = await Promise.all([...new Set(absPaths)].map(canonicalWriteKey));
+  return withResourceLease(keys.map((key) => `file:${key}`), task);
 }
 
 async function writeText(absPath: string, content: string, existingText?: string, relPath = path.basename(absPath)): Promise<void> {
@@ -235,7 +204,7 @@ export async function repoTree(config: CodexProConfig, guard: PathGuard, workspa
     let dirents = await fsp.readdir(absDir, { withFileTypes: true });
     dirents = dirents
       .filter((entry) => options.includeHidden || !isHiddenName(entry.name))
-      .filter((entry) => !guard.isBlockedRelativePath(normalizeRelPath(path.join(relDir, entry.name))))
+      .filter((entry) => !guard.isBlockedRelativePath(normalizeRelPath(path.join(relDir, entry.name)), workspace))
       .sort((a, b) => {
         if (a.isDirectory() && !b.isDirectory()) return -1;
         if (!a.isDirectory() && b.isDirectory()) return 1;
@@ -279,7 +248,7 @@ export async function listFiles(
 
   async function addFile(absFile: string): Promise<void> {
     const rel = displayPath(absFile, workspace.root);
-    if (guard.isBlockedRelativePath(rel)) return;
+    if (guard.isBlockedRelativePath(rel, workspace)) return;
     if (!options.includeHidden && rel.split("/").some(isHiddenName)) return;
     if (options.glob && !minimatch(rel, options.glob, { dot: true })) return;
     files.push(rel);
@@ -298,7 +267,7 @@ export async function listFiles(
       if (files.length >= options.maxFiles) return;
       const abs = path.join(absDir, entry.name);
       const rel = displayPath(abs, workspace.root);
-      if (guard.isBlockedRelativePath(rel)) continue;
+      if (guard.isBlockedRelativePath(rel, workspace)) continue;
       if (!options.includeHidden && rel.split("/").some(isHiddenName)) continue;
       if (entry.isDirectory()) await walk(abs);
       else if (entry.isFile()) await addFile(abs);
@@ -365,8 +334,7 @@ export async function writeTextFile(
     throw new CodexProError("Secret-looking content is blocked from write. Use placeholders such as [REDACTED_SECRET] in handoff files.");
   }
 
-  const releaseWriteLock = await acquireFileWriteLock(resolved.absPath);
-  try {
+  return withFileWriteLocks([resolved.absPath], async () => {
     let oldText = "";
     let existed = false;
     try {
@@ -392,9 +360,7 @@ export async function writeTextFile(
     const diff = makeUnifiedDiff(oldText, content, resolved.relPath);
     await writeText(resolved.absPath, content, existed ? oldText : undefined, resolved.relPath);
     return { path: resolved.relPath, bytes: contentBytes, sha256: sha256(content), existed, diff };
-  } finally {
-    releaseWriteLock();
-  }
+  });
 }
 
 export async function editTextFile(
@@ -408,8 +374,7 @@ export async function editTextFile(
 ): Promise<{ path: string; replacements: number; bytes: number; sha256: string; diff: DiffResult }> {
   if (!oldText) throw new CodexProError("old_text must not be empty.");
   const resolved = guard.resolve(workspace, filePath, { forWrite: true });
-  const releaseWriteLock = await acquireFileWriteLock(resolved.absPath);
-  try {
+  return withFileWriteLocks([resolved.absPath], async () => {
     await guard.assertTextFile(resolved.absPath, Math.max(config.maxWriteBytes, config.maxReadBytes));
     const before = await fsp.readFile(resolved.absPath, "utf8");
     assertExpectedSha(options.expectedSha256, before, resolved.relPath);
@@ -446,9 +411,7 @@ export async function editTextFile(
     const diff = makeUnifiedDiff(before, after, resolved.relPath);
     await writeText(resolved.absPath, after, before, resolved.relPath);
     return { path: resolved.relPath, replacements, bytes: afterBytes, sha256: sha256(after), diff };
-  } finally {
-    releaseWriteLock();
-  }
+  });
 }
 
 export async function ensureAiBridge(config: CodexProConfig, guard: PathGuard, workspace: Workspace): Promise<string[]> {

@@ -37,11 +37,28 @@ try {
   if (tarball.filename !== `${CODEXPRO_PACKAGE}-${release.version}.tgz`) {
     fail(`Unexpected tarball filename: ${tarball.filename ?? "(missing)"}.`);
   }
-  const forbiddenInternal = (tarball.files ?? [])
-    .map((entry) => entry.path)
-    .filter((file) => file.startsWith("docs/superpowers/"));
+  const packedFiles = (tarball.files ?? []).map((entry) => String(entry.path ?? "").replaceAll("\\", "/"));
+  const requiredRuntimeFiles = ["dist/stdio.js", "dist/http.js", "scripts/codexpro.mjs", "README.md", "LICENSE"];
+  const missingRuntimeFiles = requiredRuntimeFiles.filter((file) => !packedFiles.includes(file));
+  if (missingRuntimeFiles.length) {
+    fail(`Runtime files are missing from the tarball: ${missingRuntimeFiles.join(", ")}.`);
+  }
+  const forbiddenInternal = packedFiles.filter((file) => {
+    const lower = file.toLowerCase();
+    return (
+      lower === "agents.md" ||
+      lower.startsWith("docs/agentic/") ||
+      lower.startsWith("docs/superpowers/") ||
+      lower.startsWith(".ai-bridge/") ||
+      lower === ".env" ||
+      lower.startsWith(".env.") ||
+      lower.includes("/.env") ||
+      lower.startsWith("profiles/") ||
+      lower.startsWith("runtime/")
+    );
+  });
   if (forbiddenInternal.length) {
-    fail(`Internal planning files entered the public tarball: ${forbiddenInternal.join(", ")}.`);
+    fail(`Private or planning files entered the public tarball: ${forbiddenInternal.join(", ")}.`);
   }
 
   console.log(JSON.stringify({

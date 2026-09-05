@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+## 0.32.3 (2026-09-05)
+
+- Fixed workspace_events so allowed hidden workspace paths participate in create/edit/delete/rename snapshots while blocked paths such as .git remain excluded by PathGuard.
+- Clarified open_current_workspace / open_workspace selection semantics: implicit selection remains intentionally MCP-session-local for isolation, and structured results now tell cross-session HTTP/ChatGPT callers to pass workspace_id explicitly.
+## 0.32.2 (2026-09-05)
+
+- Added persistent practical-profile capability settings to the authenticated local control page, including analysis, artifact export, Durable Goals, CodeGraph/LSP provider configuration, Git-push gating, environment inheritance, Bash transcript, and widget origin; secrets remain hidden and unchanged unless managed through their existing protected paths.
+- Wired those saved capability settings through `codexpro start` so the next runtime actually receives the selected gates, while retaining existing workspace/tunnel/authentication profile state.
+- Updated the optional CodeGraph provider for CodeGraph 1.6.x (`status [path]`, `query --path`, `sync [path]`), including its current JSON result shape and explicit freshness status. Windows npm shims are invoked through the trusted package entrypoint without shell interpolation.
+
+## 0.32.1 (2026-09-05)
+
+- Fixed live ChatGPT HTTP continuity for workspace-owned `proc_*` process handles and `evt_*` workspace-event cursors by moving those registries to process-level runtime state shared across MCP sessions; per-session close no longer destroys them, while HTTP shutdown still terminates owned child processes deterministically.
+- Fixed `git_blame(max_lines=...)` to bound Git itself with a line range and one look-ahead line for truncation detection, preventing `ENOBUFS` on ordinary larger tracked files.
+- Added cross-session HTTP regressions for process status/output/stop and event-cursor reuse, plus a large-file blame regression with a deliberately small output buffer.
+## 0.32.0 (2026-09-05)
+
+- Added workspace-owned long-running process management with opaque handles, bounded cursor output, deterministic cleanup, trusted check discovery/execution, change-aware verification, and structured test results. Windows restricted Bash now preserves the minimal process-launch environment npm needs and derives `ComSpec` from an existing `SystemRoot\System32\cmd.exe` when required.
+- Added bounded batch reads/searches, path-specific AGENTS instruction resolution, ranked/dependency-aware context gathering, workspace event cursors, and strict durable task checkpoints that store task facts rather than hidden reasoning.
+- Added bounded Git history/show/blame, package graphs, change-impact analysis, preflight scanning, explicit-path staging, HEAD/branch/staged-set guarded commits, and opt-in push with no force-push path.
+- Added streamed Codex-session search with stable byte anchors and bounded read-around navigation for large local JSONL histories.
+- Added built-in fuzzy file finding plus optional explicitly configured CodeGraph and LSP adapters. External provider paths are revalidated through the workspace guard; CodeGraph synchronization remains explicit and hidden when unavailable.
+- Added safe ZIP inspection/transactional extraction, bounded non-executing PDF/OOXML document inspection, and opt-in bounded MCP embedded-resource export without local-path disclosure.
+- Added opt-in Durable Goals with bounded DAG scheduling, detached Git-worktree execution that survives MCP disconnects, cross-process ownership/recovery, pause/resume/cancel, explicit safety review, and fingerprint-guarded source projection. Goals never auto-commit, push, merge, deploy, publish, or persist task stdout/prompts/hidden reasoning.
+- Extended workspace policy so it can disable optional Git-push/code-intelligence/artifact/Goal capabilities and lower process/check/archive/document/export/Goal resource ceilings without broadening global authority.
+
+
+## 0.31.0 (2026-09-05)
+
+- Added a strict, tightening-only per-workspace `.codexpro-policy.json` with centralized effective-policy enforcement, bounded validation, additional blocked paths, verification guidance, tighter resource ceilings, and the read-only `effective_policy` MCP surface.
+- Added the shared operation journal/concurrency core with durable bounded receipts, `operation_status`, idempotent retries for mutation tools, transactional multi-file change sets, safe hash-checked revert, resource budgets, and deterministic workspace/file leases. Change-set preimages remain memory-only and are never written to the journal.
+- Added bounded local observability with connection, tool-surface, and telemetry MCP diagnostics plus the authenticated `/admin/diagnostics` API and local admin diagnostics panel. Diagnostics retain counters and sanitized metadata only, not prompts, file contents, tokens, or raw command output; normal MCP SSE stream closure is tracked without being misclassified as a response failure.
+- Made `git_diff(include_diff=false)` use bounded `git --numstat` output instead of materializing the full unified diff, preserving nested-repository path scoping and Git failure diagnostics while avoiding output-buffer exhaustion on large diffs.
+- Reconciled the maintenance integration stack against current upstream/fork state, refreshed vulnerable transitive lockfile dependencies, and tightened release-package checks so internal agent/planning/private state cannot enter the npm tarball.
 - Hardened Windows sensitive-path handling across file tools and safe Bash: blocked names now match case-insensitively, and NTFS alternate-data-stream paths are checked against their base file so variants such as `.ENV`, `.Git`, `ID_RSA`, uppercase private-key extensions, and `.ENV:secret` cannot bypass the guard.
 - Made the execute-handoff release smoke accept resolved Windows `.cmd` adapter paths instead of requiring the bare CLI name.
 - Prioritized tracked source/config/infrastructure files within bounded repository analysis and stopped documentation/generated filenames from creating runtime risk signals on their own.

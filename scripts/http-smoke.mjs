@@ -277,6 +277,11 @@ try {
     throw new Error(`expected unauthenticated healthz to return 401, got ${unauthorized.status}`);
   }
 
+  const unauthDiagnostics = await fetch(`${baseUrl}/admin/diagnostics`);
+  if (unauthDiagnostics.status !== 401) {
+    throw new Error(`expected unauthenticated diagnostics to return 401, got ${unauthDiagnostics.status}`);
+  }
+
   const authorized = await fetch(`${baseUrl}/healthz`, {
     headers: { Authorization: `Bearer ${token}` }
   });
@@ -315,6 +320,15 @@ try {
   });
   if (validAfterThrottle.status !== 200) {
     throw new Error(`authentication throttling blocked a valid token, got ${validAfterThrottle.status}`);
+  }
+
+  const initialDiagnostics = await fetch(`${baseUrl}/admin/diagnostics?codexpro_token=${encodeURIComponent(token)}`);
+  const initialDiagnosticsJson = await initialDiagnostics.json();
+  if (initialDiagnostics.status !== 200 || initialDiagnosticsJson.connection?.state !== 'no_requests') {
+    throw new Error(`expected initial diagnostics with no MCP requests, got ${initialDiagnostics.status} ${JSON.stringify(initialDiagnosticsJson)}`);
+  }
+  if (JSON.stringify(initialDiagnosticsJson).includes(token)) {
+    throw new Error('admin diagnostics leaked the raw auth token');
   }
 
   const badAdminJson = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
@@ -364,7 +378,7 @@ try {
   ) {
     throw new Error('authenticated onboarding page did not set no-store, no-referrer, and nosniff headers');
   }
-  if (!homeText.includes('CodexPro Local Control') || !homeText.includes('CLI controls') || !homeText.includes('Connect ChatGPT') || !homeText.includes('Runtime guardrails')) {
+  if (!homeText.includes('CodexPro Local Control') || !homeText.includes('CLI controls') || !homeText.includes('Connect ChatGPT') || !homeText.includes('Runtime guardrails') || !homeText.includes('data-diagnostics-output') || !homeText.includes('/admin/diagnostics')) {
     throw new Error('onboarding page did not include expected admin setup copy');
   }
   if (!homeText.includes('Connection profile') || !homeText.includes('data-profile-form')) {
@@ -376,7 +390,7 @@ try {
   if (!homeText.includes('Authorization: "Bearer " + connectorToken') || homeText.includes('fetch("/admin/profile" + window.location.search')) {
     throw new Error('onboarding profile save did not reuse the captured token as a Bearer credential');
   }
-  for (const fieldName of ['tunnelName', 'ngrokConfig', 'cloudflareConfig', 'cloudflareTokenFile', 'toolCards', 'noInstallCloudflared']) {
+  for (const fieldName of ['tunnelName', 'ngrokConfig', 'cloudflareConfig', 'cloudflareTokenFile', 'toolCards', 'bashTranscript', 'widgetDomain', 'analysisEnabled', 'artifactExportEnabled', 'goalsEnabled', 'codeGraphEnabled', 'codeGraphExecutable', 'codeGraphArgs', 'lspEnabled', 'lspExecutable', 'lspArgs', 'allowGitPush', 'inheritEnv', 'connectionTest', 'noInstallCloudflared']) {
     if (!homeText.includes(`name="${fieldName}"`)) {
       throw new Error(`onboarding page did not include profile field ${fieldName}`);
     }
@@ -476,6 +490,18 @@ try {
       toolMode: 'full',
       toolCards: true,
       widgetDomain: 'https://widgets.codexpro.test',
+      analysisEnabled: true,
+      artifactExportEnabled: true,
+      goalsEnabled: true,
+      codeGraphEnabled: true,
+      codeGraphExecutable: 'codegraph',
+      codeGraphArgs: [],
+      lspEnabled: false,
+      lspExecutable: '',
+      lspArgs: [],
+      allowGitPush: false,
+      inheritEnv: false,
+      connectionTest: false,
       ngrokConfig: path.join(root, 'ngrok.yml'),
       cloudflareTokenFile: 'cloudflare-token',
       noInstallCloudflared: true
@@ -497,6 +523,17 @@ try {
     savedProfile.bashSession !== 'http-main' ||
     savedProfile.requireBashSession !== true ||
     savedProfile.toolCards !== true ||
+    savedProfile.analysisEnabled !== true ||
+    savedProfile.artifactExportEnabled !== true ||
+    savedProfile.goalsEnabled !== true ||
+    savedProfile.codeGraphEnabled !== true ||
+    savedProfile.codeGraphExecutable !== 'codegraph' ||
+    JSON.stringify(savedProfile.codeGraphArgs) !== '[]' ||
+    savedProfile.lspEnabled !== false ||
+    JSON.stringify(savedProfile.lspArgs) !== '[]' ||
+    savedProfile.allowGitPush !== false ||
+    savedProfile.inheritEnv !== false ||
+    savedProfile.connectionTest !== false ||
     savedProfile.ngrokConfig !== path.join(root, 'ngrok.yml') ||
     savedProfile.noInstallCloudflared !== true ||
     savedProfile.token !== token
@@ -541,7 +578,7 @@ try {
 
   const queryTools = await listTools(`${baseUrl}/mcp?codexpro_token=${encodeURIComponent(token)}`);
   const queryToolNames = toolNames(queryTools);
-  for (const expected of ['server_config', 'codexpro_self_test', 'codexpro_inventory', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'tree', 'search', 'load_skill', 'git_status', 'git_diff', 'show_changes', 'read_handoff', 'wait_for_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
+  for (const expected of ['server_config', 'effective_policy', 'connection_diagnostics', 'tool_surface_diagnostics', 'local_telemetry', 'operation_status', 'codexpro_self_test', 'codexpro_inventory', 'open_current_workspace', 'open_workspace', 'workspace_snapshot', 'tree', 'search', 'load_skill', 'git_status', 'git_diff', 'show_changes', 'read_handoff', 'wait_for_handoff', 'codex_context', 'handoff_to_agent', 'handoff_to_codex', 'export_pro_context']) {
     if (!queryToolNames.includes(expected)) {
       throw new Error(`URL-token MCP tools/list missing ${expected}; got ${queryToolNames.join(', ')}`);
     }
@@ -565,6 +602,30 @@ try {
   }
 
   const mcpUrl = `${baseUrl}/mcp?codexpro_token=${encodeURIComponent(token)}`;
+  await withClient(mcpUrl, async (diagnosticClient) => {
+    const connection = await callTool(diagnosticClient, 'connection_diagnostics');
+    if (!['healthy', 'degraded'].includes(connection.structuredContent.state)) {
+      throw new Error(`connection_diagnostics did not observe live MCP traffic: ${JSON.stringify(connection.structuredContent)}`);
+    }
+    const surface = await callTool(diagnosticClient, 'tool_surface_diagnostics');
+    if (surface.structuredContent.matches_expected !== true) {
+      throw new Error(`tool_surface_diagnostics mismatch: ${JSON.stringify(surface.structuredContent)}`);
+    }
+    const localTelemetry = await callTool(diagnosticClient, 'local_telemetry');
+    if (!(localTelemetry.structuredContent.totalEvents > 0) || JSON.stringify(localTelemetry.structuredContent).includes(token)) {
+      throw new Error(`local_telemetry was empty or leaked token: ${JSON.stringify(localTelemetry.structuredContent)}`);
+    }
+  });
+  const liveDiagnostics = await fetch(`${baseUrl}/admin/diagnostics?codexpro_token=${encodeURIComponent(token)}`);
+  const liveDiagnosticsJson = await liveDiagnostics.json();
+  if (liveDiagnostics.status !== 200 || liveDiagnosticsJson.connection?.request_arrivals < 1 || liveDiagnosticsJson.tool_surface?.registered_tools?.length < 1) {
+    throw new Error(`admin diagnostics did not reflect live MCP activity: ${liveDiagnostics.status} ${JSON.stringify(liveDiagnosticsJson)}`);
+  }
+  if (JSON.stringify(liveDiagnosticsJson).includes(token)) throw new Error('live admin diagnostics leaked the raw auth token');
+  if (liveDiagnosticsJson.connection?.state !== 'healthy' || liveDiagnosticsJson.connection?.response_failures !== 0) {
+    throw new Error(`normal MCP client close degraded connection diagnostics: ${JSON.stringify(liveDiagnosticsJson.connection)}`);
+  }
+
   await withClient(mcpUrl, async (firstClient) => {
     const opened = await callTool(firstClient, 'open_current_workspace', { include_tree: false });
     const changes = await callTool(firstClient, 'show_changes', {
