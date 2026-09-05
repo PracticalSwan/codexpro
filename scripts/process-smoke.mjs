@@ -8,7 +8,8 @@ import { OperationStore } from '../dist/operations/store.js';
 import { OperationManager } from '../dist/operations/manager.js';
 import { WorkspaceProcessManager } from '../dist/processOps.js';
 
-const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-process-smoke-'));
+const rootRaw = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-process-smoke-'));
+const root = await fs.realpath(rootRaw);
 const opDir = path.join(root, '.ops');
 const keys = ['CODEXPRO_ROOT','CODEXPRO_ALLOWED_ROOTS','CODEXPRO_BASH_MODE','CODEXPRO_OPERATION_DIR','CODEXPRO_ALLOW_NO_HTTP_TOKEN'];
 const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
@@ -61,5 +62,5 @@ try {
     if (saved[key] === undefined) delete process.env[key];
     else process.env[key] = saved[key];
   }
-  await fs.rm(root, { recursive: true, force: true });
+  await fs.rm(rootRaw, { recursive: true, force: true });
 }

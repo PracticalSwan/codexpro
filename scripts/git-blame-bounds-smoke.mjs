@@ -7,7 +7,8 @@ import { loadConfig } from "../dist/config.js";
 import { PathGuard } from "../dist/guard.js";
 import { gitBlame } from "../dist/gitOps.js";
 
-const root = await fs.mkdtemp(path.join(os.tmpdir(), "codexpro-git-blame-bounds-"));
+const rootRaw = await fs.mkdtemp(path.join(os.tmpdir(), "codexpro-git-blame-bounds-"));
+const root = await fs.realpath(rootRaw);
 const run = (args) => {
   const result = spawnSync("git", args, { cwd: root, encoding: "utf8" });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout);
@@ -29,5 +30,5 @@ try {
   assert.equal(result.truncated, true);
   console.log("git blame bounds smoke passed");
 } finally {
-  await fs.rm(root, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
+  await fs.rm(rootRaw, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
 }

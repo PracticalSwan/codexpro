@@ -8,7 +8,7 @@ import { PathGuard } from "../dist/guard.js";
 import { buildPackageGraph } from "../dist/packageGraph.js";
 import { gitHistory, gitShow, gitBlame } from "../dist/gitOps.js";
 import { preflightChanges } from "../dist/preflightOps.js";
-const root=await fs.mkdtemp(path.join(os.tmpdir(),"codexpro-git-intel-"));
+const rootRaw=await fs.mkdtemp(path.join(os.tmpdir(),"codexpro-git-intel-")); const root=await fs.realpath(rootRaw);
 const run=(a)=>{const r=spawnSync("git",a,{cwd:root,encoding:"utf8"});if(r.status!==0)throw new Error(r.stderr||r.stdout);};
 await fs.mkdir(path.join(root,"packages","a","src"),{recursive:true});
 await fs.mkdir(path.join(root,"packages","b"),{recursive:true});
@@ -28,4 +28,4 @@ try {
  const pre=await preflightChanges(config,guard,ws,{paths:["packages/a/src/bad.txt"],maxFileBytes:4096});
  assert(pre.issues.some(i=>i.kind==="conflict_marker")); assert(pre.issues.some(i=>i.kind==="secret"));
  console.log("git intelligence smoke passed");
-} finally { await fs.rm(root,{recursive:true,force:true}); }
+} finally { await fs.rm(rootRaw,{recursive:true,force:true}); }
