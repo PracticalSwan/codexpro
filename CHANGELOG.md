@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Repositioned the PracticalSwan fork as **CodexPro Full** while preserving the `codexpro` CLI/package/protocol compatibility surface and upstream MIT attribution. Canonical repository, issue, release-guard, local-admin, and documentation metadata now point to `PracticalSwan/codexpro`.
+- Added `FEATURES.md` as the canonical 0.32.3 capability guide and refreshed active README/FAQ/security/launch/profile documentation so the fork is not confused with the separately published upstream npm package.
+
 ## 0.32.3 (2026-09-05)
 
 - Fixed workspace_events so allowed hidden workspace paths participate in create/edit/delete/rename snapshots while blocked paths such as .git remain excluded by PathGuard.

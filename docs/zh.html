@@ -3,16 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>CodexPro - 让 ChatGPT Web 连接本地仓库</title>
+    <title>CodexPro Full - 让 ChatGPT Web 连接本地仓库</title>
     <meta
       name="description"
       content="CodexPro 通过 ChatGPT Plugins 和 MCP，把 ChatGPT Web 连接到你明确允许的本地仓库，支持读取、搜索、编辑、git 检查和安全验证。"
     />
     <meta property="og:title" content="CodexPro 中文文档" />
     <meta property="og:description" content="本地 MCP 桥：把 Server URL 粘贴到 ChatGPT Plugins，在你允许的仓库上工作。" />
-    <meta property="og:image" content="https://rebel0789.github.io/codexpro/og.svg" />
+    <meta property="og:image" content="https://raw.githubusercontent.com/PracticalSwan/codexpro/feature/plans-01-04-20260905/docs/og.svg" />
     <meta name="theme-color" content="#0b1220" />
-    <link rel="alternate" hreflang="en" href="https://rebel0789.github.io/codexpro/" />
+    <link rel="alternate" hreflang="en" href="./index.html" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -21,7 +21,7 @@
     <header class="site-header">
       <a class="brand" href="#top" aria-label="CodexPro 中文首页">
         <img class="brand-mark" src="./favicon.svg" width="34" height="34" alt="" aria-hidden="true" />
-        <span>CodexPro</span>
+        <span>CodexPro Full</span>
       </a>
       <nav aria-label="主导航">
         <a href="#quickstart">开始</a>
@@ -30,7 +30,7 @@
         <a href="#modes">模式</a>
         <a href="#faq">FAQ</a>
         <a href="./index.html">English</a>
-        <a class="nav-star" href="https://github.com/rebel0789/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />GitHub 点星</a>
+        <a class="nav-star" href="https://github.com/PracticalSwan/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />GitHub 点星</a>
       </nav>
     </header>
 
@@ -44,9 +44,15 @@
             安装 CLI，在项目里运行 setup，然后把复制好的 Server URL 粘贴到 ChatGPT Plugins。CodexPro 会处理本地 server、token、tunnel 和 workspace 工具。
           </p>
           <div class="install-line" role="group" aria-label="安装命令">
-            <code>npm install -g codexpro
+            <code>git clone https://github.com/PracticalSwan/codexpro.git
+cd codexpro
+git checkout feature/plans-01-04-20260905
+npm install
+npm run build
+npm pack
+npm install -g ./codexpro-0.32.3.tgz
 codexpro setup</code>
-            <button class="copy-button" data-copy="npm install -g codexpro&#10;codexpro setup">复制</button>
+            <button class="copy-button" data-copy="git clone https://github.com/PracticalSwan/codexpro.git&#10;cd codexpro&#10;git checkout feature/plans-01-04-20260905&#10;npm install&#10;npm run build&#10;npm pack&#10;npm install -g ./codexpro-0.32.3.tgz&#10;codexpro setup">复制</button>
           </div>
           <p class="eyebrow">main 文档可能早于 npm 发布；全局安装前请看 npm 版本，未发布行为用 source checkout。</p>
           <div class="hero-proof" aria-label="核心能力">
@@ -57,8 +63,8 @@ codexpro setup</code>
           </div>
           <div class="hero-actions">
             <a class="button primary" href="#quickstart">安装 CodexPro</a>
-            <a class="button secondary star-button" href="https://github.com/rebel0789/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />GitHub 点星</a>
-            <a class="button secondary" href="https://www.npmjs.com/package/codexpro">查看 npm</a>
+            <a class="button secondary star-button" href="https://github.com/PracticalSwan/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />GitHub 点星</a>
+            <a class="button secondary" href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/FEATURES.md">Feature guide</a>
           </div>
         </div>
 
@@ -75,7 +81,7 @@ codexpro setup</code>
             <div class="demo-grid">
               <div class="chat-pane">
                 <small>安装</small>
-                <p><code>npm install -g codexpro</code><br /><code>codexpro setup</code></p>
+                <p><code>git clone https://github.com/PracticalSwan/codexpro.git</code><br /><code>npm install && npm run build && npm pack</code><br /><code>npm install -g ./codexpro-0.32.3.tgz</code></p>
                 <div class="message-chip">Server URL 自动复制</div>
               </div>
               <div class="tool-pane">
@@ -113,7 +119,7 @@ codexpro setup</code>
         <div>
           <span>01</span>
           <strong>Install</strong>
-          <p>先运行 <code>npm install -g codexpro</code>。</p>
+          <p>先运行 <code>git clone https://github.com/PracticalSwan/codexpro.git</code>。</p>
         </div>
         <div>
           <span>02</span>
@@ -174,7 +180,13 @@ codexpro setup</code>
             <span>1</span>
             <div>
               <strong>全局安装</strong>
-              <pre><code>npm install -g codexpro</code></pre>
+              <pre><code>git clone https://github.com/PracticalSwan/codexpro.git
+cd codexpro
+git checkout feature/plans-01-04-20260905
+npm install
+npm run build
+npm pack
+npm install -g ./codexpro-0.32.3.tgz</code></pre>
             </div>
           </div>
           <div class="step">
@@ -392,11 +404,11 @@ codexpro start</code></pre>
           </article>
         </div>
         <div class="link-row" aria-label="中文文档链接">
-          <a class="star-link" href="https://github.com/rebel0789/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />GitHub 点星</a>
-          <a href="https://github.com/rebel0789/codexpro/blob/main/README_ZH.md">中文 README</a>
-          <a href="https://github.com/rebel0789/codexpro/blob/main/FAQ_ZH.md">中文 FAQ</a>
-          <a href="https://github.com/rebel0789/codexpro/blob/main/DOMAIN_SETUP.md">稳定 URL 指南</a>
-          <a href="https://github.com/rebel0789/codexpro/blob/main/SECURITY.md">安全说明</a>
+          <a class="star-link" href="https://github.com/PracticalSwan/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />GitHub 点星</a>
+          <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/README_ZH.md">中文 README</a>
+          <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/FAQ_ZH.md">中文 FAQ</a>
+          <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/DOMAIN_SETUP.md">稳定 URL 指南</a>
+          <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/SECURITY.md">安全说明</a>
         </div>
       </section>
 
@@ -418,11 +430,11 @@ codexpro start</code></pre>
     </main>
 
     <footer class="site-footer">
-      <span>CodexPro</span>
-      <a class="star-link" href="https://github.com/rebel0789/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />GitHub 点星</a>
-      <a href="https://www.npmjs.com/package/codexpro">npm</a>
+      <span>CodexPro Full</span>
+      <a class="star-link" href="https://github.com/PracticalSwan/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />GitHub 点星</a>
+      <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/FEATURES.md">Features</a>
       <a href="./index.html">English</a>
-      <a href="https://github.com/rebel0789/codexpro/blob/main/SECURITY.md">安全说明</a>
+      <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/SECURITY.md">安全说明</a>
     </footer>
 
     <script src="./script.js"></script>

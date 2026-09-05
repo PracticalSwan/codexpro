@@ -1,4 +1,4 @@
-# Workspace policy
+# Workspace policy - CodexPro Full
 
 CodexPro can load an optional `.codexpro-policy.json` from the root of each opened workspace. The file is local project policy: it can make the active global/profile configuration more restrictive, but it cannot grant new access or authority.
 

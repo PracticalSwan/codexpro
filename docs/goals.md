@@ -1,4 +1,4 @@
-# Durable Goals
+# Durable Goals - CodexPro Full
 
 Durable Goals are an opt-in CodexPro 0.32 feature for deterministic multi-step local execution. They are disabled by default and require full tool mode, workspace write mode, Bash access, Git, and a platform-capable Goal storage location.
 

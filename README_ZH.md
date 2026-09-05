@@ -1,29 +1,34 @@
 <p align="center">
-  <img src="docs/favicon.svg" width="72" height="72" alt="CodexPro logo">
+  <img src="docs/favicon.svg" width="72" height="72" alt="CodexPro Full logo">
 </p>
 
-<h1 align="center">CodexPro</h1>
+<h1 align="center">CodexPro Full</h1>
 
 <p align="center">
   让 ChatGPT 在你明确允许的本地仓库上使用编码工具。
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/codexpro"><img alt="npm" src="https://img.shields.io/npm/v/codexpro?style=flat-square"></a>
-  <a href="https://github.com/rebel0789/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/rebel0789/codexpro/ci.yml?branch=main&style=flat-square"></a>
-  <a href="https://github.com/rebel0789/codexpro/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/rebel0789/codexpro?style=flat-square"></a>
-  <a href="https://rebel0789.github.io/codexpro/zh.html"><img alt="中文站点" src="https://img.shields.io/badge/site-%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3-67e8f9?style=flat-square"></a>
+  <a href="https://github.com/PracticalSwan/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/PracticalSwan/codexpro/ci.yml?branch=feature%2Fplans-01-04-20260905&style=flat-square"></a>
+  <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/LICENSE"><img alt="License" src="https://img.shields.io/github/license/PracticalSwan/codexpro?style=flat-square"></a>
+  <img alt="CodexPro Full" src="https://img.shields.io/badge/CodexPro%20Full-0.32.3-2563eb?style=flat-square">
 </p>
 
 <p align="center">
   <a href="README.md">English</a>
   ·
-  <a href="https://rebel0789.github.io/codexpro/zh.html">中文网站</a>
+  <a href="https://github.com/PracticalSwan/codexpro">GitHub</a>
   ·
   <a href="FAQ_ZH.md">中文 FAQ</a>
   ·
   <a href="SECURITY.md">安全说明</a>
 </p>
+
+## CodexPro Full fork status
+
+`PracticalSwan/codexpro` is the canonical independently maintained fork. It preserves the `codexpro` CLI/MCP/profile compatibility surface while maintaining the 0.31-0.32 feature line. Upstream remains `rebel0789/codexpro` under the existing MIT lineage.
+
+This fork is not currently a separate npm publication. `npm install -g codexpro@latest` refers to the upstream npm package. See [FEATURES.md](FEATURES.md) for the complete fork capability guide.
 
 ## 它是什么
 
@@ -42,9 +47,14 @@ ChatGPT 可以读取、搜索、编辑、审查、验证、导入附件，并写
 - ChatGPT Web 可用的 HTTPS 地址（tunnel 或 Tailscale Funnel）
 
 ```bash
-npm install -g codexpro
-cd /path/to/your/repo
-codexpro setup
+git clone https://github.com/PracticalSwan/codexpro.git
+cd codexpro
+git checkout feature/plans-01-04-20260905
+npm install
+npm run build
+npm pack
+npm install -g ./codexpro-0.32.3.tgz
+codexpro --version
 ```
 
 ## 在 ChatGPT 中连接
@@ -160,7 +170,11 @@ chmod 600 ~/.codexpro/http-token
 ## 更新
 
 ```bash
-npm install -g codexpro@latest
+git pull origin feature/plans-01-04-20260905
+npm install
+npm run build
+npm pack
+npm install -g ./codexpro-0.32.3.tgz
 codexpro --version
 ```
 
@@ -168,7 +182,7 @@ codexpro --version
 
 ## 文档
 
-- [中文网站](https://rebel0789.github.io/codexpro/zh.html)
+- [中文网站](https://github.com/PracticalSwan/codexpro)
 - [中文 FAQ](FAQ_ZH.md)
 - [Security](SECURITY.md)
 - [稳定 URL 指南](DOMAIN_SETUP.md)

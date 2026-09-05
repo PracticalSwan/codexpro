@@ -528,9 +528,9 @@ function onboardingPage(config: CodexProConfig): string {
   const writeTone = config.writeMode === "workspace" ? "agent" : config.writeMode;
   const rootArg = shellQuote(config.defaultRoot);
   const sessionArg = shellQuote(config.bashSessionId || "main");
-  const githubUrl = "https://github.com/rebel0789/codexpro";
-  const npmUrl = "https://www.npmjs.com/package/codexpro";
-  const docsUrl = "https://rebel0789.github.io/codexpro/";
+  const githubUrl = "https://github.com/PracticalSwan/codexpro";
+  const upstreamNpmUrl = "https://www.npmjs.com/package/codexpro";
+  const docsUrl = "https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/FEATURES.md";
   const chatgptUrl = "https://chatgpt.com/#settings/Connectors";
   const controls = [
     copyCommand("Re-run setup wizard", "Use the CLI for broader profile edits that are intentionally not exposed here.", "codexpro setup"),
@@ -1308,13 +1308,13 @@ function onboardingPage(config: CodexProConfig): string {
         <span class="logo" aria-hidden="true"><img src="/favicon.ico" alt=""></span>
         <span>
           <span class="brand-kicker">Workspace control</span>
-          <span class="brand-title">CodexPro</span>
+          <span class="brand-title">CodexPro Full</span>
         </span>
       </div>
       <nav class="quick-links" aria-label="CodexPro resources">
         <a class="action-link primary-link" href="${chatgptUrl}" target="_blank" rel="noreferrer">Open ChatGPT settings</a>
         <a class="resource-link" href="${githubUrl}" target="_blank" rel="noreferrer">Open GitHub</a>
-        <a class="resource-link" href="${npmUrl}" target="_blank" rel="noreferrer">NPM</a>
+        <a class="resource-link" href="${upstreamNpmUrl}" target="_blank" rel="noreferrer">Upstream npm</a>
         <a class="resource-link" href="${docsUrl}" target="_blank" rel="noreferrer">Docs</a>
       </nav>
     </header>

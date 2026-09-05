@@ -1,4 +1,10 @@
-# Contributing
+# Contributing to CodexPro Full
+
+Canonical fork: `https://github.com/PracticalSwan/codexpro`
+
+Upstream lineage: `https://github.com/rebel0789/codexpro`
+
+Keep fork-specific roadmap/features isolated from upstream compatibility work. Preserve the `codexpro` CLI/protocol unless an explicit breaking-change decision says otherwise.
 
 CodexPro is early. Good contributions make it safer, faster, and easier to explain.
 
@@ -39,7 +45,7 @@ npm run connect -- --root /path/to/test/repo --bash safe --write handoff
 - Do not include local tunnel URLs, auth tokens, `.env` values, or private paths.
 - Run `npm run build`.
 - Run `npm run smoke`.
-- Update `README.md` or `CHANGELOG.md` when behavior changes.
+- Update `README.md`, `FEATURES.md`, and/or `CHANGELOG.md` when behavior or the public capability surface changes.
 - Explain security impact for changes touching auth, file access, shell execution, or tunnels.
 
 ## Docs Style

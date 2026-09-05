@@ -1,18 +1,22 @@
 {
   "name": "codexpro",
   "version": "0.32.3",
-  "description": "Local MCP server that connects ChatGPT Plugins to explicitly allowed repos on your machine.",
+  "description": "CodexPro Full: PracticalSwan's local MCP bridge for full ChatGPT coding workflows on explicitly allowed repos.",
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rebel0789/codexpro.git"
+    "url": "git+https://github.com/PracticalSwan/codexpro.git"
   },
   "bugs": {
-    "url": "https://github.com/rebel0789/codexpro/issues"
+    "url": "https://github.com/PracticalSwan/codexpro/issues"
   },
-  "homepage": "https://rebel0789.github.io/codexpro/",
+  "homepage": "https://github.com/PracticalSwan/codexpro#readme",
   "contributors": [
+    {
+      "name": "PracticalSwan",
+      "url": "https://github.com/PracticalSwan"
+    },
     {
       "name": "yuczzzzz",
       "url": "https://github.com/yuczzzzz"
@@ -44,6 +48,7 @@
     "docs/images",
     "scripts",
     "README.md",
+    "FEATURES.md",
     "README_ZH.md",
     "PUBLIC_LAUNCH_CHECKLIST.md",
     "DOMAIN_SETUP.md",

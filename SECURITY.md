@@ -1,4 +1,6 @@
-# Security Policy
+# Security Policy - CodexPro Full
+
+This document applies to the `PracticalSwan/codexpro` fork. Upstream lineage remains `rebel0789/codexpro`; report fork-specific findings against the PracticalSwan repository.
 
 CodexPro exposes a local workspace to an MCP client. Treat it like a developer tool with access to your source tree, not like a hosted SaaS app.
 
@@ -32,6 +34,12 @@ CodexPro can expose:
 - optional ChatGPT attachment import through `import_file`, which downloads only platform-provided HTTPS file references from approved origins and never accepts arbitrary model-supplied URLs
 - optional local handoff execution through `codexpro execute-handoff`, run from the user's terminal only
 - optional local execute/review looping through `codexpro loop-handoff`, run from the user's terminal only with a user-provided reviewer command and iteration limit
+- durable operation receipts, idempotent mutations, transactional change sets, and in-memory safe-revert preimages
+- workspace-owned long-running processes plus trusted checks and change-aware verification
+- optional guarded Git stage/commit and separately gated Git push; no force-push interface exists
+- optional CodeGraph/LSP code-intelligence adapters
+- bounded archive/document inspection/extraction and opaque artifact export
+- opt-in Durable Goals with detached Git worktrees, exact approval/review fingerprints, and explicit projection authorization
 
 ## Failure Model
 
@@ -52,6 +60,9 @@ Review changes against these failure modes before release:
 | Automatic `cloudflared` install trusts a mutable download | The installer uses a pinned release URL and verifies the platform asset SHA-256 before writing or extracting it. |
 | Remote MCP tool runs Codex/OpenCode/Pi directly | Agent execution remains a user-started CLI/watch process on the local machine. |
 | Autonomous loop drives ChatGPT Web or bypasses approvals | `loop-handoff` only runs local terminal commands over `.ai-bridge` files; it does not resume browser sessions, approve prompts, or expose a remote MCP executor. |
+| Optional Git write path stages/pushes more than intended | Staging is explicit-path; guarded commit checks expected branch/HEAD/staged set; `git_push` is hidden unless separately enabled, and no force-push interface exists. |
+| Durable Goal changes source before review | Goal execution runs in detached worktrees and stops at review/projection boundaries; source projection requires exact fingerprints plus explicit authorization. |
+| Hidden workspace events expose blocked paths | Allowed hidden workspace paths may generate events, but PathGuard continues to exclude blocked paths such as `.git`, `.env*`, and private-key locations. |
 | Reviewer masks a failed external command | `loop-handoff` requires explicit reviewer verdict assignments and rejects reviewer `PASS` after failed executor, test, or reviewer commands unless the user opts into the supported executor/test override behavior. |
 
 The main risks are:
@@ -123,6 +134,9 @@ codexpro start \
 - Keep Codex session history access off unless needed. `--codex-sessions metadata` only lists local Codex JSONL metadata; `--codex-sessions read` allows bounded transcript reads.
 - Keep `CODEXPRO_CONTEXT_DIR` as a workspace-relative hidden directory such as `.ai-bridge`; CodexPro rejects source, build, dependency, credential, and absolute context directories.
 - Use `--bash full` only for trusted local repos.
+- Keep `allowGitPush=false` unless remote publication is explicitly required. No force-push interface is provided.
+- Treat Durable Goal approval, review, and projection fingerprints as authorization boundaries; do not bypass them.
+- Do not enable unrestricted environment inheritance unless a trusted workflow explicitly requires it.
 - Do not treat MCP session ids or bash session labels as Codex conversation ids. CodexPro does not execute inside a Codex app session.
 - Prefer a repo-specific `--root` instead of `--allow-home`.
 - Use `--no-install-cloudflared --cloudflared <path>` if your organization requires a managed Cloudflare Tunnel binary.

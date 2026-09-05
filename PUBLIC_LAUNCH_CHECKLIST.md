@@ -2,7 +2,7 @@
 
 CodexPro is a local developer bridge. Treat public launch readiness as two separate gates:
 
-1. The npm package is safe and understandable for local developers.
+1. The fork release artifact/source checkout is safe and understandable for local developers.
 2. The ChatGPT Plugins surface is stable enough for users to connect a Server URL.
 
 Do not present CodexPro as a fully reviewed public ChatGPT app until it has gone through the current app review flow.
@@ -17,10 +17,9 @@ npm run build
 npm run smoke
 npm pack --dry-run
 codexpro doctor --tunnel none
-npm view codexpro version dist-tags --json
 ```
 
-After publishing, do not announce npm availability until the `latest` dist-tag matches `package.json`.
+This fork is not currently published as a separate npm package. Do not advertise upstream `codexpro@latest` as the fork release. If a separate package is introduced later, add an explicit package-name/dist-tag verification gate before publication.
 
 The tarball must not include:
 
@@ -78,14 +77,14 @@ Use CodexPro. Run bash with pwd, then run bash with a blocked command. Report bo
 - Keep blocked path tests for `.env`, `.git`, `node_modules`, private keys, and symlink escapes.
 - Do not broaden allowed roots during setup unless the user explicitly asks.
 - Do not log query strings, tokens, file contents, prompts, or full command output by default.
+- Re-run live `proc_*` and `evt_*` cross-call continuity checks after HTTP/runtime-state changes.
+- Verify allowed hidden workspace events and blocked-path exclusion after workspace snapshot/event changes.
+- Verify bounded `git_blame(max_lines=5)` after Git subprocess/output changes.
+- Verify Goal wrong-fingerprint rejection and no auto commit/push/merge after Goal changes.
 
 ## Onboarding Gate
 
-Fresh-user setup should work with:
-
-```bash
-npx codexpro@latest start
-```
+Fresh-user setup for this fork should work from a verified source checkout or fork tarball. The upstream `npx codexpro@latest` path is not a fork release channel.
 
 The terminal must clearly show:
 

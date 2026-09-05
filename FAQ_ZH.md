@@ -1,4 +1,12 @@
-# CodexPro 中文 FAQ
+# CodexPro Full 中文 FAQ
+
+## CodexPro Full fork status
+
+Canonical fork: `https://github.com/PracticalSwan/codexpro`
+
+Upstream lineage: `https://github.com/rebel0789/codexpro`
+
+This fork preserves the `codexpro` CLI/MCP/profile compatibility surface while maintaining its own 0.31-0.32 feature line. It is not currently published as a separate npm package; upstream `codexpro@latest` is not the fork release. See [FEATURES.md](FEATURES.md).
 
 ## 我应该用什么 ChatGPT 账号？
 
@@ -6,42 +14,37 @@
 
 CodexPro 不解锁 Plugins，不解锁模型，不绕过账号限制，也不提供账号访问。它只连接你自己的 ChatGPT Plugins 界面和你自己的本地仓库。
 
-## 推荐安装方式是什么？
+## CodexPro Full install
 
-注意：这个 FAQ 跟随 GitHub `main`。假设某个 `main` 功能已经进入 `codexpro@latest` 前，请先看 npm badge/version。
-
-全局安装一次：
+Install this fork from the PracticalSwan source checkout or a verified fork tarball:
 
 ```bash
-npm install -g codexpro
+git clone https://github.com/PracticalSwan/codexpro.git
+cd codexpro
+git checkout feature/plans-01-04-20260905
+npm install
+npm run build
+npm pack
+npm install -g ./codexpro-0.32.3.tgz
 ```
 
-然后进入目标仓库运行：
+Then run `codexpro setup` in the workspace you want ChatGPT to access. Daily startup is `codexpro start`. Upstream `codexpro@latest` is not the fork release.
+
+## CodexPro Full update
+
+Update the fork checkout and reinstall its tarball:
 
 ```bash
-codexpro setup
-```
-
-以后每天从同一个仓库启动：
-
-```bash
-codexpro start
-```
-
-`npx codexpro@latest start` 仍然可用，但普通用户更容易理解全局安装。
-
-## 怎么更新 CodexPro？
-
-没有 `codexpro update` 命令。重新安装最新包并重启连接即可：
-
-```bash
-npm install -g codexpro@latest
+cd /path/to/codexpro
+git pull origin feature/plans-01-04-20260905
+npm install
+npm run build
+npm pack
+npm install -g ./codexpro-0.32.3.tgz
 codexpro --version
 ```
 
-然后停掉旧进程，在启动仓库里重新运行 `codexpro start`。`~/.codexpro` 下的已保存配置会保留。
-
-如果文档写了某个功能，但 `codexpro --version` 还没有，说明 GitHub `main` 比 npm `latest` 新。等下一版发布，或从带 tag 的 GitHub release 安装。
+Restart `codexpro start` afterward. Saved profiles under `~/.codexpro` remain in place.
 
 ## CodexPro 和网页版自带 Agent 有什么区别？
 
@@ -306,23 +309,15 @@ repo B: port 8788, hostname B, ChatGPT plugin URL B
 
 后台运行或交给 service manager 时，使用 `codexpro start --headless`。它不会提问、访问剪贴板或打开浏览器；会用 `CODEXPRO_READY` 报告就绪，HTTP runtime 意外退出时 launcher 会以非零状态退出。
 
-## 能不能用 codexpro.github.io？
+## Fork documentation
 
-GitHub Pages 的 `owner.github.io` 只能由名为 `owner` 的 GitHub 用户或组织使用。
-
-`codexpro` 这个 GitHub 用户名已经存在，所以 `rebel0789` 账号下的项目不能使用 `codexpro.github.io`。
-
-当前干净的 GitHub Pages 地址是：
+Use the repository as the source of truth:
 
 ```text
-https://rebel0789.github.io/codexpro/
+https://github.com/PracticalSwan/codexpro
 ```
 
-中文页面是：
-
-```text
-https://rebel0789.github.io/codexpro/zh.html
-```
+Do not assume a GitHub Pages deployment exists for this fork. The upstream project remains credited at `https://github.com/rebel0789/codexpro`.
 
 ## CodexPro 是否违反服务条款？
 

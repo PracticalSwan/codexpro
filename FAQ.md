@@ -1,4 +1,14 @@
-# CodexPro FAQ
+# CodexPro Full FAQ
+
+## What is CodexPro Full?
+
+CodexPro Full is the independently maintained `PracticalSwan/codexpro` fork. It preserves the `codexpro` CLI, MCP protocol, profile format, and upstream MIT lineage, but maintains its own 0.31-0.32 feature line including durable operations, process/event continuity, repository intelligence, optional CodeGraph/LSP integration, artifact I/O, guarded Git writes, and Durable Goals.
+
+Canonical fork: `https://github.com/PracticalSwan/codexpro`
+
+Upstream project: `https://github.com/rebel0789/codexpro`
+
+The fork is not currently published as a separate npm package. `npm install -g codexpro@latest` refers to the upstream npm package unless a future fork-specific package is published. For the complete fork feature map, see [FEATURES.md](FEATURES.md).
 
 ## Which ChatGPT account should I use?
 
@@ -54,7 +64,7 @@ codexpro review --json
 
 ## What is the `codexpro` supertool?
 
-Note: this FAQ follows GitHub `main`. Check the npm badge/version before assuming a `main` feature is in `codexpro@latest`.
+Note: this FAQ documents the PracticalSwan fork. Do not assume the upstream npm `codexpro@latest` package contains fork-only features.
 
 `codexpro` is a stable wrapper tool for advanced setups. It accepts:
 
@@ -66,40 +76,52 @@ Call it with `action=list_actions` to see what the current server mode actually 
 
 Use explicit tools such as `read`, `search`, `edit`, `bash`, and `show_changes` for normal work. Use the supertool when ChatGPT connector caching, custom workflows, or stable wrapper-style integrations matter more than separate visible tool descriptors.
 
-## What is the recommended install path?
+## What is the recommended install path for this fork?
 
-Install globally once:
+Install the PracticalSwan fork from a source checkout or a verified fork tarball:
 
 ```bash
-npm install -g codexpro
+git clone https://github.com/PracticalSwan/codexpro.git
+cd codexpro
+git checkout feature/plans-01-04-20260905
+npm install
+npm run build
+npm pack
+npm install -g ./codexpro-0.32.3.tgz
 ```
 
-Then run setup from the repo you want ChatGPT to work on:
+Then run setup from the repository you want ChatGPT to work on:
 
 ```bash
+cd /path/to/your/repo
 codexpro setup
 ```
 
-After setup, daily startup from that same repo is:
+After setup, daily startup from that repository is simply:
 
 ```bash
 codexpro start
 ```
 
-`npx codexpro@latest start` still works as a no-install fallback, but the global install is easier for normal users.
+The upstream `npx codexpro@latest` / `npm install -g codexpro@latest` path is not a release channel for CodexPro Full.
 
-## How do I update CodexPro?
+## How do I update CodexPro Full?
 
-There is no `codexpro update` command. Reinstall the latest package and restart the connector:
+Update the fork checkout, rebuild the tarball, and reinstall it:
 
 ```bash
-npm install -g codexpro@latest
+cd /path/to/codexpro
+git pull origin feature/plans-01-04-20260905
+npm install
+npm run build
+npm pack
+npm install -g ./codexpro-0.32.3.tgz
 codexpro --version
 ```
 
-Then stop the old process and run `codexpro start` again from the launch repo. Saved profiles under `~/.codexpro` stay in place.
+Then restart `codexpro start` from the target workspace. Saved profiles under `~/.codexpro` remain in place.
 
-If docs mention a feature that `codexpro --version` does not include yet, GitHub `main` is ahead of npm `latest`. Wait for the next release or install from the tagged GitHub release.
+Do not use upstream `codexpro@latest` as an update mechanism for fork-only 0.31-0.32 behavior.
 
 ## How is CodexPro different from ChatGPT's built-in web Agent?
 
@@ -390,17 +412,15 @@ This protects against stale file content. It does not turn CodexPro into a colla
 
 For service managers and background launches, use `codexpro start --headless`. It avoids prompts, clipboard and browser actions, reports readiness with `CODEXPRO_READY`, and exits nonzero if its HTTP runtime stops unexpectedly.
 
-## Why not use codexpro.github.io?
+## Where is the canonical fork documentation?
 
-GitHub Pages gives `owner.github.io` only to the GitHub user or organization named `owner`.
-
-The `codexpro` GitHub username already exists, so this repo cannot use `codexpro.github.io` from the `rebel0789` account.
-
-The clean GitHub Pages URL for this project is:
+The canonical fork is:
 
 ```text
-https://rebel0789.github.io/codexpro/
+https://github.com/PracticalSwan/codexpro
 ```
+
+This repository does not assume a GitHub Pages deployment exists. Use the repository README and [FEATURES.md](FEATURES.md) as the current documentation source of truth. The upstream project remains credited at `https://github.com/rebel0789/codexpro`.
 
 ## Is CodexPro production safe?
 

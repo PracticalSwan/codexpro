@@ -1,6 +1,6 @@
-# Design - CodexPro
+# Design - CodexPro Full
 
-A locked product-system note for CodexPro docs and the local admin surface.
+A locked product-system note for the PracticalSwan CodexPro Full fork docs and the local admin surface.
 Every redesign should keep the same trust story: ChatGPT can act on one local
 workspace through a token-protected MCP bridge, while shell, writes, Codex
 history, and handoff execution stay explicit user choices.
@@ -11,7 +11,7 @@ modern-minimal developer tool
 
 ## Positioning
 
-Use ChatGPT like your local coding agent.
+CodexPro Full: use ChatGPT like your local coding agent while preserving explicit local trust boundaries.
 
 CodexPro should explain itself in this order:
 

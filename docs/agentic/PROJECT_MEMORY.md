@@ -1,6 +1,6 @@
 # CodexPro Project Memory
 
-Last verified: 2026-09-05 (Asia/Bangkok)
+Last verified: 2026-09-06 (Asia/Bangkok)
 
 ## Canonical workspace
 - Repository: `D:\Side Projects\codexpro`
@@ -11,6 +11,7 @@ Last verified: 2026-09-05 (Asia/Bangkok)
 - Upstream `main` at planning start: `587f7fd3a4644a847bba13aeb49336056052e1f6`
 - Package version at planning start: `0.30.0`
 - Current verified roadmap implementation version: `0.32.3` on local branch `feature/plans-01-04-20260905`.
+- Public fork identity: **CodexPro Full**, canonical repository `PracticalSwan/codexpro`; CLI/package/protocol remain `codexpro` compatible. The fork is not separately published to npm as of this verification.
 - Local integration was clean and 21 commits ahead of upstream main when this roadmap was created.
 
 ## Product boundary
@@ -56,7 +57,8 @@ On 2026-09-05, CodexPro `0.32.3` passed the authoritative TypeScript build, focu
 - Final local install tarball: `codexpro-0.32.3.tgz`, 2,571,729 bytes, SHA-256 `EAD55B93F18165DDE9874EA9D111492418006FD70579CEA31C5540F053DC3736`.
 - Global CodexPro is installed as `0.32.3`; the CSX4213 practical profile and all other saved profile hashes were unchanged by installation. `codexpro doctor` passed and port 8787 is available.
 - The verified 0.32.3 behavior includes allowed hidden workspace events and intentionally session-local implicit workspace selection; opened workspace IDs remain reusable across sessions when passed explicitly.
-- CodexPro is intentionally stopped after verification for the user's manual start.
+- The 0.32.3 release/install workflow intentionally stopped CodexPro before the subsequent fresh live ChatGPT validation; do not treat that pre-validation process state as current runtime state.
+- Fresh live ChatGPT -> CodexPro 0.32.3 validation subsequently completed `PASS WITH WARNINGS`: all mandatory functional/safety/durability regressions passed, the allowed-hidden workspace event defect is fixed, no reproducible product defect was found, and the only warning was that the authenticated HTML control page was not inspected because doing so would have required retrieving the protected auth token.
 
 Normal implementation evidence should use the smallest relevant set from: `npm run build`, focused `node scripts/<feature>-smoke.mjs`, `npm run smoke`, `npm run stress`, `npm audit --audit-level=high`, `npm run release:pack`, and `git diff --check`.
 

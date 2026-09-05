@@ -1,99 +1,166 @@
 <p align="center">
-  <img src="docs/favicon.svg" width="72" height="72" alt="CodexPro logo">
+  <img src="docs/favicon.svg" width="72" height="72" alt="CodexPro Full logo">
 </p>
 
-<h1 align="center">CodexPro</h1>
-
-<p align="center">
-  Give ChatGPT local coding tools for repos you explicitly allow.
-</p>
+<h1 align="center">CodexPro Full</h1>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/codexpro"><img alt="npm" src="https://img.shields.io/npm/v/codexpro?style=flat-square"></a>
-  <a href="https://github.com/rebel0789/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/rebel0789/codexpro/ci.yml?branch=main&style=flat-square"></a>
-  <a href="https://github.com/rebel0789/codexpro/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/rebel0789/codexpro?style=flat-square"></a>
-  <a href="https://rebel0789.github.io/codexpro/"><img alt="Website" src="https://img.shields.io/badge/site-GitHub%20Pages-67e8f9?style=flat-square"></a>
+  PracticalSwan's independently maintained CodexPro fork for full local ChatGPT coding workflows.
 </p>
+
+<p align="center">
+  <a href="https://github.com/PracticalSwan/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/PracticalSwan/codexpro/ci.yml?branch=feature%2Fplans-01-04-20260905&style=flat-square"></a>
+  <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/LICENSE"><img alt="License" src="https://img.shields.io/github/license/PracticalSwan/codexpro?style=flat-square"></a>
+  <img alt="CodexPro Full" src="https://img.shields.io/badge/CodexPro%20Full-0.32.3-2563eb?style=flat-square">
+</p>
+
+## Project status
+
+**CodexPro Full** is the `PracticalSwan/codexpro` fork. It keeps the upstream `codexpro` CLI, MCP protocol, profile format, and workspace model for compatibility, while maintaining a separate feature line with the 0.31-0.32 safety, continuity, code-intelligence, artifact, Git, and Durable Goal work.
+
+```text
+Canonical fork: https://github.com/PracticalSwan/codexpro
+Upstream:       https://github.com/rebel0789/codexpro
+Current fork:   0.32.3
+```
+
+This fork is **not currently published as a separate npm package**. `npm install -g codexpro@latest` refers to the upstream npm package unless a future fork-specific package is published. The CLI/package name remains `codexpro` for compatibility.
 
 ## What it is
 
-CodexPro is a local MCP server. It connects **your ChatGPT session** to **your machine** and **repos you allow**.
+CodexPro Full is a local MCP server that connects a compatible ChatGPT Plugins session to projects you explicitly allow on your own machine.
 
-ChatGPT can read, search, edit, review, verify, import attachments, and write handoff plans. It stays inside those roots.
+Depending on the active profile, ChatGPT can:
 
-It is not a hosted SaaS product, model proxy, quota bypass, account pool, or remote shell service.
+- inspect, search, read, and understand a repository
+- write/edit/patch files with path and stale-write guards
+- use durable operation receipts, idempotency, transactions, and safe revert
+- run trusted checks and own bounded long-running workspace processes
+- keep event cursors and durable task checkpoints across MCP calls
+- inspect Git history, blame, package relationships, change impact, and preflight state
+- stage explicit paths and create guarded commits
+- use built-in analysis plus optional CodeGraph/LSP providers
+- browse local Codex session history in bounded read-only mode
+- inspect safe ZIP/PDF/OOXML content and export workspace artifacts back to ChatGPT
+- execute opt-in Durable Goals in detached Git worktrees with review/projection authorization
+- use planning-only handoff workflows when direct source editing is not desired
 
-## Install
+See **[FEATURES.md](FEATURES.md)** for the complete feature map and short usage examples.
 
-Needs:
+CodexPro Full is not a hosted SaaS service, model proxy, quota bypass, account pool, OS sandbox, or unrestricted remote shell.
 
-- Node.js 20+
-- A ChatGPT account that can create custom MCP plugins
-- An HTTPS URL to your machine for ChatGPT web (tunnel or Tailscale Funnel)
+## Install this fork
+
+### From a source checkout
 
 ```bash
-npm install -g codexpro
-cd /path/to/your/repo
-codexpro setup
+git clone https://github.com/PracticalSwan/codexpro.git
+cd codexpro
+git checkout feature/plans-01-04-20260905
+npm install
+npm run build
+npm pack
+npm install -g ./codexpro-0.32.3.tgz
+codexpro --version
 ```
+
+Expected version for this branch:
+
+```text
+0.32.3
+```
+
+If you already have a verified fork tarball, install that tarball directly instead of rebuilding it.
+
+### Runtime requirements
+
+- Node.js 20+
+- a ChatGPT surface that can connect to custom MCP plugins
+- an HTTPS route to the local MCP server for ChatGPT web, unless the client can reach local HTTP directly
+- Git for Git/Goal features
+- optional CodeGraph 1.6.x or LSP only when those providers are enabled
 
 ## Connect in ChatGPT
 
-1. `Settings -> Security and login` → turn **Developer mode** on (keep CSP enforcement on).
-2. `Settings -> Plugins` → Plugins tab → **+** beside Search plugins.
-3. Create a plugin named `CodexPro`.
-4. Connection: **Server URL** → paste the URL CodexPro copied.
-5. Authentication: **No Authentication / None** (change this if the form defaults to OAuth).
+1. Start CodexPro from the target repository:
 
-CodexPro auth is the token already in that URL. Do not share the URL.
+   ```bash
+   cd /path/to/your/repo
+   codexpro start
+   ```
 
-| Open Plugins and click `+` | Complete the New Plugin form |
-| --- | --- |
-| ![Open Plugins and click the plus button](docs/images/chatgpt-plugins-add.png) | ![Complete the New Plugin form](docs/images/chatgpt-plugin-details.png) |
+2. In ChatGPT, enable Developer mode and keep CSP enforcement enabled.
+3. Create a custom plugin using the Server URL printed/copied by CodexPro.
+4. Keep the connector URL/token private.
+5. In chat, start with:
 
-Daily use from the same repo:
+   ```text
+   Use CodexPro. Call server_config, then open_current_workspace with include_tree=false.
+   ```
 
-```bash
-codexpro start
+For a workspace opened with `open_workspace`, keep its returned `workspace_id`. Implicit workspace selection is intentionally MCP-session-local, so pass `workspace_id` explicitly after ChatGPT/HTTP MCP session turnover.
+
+## Recommended practical Full Access profile
+
+For trusted local repositories, the validated 0.32.3 profile is:
+
+```text
+Mode: agent
+Tool mode: full
+Write mode: workspace
+Bash mode: full
+Bash transcript: compact
+Analysis: enabled
+Codex sessions: read
+Artifact export: enabled
+Durable Goals: enabled
+CodeGraph: enabled
+LSP: disabled unless configured
+Git push: disabled
+Environment inheritance: disabled
+Authentication: enabled
 ```
 
-If plugin creation fails, run `codexpro connection-test` and check whether ChatGPT requests reach the local server.
+With `allowGitPush=false`, `git_push` is not exposed. There is no force-push interface.
 
-## What ChatGPT can do
+Use a narrower profile for untrusted repositories.
 
-With workspace write mode (the normal agent setup):
+## Daily workflow
 
-- read, search, and inspect the repo
-- edit with `write`, `edit`, or guarded `apply_patch`
-- import ChatGPT attachments with `import_file`
-- run allowlisted checks with `bash`, `run_checks`, or `verify_changes`
-- own bounded long-running workspace processes through opaque handles
-- inspect Git history/package impact and use guarded explicit-path Git writes
-- inspect bounded archives/documents and use optional code-intelligence adapters
-- review diffs with `show_changes`
-- write plans under `.ai-bridge`
-- export a context bundle for chats that cannot call tools
+A strong default ChatGPT workflow is:
 
-## Multiple projects
-
-One CodexPro process can allow more than one repo:
-
-```bash
-codexpro settings set --project ~/code/web --project ~/code/api
-codexpro settings show
-codexpro start
+```text
+1. server_config
+2. open_current_workspace
+3. instructions_for_path / gather_context as needed
+4. read/search/inspect
+5. write/edit/apply_patch
+6. run_checks or verify_changes
+7. show_changes
+8. git_stage/git_commit only when explicitly requested
 ```
 
-Ask ChatGPT to `open_workspace` on an allowed project. `open_current_workspace` returns to the launch repo.
+For long-running commands, use `start_workspace_process` and keep the returned `proc_*` handle for later status/output/stop calls.
 
-For two ChatGPT accounts or hard isolation, run two CodexPro processes on different ports and Server URLs.
+For change monitoring, take a `workspace_events` baseline and keep the returned `evt_*` cursor.
 
-## Commands
+For multi-step durable execution, use the Goal lifecycle:
+
+```text
+propose_goal
+-> approve_goal
+-> start_goal
+-> review_goal
+-> project_goal
+```
+
+Goal execution never automatically commits, pushes, merges, deploys, publishes, or uploads.
+
+## Core CLI
 
 ```bash
 codexpro setup
 codexpro start
-codexpro start --root /path/to/repo
 codexpro doctor
 codexpro connection-test
 codexpro settings
@@ -106,71 +173,187 @@ Useful modes:
 ```bash
 codexpro start --no-bash
 codexpro start --tool-mode minimal
+codexpro start --tool-mode standard
 codexpro start --tool-mode full
 codexpro start --mode handoff
 codexpro start --mode pro
 codexpro start --headless
 ```
 
-Opt-in tool cards:
+Optional cards:
 
 ```bash
 CODEXPRO_TOOL_CARDS=1 codexpro start
 ```
 
-## Public HTTPS options
+## Multiple projects
 
-ChatGPT web needs HTTPS:
+Save additional explicitly allowed projects:
 
 ```bash
-codexpro start --tunnel cloudflare          # quick demo URL (changes)
+codexpro settings set --project ~/code/web --project ~/code/api
+codexpro settings show
+codexpro start
+```
+
+Use `open_workspace` for another allowed root and keep the returned `workspace_id` for cross-session calls.
+
+For hard isolation, run separate CodexPro processes on separate ports/hostnames.
+
+## Public HTTPS options
+
+```bash
+codexpro start --tunnel cloudflare
 codexpro ngrok --hostname your.ngrok-free.dev
 codexpro stable --hostname codexpro.example.com --tunnel-name codexpro
 codexpro tailscale --hostname your-device.your-tailnet.ts.net
-codexpro start --tunnel none                # local only
+codexpro start --tunnel none
 ```
 
-Keep a stable token for stable hostnames:
+Public/non-loopback endpoints should keep CodexPro authentication enabled. Prefer `Authorization: Bearer <token>` when the MCP client supports headers. Query-string tokens are a personal compatibility fallback and must not be shared.
+
+## Workspace policy
+
+A workspace may add `.codexpro-policy.json` to tighten the active profile. It can reduce modes, disable optional capabilities, add blocked globs, and lower resource ceilings. It cannot widen global authority.
+
+See [docs/workspace-policy.md](docs/workspace-policy.md).
+
+## Durable operations
+
+State-changing tools can use idempotency keys and return durable `op_*` receipts. Query them with `operation_status`.
+
+Full workspace-write mode also supports:
+
+```text
+prepare_change_set
+apply_change_set
+revert_operation
+```
+
+These provide SHA-guarded multi-file transactions and supported safe reverts.
+
+## Processes and verification
+
+Use:
+
+```text
+start_workspace_process
+workspace_process_status
+read_workspace_process_output
+stop_workspace_process
+run_checks
+verify_changes
+```
+
+Process handles and event cursors survive separate ChatGPT HTTP/MCP calls while the same CodexPro runtime remains alive.
+
+## Code intelligence
+
+Built-in search/analysis always remains available.
+
+Optional providers:
+
+- **CodeGraph**: CodexPro 0.32.3 supports the CodeGraph 1.6.x CLI contract and explicit `codegraph_sync`.
+- **LSP**: only when separately configured/enabled.
+
+Use `code_intelligence_status` before relying on an optional provider. Do not sync CodeGraph unnecessarily when the index is already current.
+
+## Git safety
+
+Full mode includes bounded history/show/blame, package graph, change impact, preflight, explicit staging, and guarded commit.
+
+A guarded commit can require the expected:
+
+```text
+branch
+HEAD
+staged path set
+```
+
+`git_push` only exists when explicitly enabled. No force-push interface exists.
+
+## Archive, document, and export tools
+
+CodexPro Full can:
+
+- inspect safe ZIP archives without extracting
+- reject traversal/absolute archive entries
+- extract transactionally into contained destinations
+- read bounded PDF and OOXML text/metadata without executing Office
+- export a workspace file through an opaque `codexpro-export://...` resource identity
+
+## Durable Goals
+
+Durable Goals are opt-in and documented in [docs/goals.md](docs/goals.md).
+
+They provide:
+
+- persisted Goal/task state
+- dependency-aware DAG scheduling
+- detached Git-worktree execution
+- pause/resume/cancel
+- exact approval and review fingerprints
+- explicit source projection authorization
+- cross-call durability and recovery
+
+Projection is deliberately separate from execution and review.
+
+## Codex session navigation
+
+With `codexSessions=read`, ChatGPT can use bounded local history tools:
+
+```text
+codex_sessions
+read_codex_session
+search_codex_session
+read_codex_session_around
+```
+
+These do not attach to or control a live Codex app conversation.
+
+## Handoff workflows
+
+When ChatGPT should plan but not directly edit source, use handoff mode. CodexPro stores bounded planning/status artifacts under `.ai-bridge`.
+
+Local terminal-only helpers include:
 
 ```bash
-mkdir -p ~/.codexpro
-openssl rand -hex 32 > ~/.codexpro/http-token
-chmod 600 ~/.codexpro/http-token
+codexpro execute-handoff
+codexpro watch-handoff
+codexpro loop-handoff
 ```
 
-Prefer `Authorization: Bearer <token>` when the client supports headers. The `?codexpro_token=` query form is a personal compatibility fallback.
+They are not unrestricted remote MCP executors.
 
-## Durable operations and diagnostics
+## Diagnostics
 
-State-changing tools can accept an optional `idempotency_key` and return a durable operation receipt. Use `operation_status` to recover the final state after a lost MCP response. Full workspace-write mode also exposes `prepare_change_set`, `apply_change_set`, and `revert_operation` for SHA-guarded multi-file changes. Revert data is intentionally memory-only, so restart removes the source preimages while durable receipt metadata remains bounded under `~/.codexpro/operations`.
+Use:
 
-Use `connection_diagnostics`, `tool_surface_diagnostics`, and `local_telemetry` to inspect local MCP health without collecting prompts or source contents. The authenticated local control page includes the same sanitized diagnostics, and `/admin/diagnostics` provides the machine-readable view.
+```text
+connection_diagnostics
+tool_surface_diagnostics
+local_telemetry
+codexpro_self_test
+effective_policy
+```
 
-The authenticated control page can also save the non-secret operator profile for the next start: tunnel/runtime modes, Bash transcript, Codex-session access, analysis, artifact export, Durable Goals, CodeGraph/LSP provider settings, Git-push gating, and environment inheritance. Authentication tokens remain hidden.
+Diagnostics are designed to expose bounded health/configuration metadata without prompts, source-file contents, raw command transcripts, or authentication tokens.
 
-## Durable Goals (opt-in)
-
-Set `CODEXPRO_GOALS=1` to enable durable dependency-aware Goal tools in full/workspace-write/Bash mode. Goals execute in detached Git worktrees, can survive the initiating MCP connection, and always stop for explicit review before any source projection. Projection requires pinned source/review fingerprints plus `authorize=true`; it never commits or pushes. See [docs/goals.md](docs/goals.md).
+The authenticated local control page can save non-secret next-run profile settings. Authentication tokens remain hidden.
 
 ## Safety defaults
 
-- Public tunnels require a CodexPro HTTP token (min 24 bytes)
-- Writes stay hidden unless write mode is `workspace`
-- Safe bash is the default
-- Blocked paths cover `.env`, keys, `.git`, build caches, and similar
-- Workspaces may add a tightening-only `.codexpro-policy.json`; see [docs/workspace-policy.md](docs/workspace-policy.md)
-- Attachment import only accepts ChatGPT Apps SDK file objects from approved HTTPS hosts
+- public/non-loopback HTTP requires authentication unless explicitly overridden
+- writes are contained to allowed workspace roots
+- `.env*`, `.git`, private keys, dependency/build/cache areas, symlink escapes, and configured blocked paths are protected
+- workspace policy can only tighten authority
+- safe Bash is available for reduced shell risk; `--no-bash` removes shell tools
+- Goal workers receive reduced authority and stop at review/projection boundaries
+- Git push is separately gated
+- environment inheritance is separately gated
+- telemetry is bounded and sanitized
 
-Read [SECURITY.md](SECURITY.md) before exposing a tunnel.
-
-## Update
-
-```bash
-npm install -g codexpro@latest
-codexpro --version
-```
-
-Restart `codexpro start` after updating. Saved profiles under `~/.codexpro` stay in place.
+Read [SECURITY.md](SECURITY.md) before exposing a public tunnel.
 
 ## Development
 
@@ -179,21 +362,37 @@ npm install
 npm run build
 npm run smoke
 npm run stress
-npm run release:check
+npm audit --audit-level=high
+npm run release:pack
+git diff --check
 ```
 
-Publish only from the CodexPro root:
+Run stress only when concurrency/process/output-limit/release-risk changes justify it.
 
-```bash
-cd /path/to/codexpro
-npm run release:publish
+## Repository and upstream lineage
+
+Primary fork:
+
+```text
+https://github.com/PracticalSwan/codexpro
 ```
 
-## Docs
+Upstream project:
 
-- [Website](https://rebel0789.github.io/codexpro/)
+```text
+https://github.com/rebel0789/codexpro
+```
+
+This fork preserves upstream attribution and MIT licensing while maintaining its own feature/documentation line.
+
+## Documentation
+
+- [Feature guide](FEATURES.md)
 - [FAQ](FAQ.md)
 - [Security](SECURITY.md)
+- [Workspace policy](docs/workspace-policy.md)
+- [Durable Goals](docs/goals.md)
 - [Stable URL guide](DOMAIN_SETUP.md)
 - [Changelog](CHANGELOG.md)
+- [Contributing](CONTRIBUTING.md)
 - [Contributors](CONTRIBUTORS.md)

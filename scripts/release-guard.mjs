@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const CODEXPRO_PACKAGE = "codexpro";
-export const CODEXPRO_REPOSITORY = "git+https://github.com/rebel0789/codexpro.git";
+export const CODEXPRO_REPOSITORY = "git+https://github.com/PracticalSwan/codexpro.git";
 export const CODEXPRO_ROOT = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 
 function canonicalPath(value) {

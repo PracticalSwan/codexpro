@@ -1,4 +1,4 @@
-# CodexPro Domain Setup
+# CodexPro Full Domain Setup
 
 This guide explains how to use a Namecheap domain, Cloudflare, or ngrok so CodexPro can keep a stable ChatGPT connector URL.
 

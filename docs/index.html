@@ -3,16 +3,16 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>CodexPro - Use ChatGPT like your local coding agent</title>
+    <title>CodexPro Full - Use ChatGPT like your local coding agent</title>
     <meta
       name="description"
       content="CodexPro connects ChatGPT Plugins to explicitly allowed local projects through MCP so ChatGPT can inspect, edit, verify, and hand off code safely."
     />
-    <meta property="og:title" content="CodexPro" />
+    <meta property="og:title" content="CodexPro Full" />
     <meta property="og:description" content="Local MCP bridge: paste a Server URL into ChatGPT Plugins and work on repos you allow." />
-    <meta property="og:image" content="https://rebel0789.github.io/codexpro/og.svg" />
+    <meta property="og:image" content="https://raw.githubusercontent.com/PracticalSwan/codexpro/feature/plans-01-04-20260905/docs/og.svg" />
     <meta name="theme-color" content="#0b1220" />
-    <link rel="alternate" hreflang="zh-CN" href="https://rebel0789.github.io/codexpro/zh.html" />
+    <link rel="alternate" hreflang="zh-CN" href="./zh.html" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -21,7 +21,7 @@
     <header class="site-header">
       <a class="brand" href="#top" aria-label="CodexPro home">
         <img class="brand-mark" src="./favicon.svg" width="34" height="34" alt="" aria-hidden="true" />
-        <span>CodexPro</span>
+        <span>CodexPro Full</span>
       </a>
       <nav aria-label="Primary navigation">
         <a href="#quickstart">Start</a>
@@ -30,25 +30,27 @@
         <a href="#faq">FAQ</a>
         <a href="#stop">Stop</a>
         <a href="./zh.html">中文</a>
-        <a class="nav-star" href="https://github.com/rebel0789/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />Star on GitHub</a>
+        <a class="nav-star" href="https://github.com/PracticalSwan/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />Star on GitHub</a>
       </nav>
     </header>
 
     <main id="top">
       <section class="hero">
         <div class="hero-copy">
-          <p class="launch-pill"><img src="./star.svg" alt="" aria-hidden="true" />Local MCP bridge</p>
+          <p class="launch-pill"><img src="./star.svg" alt="" aria-hidden="true" />PracticalSwan fork | local MCP bridge</p>
           <p class="eyebrow">Install in your repo</p>
           <h1>Use ChatGPT like your local coding agent.</h1>
           <p class="hero-lede">
             Install the CLI, run setup inside a project, then paste the copied Server URL into ChatGPT Plugins. ChatGPT gets bounded tools for the launch project and any additional projects you explicitly allow.
           </p>
           <div class="install-line" role="group" aria-label="Install command">
-            <code>npm install -g codexpro
-codexpro setup</code>
-            <button class="copy-button" data-copy="npm install -g codexpro&#10;codexpro setup">Copy</button>
+            <code>git clone https://github.com/PracticalSwan/codexpro.git
+cd codexpro &amp;&amp; git checkout feature/plans-01-04-20260905
+npm install &amp;&amp; npm run build &amp;&amp; npm pack
+npm install -g ./codexpro-0.32.3.tgz &amp;&amp; codexpro setup</code>
+            <button class="copy-button" data-copy="git clone https://github.com/PracticalSwan/codexpro.git&#10;cd codexpro &amp;&amp; git checkout feature/plans-01-04-20260905&#10;npm install &amp;&amp; npm run build &amp;&amp; npm pack&#10;npm install -g ./codexpro-0.32.3.tgz &amp;&amp; codexpro setup">Copy</button>
           </div>
-          <p class="eyebrow">Main docs may be ahead of npm; check the npm version or use a source checkout for unreleased behavior.</p>
+          <p class="eyebrow">CodexPro Full 0.32.3 is a separate fork line. The upstream npm package is not this fork release.</p>
           <div class="hero-proof" aria-label="Core capabilities">
             <span>explicit project access</span>
             <span>token-protected URL</span>
@@ -57,8 +59,8 @@ codexpro setup</code>
           </div>
           <div class="hero-actions">
             <a class="button primary" href="#quickstart">Install CodexPro</a>
-            <a class="button secondary star-button" href="https://github.com/rebel0789/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />Star on GitHub</a>
-            <a class="button secondary" href="https://www.npmjs.com/package/codexpro">View npm package</a>
+            <a class="button secondary star-button" href="https://github.com/PracticalSwan/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />Star on GitHub</a>
+            <a class="button secondary" href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/FEATURES.md">View feature guide</a>
           </div>
         </div>
 
@@ -107,7 +109,7 @@ codexpro setup</code>
         <div>
           <span>01</span>
           <strong>Install</strong>
-          <p>Run <code>npm install -g codexpro</code> once.</p>
+          <p>Clone the PracticalSwan fork, build it, and install the generated 0.32.3 tarball.</p>
         </div>
         <div>
           <span>02</span>
@@ -232,7 +234,12 @@ codexpro setup</code>
             <span>1</span>
             <div>
               <strong>Install globally</strong>
-              <pre><code>npm install -g codexpro</code></pre>
+              <pre><code>git clone https://github.com/PracticalSwan/codexpro.git
+cd codexpro
+npm install
+npm run build
+npm pack
+npm install -g ./codexpro-0.32.3.tgz</code></pre>
             </div>
           </div>
           <div class="step">
@@ -389,8 +396,13 @@ cloudflared tunnel route dns codexpro codexpro.example.com</code></pre>
           <article>
             <small>Install</small>
             <h3>Install globally once</h3>
-            <pre><code>npm install -g codexpro</code></pre>
-            <p>This gives users the simple <code>codexpro</code> command everywhere.</p>
+            <pre><code>git clone https://github.com/PracticalSwan/codexpro.git
+cd codexpro
+npm install
+npm run build
+npm pack
+npm install -g ./codexpro-0.32.3.tgz</code></pre>
+            <p>The fork keeps the <code>codexpro</code> CLI for compatibility. It is not currently a separate npm publication.</p>
           </article>
           <article>
             <small>First run</small>
@@ -461,8 +473,8 @@ codexpro settings delete --yes</code></pre>
 
         <div class="tool-reference">
           <div>
-            <p class="eyebrow">Default standard tools</p>
-            <h3>Focused local repo actions exposed through MCP.</h3>
+            <p class="eyebrow">0.32.3 MCP surface</p>
+            <h3>Core tools plus gated Full Access features.</h3>
           </div>
           <div class="tool-list">
             <span>codexpro</span>
@@ -482,6 +494,19 @@ codexpro settings delete --yes</code></pre>
             <span>wait_for_handoff</span>
             <span>export_pro_context</span>
             <span>handoff_to_agent</span>
+            <span>operation_status</span>
+            <span>workspace_events</span>
+            <span>run_checks</span>
+            <span>verify_changes</span>
+            <span>git_history</span>
+            <span>git_blame</span>
+            <span>code_intelligence_status</span>
+            <span>inspect_archive</span>
+            <span>read_document</span>
+            <span>export_file</span>
+            <span>propose_goal</span>
+            <span>review_goal</span>
+            <span>project_goal</span>
           </div>
         </div>
 
@@ -519,7 +544,7 @@ codexpro settings delete --yes</code></pre>
           <article>
             <small>Local web admin</small>
             <h3>Edit next-run profile defaults</h3>
-            <p>The token-protected local page can save tunnel, hostname, port, mode, bash, Codex sessions, write/tool mode, widget origin, and tunnel config paths for the next <code>codexpro start</code>. Raw tunnel tokens, account switching, and background services stay out of the browser.</p>
+            <p>The token-protected local page can save tunnel/runtime modes, Bash transcript, Codex sessions, analysis, artifact export, Durable Goals, CodeGraph/LSP settings, Git-push gating, environment inheritance, widget origin, and tunnel paths for the next <code>codexpro start</code>. Authentication tokens remain hidden.</p>
           </article>
           <article>
             <small>Local executor</small>
@@ -529,11 +554,11 @@ codexpro settings delete --yes</code></pre>
         </div>
 
         <div class="link-row" aria-label="Documentation links">
-          <a class="star-link" href="https://github.com/rebel0789/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />Star the GitHub repo</a>
-          <a href="https://www.npmjs.com/package/codexpro">npm package</a>
-          <a href="https://github.com/rebel0789/codexpro/blob/main/DOMAIN_SETUP.md">Stable URL guide</a>
-          <a href="https://github.com/rebel0789/codexpro/blob/main/FAQ.md">FAQ</a>
-          <a href="https://github.com/rebel0789/codexpro/blob/main/SECURITY.md">Security notes</a>
+          <a class="star-link" href="https://github.com/PracticalSwan/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />Star the GitHub repo</a>
+          <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/FEATURES.md">Feature guide</a>
+          <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/DOMAIN_SETUP.md">Stable URL guide</a>
+          <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/FAQ.md">FAQ</a>
+          <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/SECURITY.md">Security notes</a>
         </div>
       </section>
 
@@ -612,11 +637,11 @@ codexpro settings delete --yes</code></pre>
     </main>
 
     <footer class="site-footer">
-      <span>CodexPro</span>
-      <a class="star-link" href="https://github.com/rebel0789/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />Star on GitHub</a>
-      <a href="https://www.npmjs.com/package/codexpro">npm</a>
+      <span>CodexPro Full</span>
+      <a class="star-link" href="https://github.com/PracticalSwan/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />Star on GitHub</a>
+      <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/FEATURES.md">Features</a>
       <a href="./zh.html">中文</a>
-      <a href="https://github.com/rebel0789/codexpro/blob/main/SECURITY.md">Security</a>
+      <a href="https://github.com/PracticalSwan/codexpro/blob/feature/plans-01-04-20260905/SECURITY.md">Security</a>
     </footer>
 
     <script src="./script.js"></script>
