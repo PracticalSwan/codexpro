@@ -25,6 +25,10 @@
 | 19 | MCP Tasks Bridge | 18 | `../specs/2026-09-06-mcp-tasks-bridge-design.md` | `2026-09-06-mcp-tasks-bridge.md` |
 | 21 | Optional Docker Execution Backend | 03, 05, 11, 13 | `../specs/2026-09-06-docker-execution-backend-design.md` | `2026-09-06-docker-execution-backend.md` |
 
+## Codex CLI prohibition
+
+Codex CLI is not an allowed execution mechanism for this batch. Do not invoke `codex`, `codex exec`, `codex review`, `codex apply`, or any other Codex CLI command for implementation, debugging, testing, review, delegation, or repository mutation. Execute every milestone directly with the host-native tools and repository tooling available in the active session.
+
 ## Batch-wide invariants
 
 - Preserve CodexPro as a local MCP bridge for explicitly allowed workspaces. No model proxying, quota/account pooling, approval bypass, hosted code persistence, or unrestricted remote control.

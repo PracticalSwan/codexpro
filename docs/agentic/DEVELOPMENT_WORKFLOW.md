@@ -21,6 +21,10 @@ Planning work may create or refine `docs/agentic/**`, `docs/superpowers/specs/**
 ## Implementation gate
 Implementation begins only when the user authorizes the exact plan scope. For single-plan work, read that plan and its referenced spec in full. For explicitly authorized Plans 12–21 batch execution, follow `docs/superpowers/plans/2026-09-06-roadmap-12-21-execution.md` on one dedicated integration worktree/branch, then read each subsystem spec/plan immediately before its milestone. Batch execution is continuous, but subsystem acceptance criteria, focused tests, review, and milestone commits remain distinct; never collapse the batch into one undifferentiated implementation.
 
+## Codex CLI prohibition
+- Do not use Codex CLI for CodexPro implementation, debugging, testing, review, delegation, or repository mutation. This includes `codex`, `codex exec`, `codex review`, `codex apply`, and all other Codex CLI subcommands.
+- Implementation agents must perform work directly through the current host-native tools and the repository's own commands/tests. Do not use Codex CLI as a subagent, fallback, reviewer, or command runner.
+
 ## Agent roles
 - **Controller**: owns scope, state recovery, sequencing, integration, final evidence, and user communication.
 - **Implementer**: receives one plan task at a time with exact files/interfaces and returns diff + verification evidence.
