@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added workspace policy v2 ordered per-action/resource allow/deny rules with normalized filesystem/Bash/Git resources, multi-resource fail-closed behavior, v1 backward compatibility, and supertool-equivalent enforcement.
 - Updated the MCP v1 integration to the maintained 1.30.x line and centralized SDK-specific tool/transport compatibility behind `src/mcpCompat.ts` without enabling MCP v2, input-required approvals, or Tasks.
 - Made the interactive `codexpro openai-key save` prompt render `*` masks for entered characters and erase masks on backspace without echoing the runtime key.
 - Fixed Full Access profile capability persistence: `settings set` and setup now preserve Analysis, Artifact Export, Durable Goals, CodeGraph, LSP, Git push, and environment-inheritance flags; `settings show` reports their effective state.

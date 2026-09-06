@@ -124,7 +124,7 @@ try {
 }
 
 const secondaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-policy-secondary-'));
-await fs.writeFile(path.join(secondaryRoot, WORKSPACE_POLICY_FILE), JSON.stringify({ version: 1, toolMode: 'minimal', writeMode: 'off', bashMode: 'off' }, null, 2));
+await fs.writeFile(path.join(secondaryRoot, WORKSPACE_POLICY_FILE), JSON.stringify({ version: 2, toolMode: 'standard', toolRules: [{ action: 'tree', resource: '*', effect: 'deny' }] }, null, 2));
 await fs.writeFile(path.join(secondaryRoot, 'visible.txt'), 'secondary workspace\n', 'utf8');
 
 const client = new McpStdioClient('node', ['dist/stdio.js', '--root', root, '--allow-root', root, '--allow-root', secondaryRoot, '--bash', 'full', '--write', 'workspace', '--tool-mode', 'full', '--codex-sessions', 'read'], {
@@ -147,9 +147,12 @@ const secondary = await client.request('tools/call', { name: 'open_workspace', a
 const secondaryId = secondary.structuredContent.workspace_id;
 assert(secondaryId, `secondary workspace did not open: ${JSON.stringify(secondary)}`);
 const secondaryTree = await client.request('tools/call', { name: 'tree', arguments: { workspace_id: secondaryId } });
-assert(secondaryTree.isError === true && /disabled by the effective policy/i.test(JSON.stringify(secondaryTree)), `secondary minimal policy did not block a globally advertised standard tool: ${JSON.stringify(secondaryTree)}`);
+assert(secondaryTree.isError === true && /denied by workspace policy/i.test(JSON.stringify(secondaryTree)), `secondary rule policy did not block tree: ${JSON.stringify(secondaryTree)}`);
+const secondaryViaSupertool = await client.request('tools/call', { name: 'codexpro', arguments: { action: 'tree', args: { workspace_id: secondaryId } } });
+assert(secondaryViaSupertool.isError === true && /denied by workspace policy/i.test(JSON.stringify(secondaryViaSupertool)), `supertool bypassed secondary rule policy: ${JSON.stringify(secondaryViaSupertool)}`);
 const secondaryPolicy = await client.request('tools/call', { name: 'effective_policy', arguments: { workspace_id: secondaryId } });
-assert(secondaryPolicy.structuredContent.effective.toolMode === 'minimal' && secondaryPolicy.structuredContent.effective.bashMode === 'off', 'secondary effective policy was not resolved independently');
+assert(secondaryPolicy.structuredContent.effective.toolMode === 'standard', 'secondary effective policy was not resolved independently');
+assert(Array.isArray(secondaryPolicy.structuredContent.tool_rules) && secondaryPolicy.structuredContent.tool_rules[0]?.effect === 'deny', 'effective_policy did not expose bounded v2 tool rules');
 client.close();
 console.log('? workspace policy smoke test passed');
 

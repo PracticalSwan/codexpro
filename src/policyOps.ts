@@ -5,6 +5,7 @@ import { z } from "zod";
 import type { BashMode, CodexProConfig, CodexSessionsMode, ToolMode, WriteMode } from "./config.js";
 import { CodexProError } from "./guard.js";
 import { redactSensitiveText } from "./redact.js";
+import type { PolicyRule } from "./policyRules.js";
 
 export const WORKSPACE_POLICY_FILE = ".codexpro-policy.json";
 export const MAX_WORKSPACE_POLICY_BYTES = 65_536;
@@ -16,7 +17,7 @@ const relativePathText = boundedText.refine((value) => {
 }, "must stay relative to the workspace");
 const positiveLimit = z.number().int().positive().max(1_000_000_000);
 
-const WorkspacePolicySchema = z.object({
+const WorkspacePolicyV1Schema = z.object({
   version: z.literal(1),
   blockedGlobs: z.array(boundedText).max(128).optional(),
   importantFiles: z.array(relativePathText).max(128).optional(),
@@ -67,9 +68,26 @@ const WorkspacePolicySchema = z.object({
   }).strict().optional()
 }).strict();
 
+const PolicyRuleSchema = z.object({
+  action: boundedText,
+  resource: boundedText,
+  effect: z.enum(["allow", "deny"])
+}).strict();
+
+const WorkspacePolicyV2Schema = WorkspacePolicyV1Schema.omit({ version: true }).extend({
+  version: z.literal(2),
+  toolRules: z.array(PolicyRuleSchema).max(256).optional()
+}).strict();
+
+const WorkspacePolicySchema = z.discriminatedUnion("version", [WorkspacePolicyV1Schema, WorkspacePolicyV2Schema]);
+
 export type WorkspacePolicy = z.infer<typeof WorkspacePolicySchema>;
 export interface WorkspacePolicyState { policy: WorkspacePolicy; sha256: string; }
 export interface EffectiveWorkspacePolicy { policy: WorkspacePolicy | null; effective: CodexProConfig; sha256?: string; }
+
+export function toolRulesForPolicy(policy: WorkspacePolicy | null): PolicyRule[] {
+  return policy?.version === 2 ? (policy.toolRules ?? []) : [];
+}
 
 const BASH_RANK: Record<BashMode, number> = { off: 0, safe: 1, full: 2 };
 const WRITE_RANK: Record<WriteMode, number> = { off: 0, handoff: 1, workspace: 2 };
@@ -208,7 +226,8 @@ export class WorkspacePolicyRegistry {
       policy_present: Boolean(policy), policy_file: WORKSPACE_POLICY_FILE,
       configured: safeConfig(this.globalConfig), effective: safeConfig(effective),
       blocked_globs_added: policy?.blockedGlobs ?? [], important_files: policy?.importantFiles ?? [],
-      recommended_verification: policy?.recommendedVerification ?? []
+      recommended_verification: policy?.recommendedVerification ?? [],
+      tool_rules: toolRulesForPolicy(policy)
     };
   }
 }

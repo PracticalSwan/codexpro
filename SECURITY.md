@@ -177,3 +177,4 @@ CodexPro blocks common sensitive paths by default:
 - symlinks that resolve outside the workspace or into blocked paths
 
 These guards reduce risk. They are not an OS sandbox.
+- Workspace policy v2 may add ordered per-tool/resource allow/deny rules. These rules are tightening-only: global/profile capability gates run first, multi-resource mutations fail when any target is denied, and the supertool cannot bypass the same decision.

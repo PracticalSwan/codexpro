@@ -20,7 +20,8 @@ import { listCodexSessions, readCodexSession, searchCodexSession, readCodexSessi
 import { TOOL_CARD_LEGACY_URIS, TOOL_CARD_MIME_TYPE, TOOL_CARD_URI, toolCardWidgetHtml } from "./toolCardWidget.js";
 import { hasSecretValue, redactSensitiveText, redactStructured } from "./redact.js";
 import { inspectWorkspace, invalidateWorkspaceAnalysis, reviewWorkspaceChanges } from "./analysis/index.js";
-import { WorkspacePolicyRegistry } from "./policyOps.js";
+import { WorkspacePolicyRegistry, toolRulesForPolicy } from "./policyOps.js";
+import { evaluatePolicyRules, policyResourcesForTool } from "./policyRules.js";
 import { OperationStore } from "./operations/store.js";
 import { OperationManager } from "./operations/manager.js";
 import { prepareChangeSet, applyChangeSet, revertOperation, getPreparedChangeSet, workspaceForRevertOperation } from "./operations/changesets.js";
@@ -1212,13 +1213,30 @@ export function createCodexProServer(
     if (ownsRuntimeState) void runtimeState.close();
   };
   telemetryByServer.set(server as object, telemetry);
-  workspaceToolPolicyByServer.set(server as object, (name, args) => {
-    if (name === "open_workspace") return;
-    const workspace = workspaces.getWorkspace(typeof args?.workspace_id === "string" ? args.workspace_id : undefined);
+  const assertWorkspaceToolPolicy = (workspace: Workspace, action: string, actionArgs: Record<string, any>, explicitResources?: string[]): void => {
     const effective = configForWorkspace(workspace);
-    if (!shouldRegisterTool(effective, name)) {
-      throw new CodexProError(`Tool ${name} is disabled by the effective policy for this workspace.`);
+    if (!shouldRegisterTool(effective, action)) {
+      throw new CodexProError(`Tool ${action} is disabled by the effective policy for this workspace.`);
     }
+    const rules = toolRulesForPolicy(policyRegistry.ensure(workspace.root).policy);
+    if (!rules.length) return;
+    const resources = explicitResources ?? policyResourcesForTool(action, actionArgs);
+    const decision = evaluatePolicyRules(rules, action, resources);
+    if (decision.effect === "deny") {
+      throw new CodexProError(`Tool ${action} is denied by workspace policy for resource ${decision.resource}.`);
+    }
+  };
+  workspaceToolPolicyByServer.set(server as object, (name, args) => {
+    let action = name;
+    let actionArgs: Record<string, any> = args ?? {};
+    if (name === SUPERTOOL_NAME) {
+      action = normalizeSupertoolAction(args?.action);
+      if (action === "list_actions" || action === "help") return;
+      actionArgs = args?.args && typeof args.args === "object" && !Array.isArray(args.args) ? args.args : {};
+    }
+    if (action === "open_workspace") return;
+    const workspace = workspaces.getWorkspace(typeof actionArgs?.workspace_id === "string" ? actionArgs.workspace_id : undefined);
+    assertWorkspaceToolPolicy(workspace, action, actionArgs);
   });
   registeredToolNamesByServer.set(server as object, []);
   registerToolCardResource(server, config);
@@ -2679,6 +2697,7 @@ export function createCodexProServer(
       const prepared = getPreparedChangeSet(args.change_set_id);
       if (!prepared) throw new CodexProError(`Unknown or expired change set id: ${args.change_set_id}`);
       if (prepared.workspaceId !== workspace.id) throw new CodexProError("Change set belongs to a different workspace.");
+      assertWorkspaceToolPolicy(workspace, "apply_change_set", args, prepared.paths);
       const receipt = await applyChangeSet(args.change_set_id);
       if (receipt.state === "completed") invalidateWorkspaceAnalysis(workspace.id);
       return textResult(`# Apply Change Set\n\nOperation: ${receipt.id}\nState: ${receipt.state}`, { operation: receipt, change_set: getPreparedChangeSet(args.change_set_id) });
