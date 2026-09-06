@@ -97,6 +97,13 @@ Options:
   --widget-domain <origin>   Dedicated HTTPS origin for ChatGPT widget iframes.
                              Required for app submission. Default: https://rebel0789.github.io.
   --tool-cards <on|off>      Opt in to ChatGPT widget metadata on tool descriptors. Default: off.
+  --analysis <on|off>        Enable built-in repository analysis. Default: on.
+  --artifact-export <on|off> Enable export_file. Default: off unless saved.
+  --goals <on|off>           Enable Durable Goal tools. Default: off unless saved.
+  --codegraph <on|off>       Enable optional CodeGraph integration. Default: off unless saved.
+  --lsp <on|off>             Enable configured LSP integration. Default: off.
+  --allow-git-push <on|off>  Expose guarded git_push. Default: off.
+  --inherit-env <on|off>     Allow unrestricted parent env inheritance. Default: off.
   --tunnel <openai|none|cloudflare|cloudflare-named|ngrok|tailscale>
                              Connect ChatGPT to local MCP. Default: openai.
                              openai = OpenAI Secure MCP Tunnel using the official tunnel-client.
@@ -381,7 +388,10 @@ function parseArgs(argv) {
       if (value === undefined || (inlineValue === undefined && value.startsWith('--'))) throw new Error(`Missing value for --${key}`);
       if (inlineValue === undefined) i += 1;
       if (key === 'allow-root' || key === 'project') out.allowRoots.push(value);
-      else out[key.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = value;
+      else {
+        const aliases = { analysis: 'analysisEnabled', 'artifact-export': 'artifactExportEnabled', goals: 'goalsEnabled', codegraph: 'codeGraphEnabled', lsp: 'lspEnabled', 'allow-git-push': 'allowGitPush', 'inherit-env': 'inheritEnv' };
+        out[aliases[key] ?? key.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = value;
+      }
     }
   }
   return out;
@@ -837,6 +847,24 @@ function toolCardsProfileEntry(args, profile = {}) {
 function toolCardsCliArgs(args, profile = {}) {
   if (!hasToolCardsInput(args, profile)) return [];
   return ['--tool-cards', optionBool(args, profile, 'toolCards', ['CODEXPRO_TOOL_CARDS'], false) ? 'on' : 'off'];
+}
+
+function capabilityProfileEntries(args, profile = {}) {
+  const specs = [
+    ['analysisEnabled', ['CODEXPRO_ANALYSIS'], true],
+    ['artifactExportEnabled', ['CODEXPRO_ARTIFACT_EXPORT'], false],
+    ['goalsEnabled', ['CODEXPRO_GOALS'], false],
+    ['codeGraphEnabled', ['CODEXPRO_CODEGRAPH'], false],
+    ['lspEnabled', ['CODEXPRO_LSP'], false],
+    ['allowGitPush', ['CODEXPRO_ALLOW_GIT_PUSH'], false],
+    ['inheritEnv', ['CODEXPRO_INHERIT_ENV'], false]
+  ];
+  const result = {};
+  for (const [field, envNames, fallback] of specs) {
+    const hasInput = args[field] !== undefined || profile[field] !== undefined || envNames.some((name) => process.env[name] !== undefined && process.env[name] !== '');
+    if (hasInput) result[field] = optionBool(args, profile, field, envNames, fallback);
+  }
+  return result;
 }
 
 function validateBashSession(value) {
@@ -3367,6 +3395,7 @@ function profileFromPreference(root, args, profile, preference) {
     ...(toolMode ? { toolMode } : {}),
     ...(widgetDomain ? { widgetDomain } : {}),
     ...toolCardsProfileEntry(args, profile),
+    ...capabilityProfileEntries(args, profile),
     ...(allowedRoots.length ? { allowedRoots } : {}),
     ...(args.noInstallCloudflared ? { noInstallCloudflared: true } : {}),
     root
@@ -3612,6 +3641,7 @@ async function runSetupWizard(argv) {
         ...(toolMode ? { toolMode } : {}),
         ...(widgetDomain ? { widgetDomain } : {}),
         ...toolCardsEntry,
+        ...capabilityProfileEntries(defaults, profile),
         ...(allowedRoots.length ? { allowedRoots } : {}),
         ...(defaults.noInstallCloudflared ? { noInstallCloudflared: true } : {})
       });
@@ -3662,6 +3692,13 @@ function printProfile(root, profile) {
     ...(safe.write ? [labelValue('Write', safe.write)] : []),
     ...(safe.toolMode ? [labelValue('Tool mode', safe.toolMode)] : []),
     ...(safe.toolCards !== undefined ? [labelValue('Tool cards', safe.toolCards ? 'on' : 'off')] : []),
+    labelValue('Analysis', safe.analysisEnabled === undefined ? 'on' : safe.analysisEnabled ? 'on' : 'off'),
+    labelValue('Artifact export', safe.artifactExportEnabled ? 'on' : 'off'),
+    labelValue('Durable Goals', safe.goalsEnabled ? 'on' : 'off'),
+    labelValue('CodeGraph', safe.codeGraphEnabled ? 'on' : 'off'),
+    labelValue('LSP', safe.lspEnabled ? 'on' : 'off'),
+    labelValue('Git push', safe.allowGitPush ? 'on' : 'off'),
+    labelValue('Environment inheritance', safe.inheritEnv ? 'on' : 'off'),
     labelValue('Bash transcript', safe.bashTranscript ?? 'compact'),
     labelValue('Codex sessions', safe.codexSessions ?? 'off'),
     ...(safe.codexDir ? [labelValue('Codex dir', safe.codexDir)] : []),
@@ -3767,6 +3804,7 @@ function saveSettingsFromArgs(root, args, profile) {
     ...(toolMode ? { toolMode } : {}),
     ...(widgetDomain ? { widgetDomain } : {}),
     ...toolCardsProfileEntry(args, profile),
+    ...capabilityProfileEntries(args, profile),
     ...(allowedRoots.length ? { allowedRoots } : {}),
     ...(args.noInstallCloudflared ?? profile.noInstallCloudflared ? { noInstallCloudflared: true } : {})
   });

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed Full Access profile capability persistence: `settings set` and setup now preserve Analysis, Artifact Export, Durable Goals, CodeGraph, LSP, Git push, and environment-inheritance flags; `settings show` reports their effective state.
 - Made OpenAI Secure MCP Tunnel the primary ChatGPT transport for new/no-profile `codexpro start` launches, using the official `tunnel-client`, tunnel-ID validation, `/readyz` supervision, and loopback-only local MCP forwarding.
 - Kept CodexPro bearer authentication enabled in OpenAI mode and pass it to tunnel-client through referenced data rather than raw argv; OpenAI runtime API keys can now be saved once in a protected per-user secret file and are never written to workspace profiles.
 - Preserved existing HTTP transports as explicit fallbacks. Migrating a saved ngrok profile to OpenAI retains its hostname/config so `codexpro ngrok` can reuse the previous stable endpoint.

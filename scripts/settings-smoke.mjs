@@ -290,6 +290,20 @@ const saved = run([
   'https://widgets.codexpro.test',
   '--tool-cards',
   'on',
+  '--analysis',
+  'on',
+  '--artifact-export',
+  'on',
+  '--goals',
+  'on',
+  '--codegraph',
+  'on',
+  '--lsp',
+  'off',
+  '--allow-git-push',
+  'off',
+  '--inherit-env',
+  'off',
   '--project',
   reuseRoot,
   '--token',
@@ -300,7 +314,7 @@ if (!saved.includes('Saved workspace settings')) {
 }
 
 const shown = run(['settings', 'show', '--root', root], env);
-for (const expected of ['Tunnel', 'ngrok', 'codexpro-test.ngrok-free.app', '19087', 'Tool cards', 'on', 'Bash transcript', 'full', 'Projects', realReuseRoot, '<saved>']) {
+for (const expected of ['Tunnel', 'ngrok', 'codexpro-test.ngrok-free.app', '19087', 'Tool cards', 'on', 'Analysis', 'on', 'Artifact export', 'on', 'Durable Goals', 'on', 'CodeGraph', 'on', 'LSP', 'off', 'Git push', 'off', 'Environment inheritance', 'off', 'Bash transcript', 'full', 'Projects', realReuseRoot, '<saved>']) {
   if (!shown.includes(expected)) {
     throw new Error(`settings show missing ${expected}\n${shown}`);
   }
@@ -314,6 +328,13 @@ if (
   || profile.toolCards !== true
   || profile.bashTranscript !== 'full'
   || profile.widgetDomain !== 'https://widgets.codexpro.test'
+  || profile.analysisEnabled !== true
+  || profile.artifactExportEnabled !== true
+  || profile.goalsEnabled !== true
+  || profile.codeGraphEnabled !== true
+  || profile.lspEnabled !== false
+  || profile.allowGitPush !== false
+  || profile.inheritEnv !== false
   || JSON.stringify(profile.allowedRoots) !== JSON.stringify([realReuseRoot])
 ) {
   throw new Error(`settings profile did not persist tool/widget options: ${JSON.stringify(profile)}`);
@@ -328,6 +349,9 @@ run([
 const clearedProjectsProfile = await readProfile(root, home);
 if (clearedProjectsProfile.allowedRoots !== undefined) {
   throw new Error(`settings profile did not clear saved projects: ${JSON.stringify(clearedProjectsProfile)}`);
+}
+for (const [field, expected] of Object.entries({ analysisEnabled: true, artifactExportEnabled: true, goalsEnabled: true, codeGraphEnabled: true, lspEnabled: false, allowGitPush: false, inheritEnv: false })) {
+  if (clearedProjectsProfile[field] !== expected) throw new Error(`settings update dropped ${field}: ${JSON.stringify(clearedProjectsProfile)}`);
 }
 
 runFail([

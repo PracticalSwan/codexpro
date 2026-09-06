@@ -130,6 +130,14 @@ Authentication: enabled
 
 With `allowGitPush=false`, `git_push` is not exposed. There is no force-push interface.
 
+Persist the capability portion of this profile with:
+
+```bash
+codexpro settings set --analysis on --artifact-export on --goals on --codegraph on --lsp off --allow-git-push off --inherit-env off
+```
+
+`codexpro settings show` reports the effective capability state, and later unrelated `settings set` changes preserve these flags.
+
 Use a narrower profile for untrusted repositories.
 
 ## Daily workflow
