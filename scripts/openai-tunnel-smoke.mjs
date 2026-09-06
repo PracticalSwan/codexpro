@@ -4,6 +4,8 @@ import fs from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
+import { PassThrough } from 'node:stream';
+import { runOpenAiKeyCommand } from './openai-key-store.mjs';
 
 function run(args, env) {
   const result = spawnSync(process.execPath, ['scripts/codexpro.mjs', ...args], {
@@ -106,6 +108,28 @@ if (!/--openai-tunnel-id must match tunnel_<32 lowercase hexadecimal/i.test(defa
   throw new Error(`no-profile codexpro start did not default to OpenAI tunnel mode:
 ${defaultFailure}`);
 }
+
+const promptHome = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-openai-prompt-home-'));
+const promptInput = new PassThrough();
+promptInput.isTTY = true;
+promptInput.isRaw = false;
+promptInput.setRawMode = (enabled) => { promptInput.isRaw = enabled; return promptInput; };
+let promptOutput = '';
+const promptSave = runOpenAiKeyCommand({
+  homeDir: promptHome,
+  argv: ['save'],
+  env: { ...process.env, CONTROL_PLANE_API_KEY: '', OPENAI_API_KEY: '' },
+  input: promptInput,
+  output: { write: (chunk) => { promptOutput += String(chunk); } }
+});
+promptInput.write('abc');
+promptInput.write('\b');
+promptInput.end('d\n');
+await promptSave;
+if (!promptOutput.includes('OpenAI runtime API key (masked): ***\b \b*\n')) {
+  throw new Error(`interactive openai-key prompt did not render masked input/backspace: ${JSON.stringify(promptOutput)}`);
+}
+if (promptOutput.includes('abd')) throw new Error('interactive openai-key prompt echoed the runtime key');
 
 const storedRuntimeKey = 'runtime-key-stored-securely-for-smoke';
 const saveOutput = runWithInput(['openai-key', 'save'], { ...process.env, CODEXPRO_HOME: home, CONTROL_PLANE_API_KEY: '', OPENAI_API_KEY: '' }, `${storedRuntimeKey}\n`);

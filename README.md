@@ -221,7 +221,7 @@ The primary ChatGPT path is OpenAI Secure MCP Tunnel:
 
 ```bash
 # after one-time Platform tunnel/key setup
-codexpro openai-key save   # one-time hidden prompt; stores a protected per-user secret file
+codexpro openai-key save   # one-time masked prompt; stores a protected per-user secret file
 codexpro settings set --tunnel openai --openai-tunnel-id tunnel_0123456789abcdef0123456789abcdef
 codexpro start
 ```

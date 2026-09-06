@@ -74,8 +74,15 @@ async function readHiddenSecret(input, output, promptText) {
           resolve(value.trim());
           return;
         }
-        if (ch === '\u007f' || ch === '\b') value = value.slice(0, -1);
-        else if (ch >= ' ') value += ch;
+        if (ch === '\u007f' || ch === '\b') {
+          if (value) {
+            value = value.slice(0, -1);
+            output.write('\b \b');
+          }
+        } else if (ch >= ' ') {
+          value += ch;
+          output.write('*');
+        }
       }
     };
     output.write(promptText);
@@ -100,7 +107,7 @@ export async function runOpenAiKeyCommand({
   }
   if (action !== 'save') throw new Error('openai-key supports only: save');
   const fromEnv = env.CONTROL_PLANE_API_KEY || env.OPENAI_API_KEY || '';
-  const secret = fromEnv || await readHiddenSecret(input, output, 'OpenAI runtime API key (input hidden): ');
+  const secret = fromEnv || await readHiddenSecret(input, output, 'OpenAI runtime API key (masked): ');
   const filePath = saveOpenAiRuntimeKey(homeDir, secret);
   output.write(`OK Saved OpenAI runtime API key to protected file: ${filePath}\n`);
   output.write('   CodexPro profiles never store the key value.\n');
