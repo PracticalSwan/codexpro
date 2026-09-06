@@ -40,7 +40,7 @@ Implementation begins only when the user authorizes execution of a selected plan
 - Shared MCP/tool registration/config: focused smoke + `npm run build` + `npm run smoke`.
 - Process/concurrency/output budgets: add `npm run stress`.
 - Dependency/release work: add `npm audit --audit-level=high` and release packaging checks.
-- Publication/deployment/global installation: separate explicit authorization and direct post-action verification required.
+- For user-authorized CodexPro implementation or defect-fix work, after successful verification automatically update relevant docs/instructions, commit the intended change, integrate into `main`, push `origin/main`, and reinstall the global `codexpro-full` package. This repository instruction supplies the routine post-verification authorization; still require separate authorization for releases/publication/deployment, force operations, or unrelated external mutations, and directly verify every performed integration/install/push.
 
 ## Stop conditions
 Stop and report instead of forcing progress when the exact workspace is uncertain, protected/unrelated changes would be overwritten, a security boundary cannot be preserved, required external authorization is absent, or evidence contradicts the plan's assumptions.

@@ -15,7 +15,7 @@ Scope: this repository and all descendants.
 - Preserve unrelated dirty, staged, untracked, profile, tunnel, and user-owned state.
 - Planning tasks may create/update planning documentation only; they do not change runtime source.
 - Implementation starts only from an approved subsystem plan. Use an isolated worktree/feature branch when the execution request authorizes implementation.
-- Never merge, push, publish, deploy, install global packages, change tunnels, or mutate external services unless the user explicitly authorizes that action.
+- For user-authorized CodexPro implementation or defect-fix work, successful verification is standing authorization to update relevant docs/instructions, commit the intended change, integrate it into `main`, push `origin/main`, and reinstall the global `codexpro-full` package without asking again. Preserve unrelated dirty/untracked work, never force-push, never publish a release/deployment unless separately authorized, and never persist or expose secrets outside approved secret storage.
 
 ## Verification
 - Run the narrowest relevant smoke/test first, then `npm run build`.

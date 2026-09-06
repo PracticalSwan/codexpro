@@ -96,7 +96,7 @@ If you already have a verified fork tarball, install that tarball directly inste
    codexpro start
    ```
 
-2. One time, create an OpenAI Secure MCP Tunnel for the same ChatGPT workspace and provide its `tunnel_...` ID to CodexPro. Keep the restricted runtime key in `CONTROL_PLANE_API_KEY`; CodexPro does not save it.
+2. One time, create an OpenAI Secure MCP Tunnel for the same ChatGPT workspace and provide its `tunnel_...` ID to CodexPro. Run `codexpro openai-key save` once to store the restricted runtime key in CodexPro's protected per-user secret file, or keep using `CONTROL_PLANE_API_KEY` for session-only credentials.
 3. In ChatGPT, enable Developer mode and keep CSP enforcement enabled. Open Settings -> Connectors, choose **Connection: Tunnel**, and select or paste the same Tunnel ID.
 4. Keep CodexPro and the official `tunnel-client` running while you use the connector. The local MCP endpoint stays loopback-only and bearer protected.
 5. In chat, start with:
@@ -213,12 +213,12 @@ The primary ChatGPT path is OpenAI Secure MCP Tunnel:
 
 ```bash
 # after one-time Platform tunnel/key setup
-$env:CONTROL_PLANE_API_KEY = '<restricted-runtime-key>'   # PowerShell example
+codexpro openai-key save   # one-time hidden prompt; stores a protected per-user secret file
 codexpro settings set --tunnel openai --openai-tunnel-id tunnel_0123456789abcdef0123456789abcdef
 codexpro start
 ```
 
-Do not paste the runtime API key into chat, commit it, or save it in the CodexPro profile. `CONTROL_PLANE_TUNNEL_ID` and `TUNNEL_CLIENT_BIN` are optional environment alternatives for the non-secret tunnel ID/client path.
+Do not paste the runtime API key into chat, commit it, or save it in a workspace profile. `codexpro openai-key save` stores it only in a protected per-user secret file; `CONTROL_PLANE_API_KEY` remains the session-only override. `CONTROL_PLANE_TUNNEL_ID` and `TUNNEL_CLIENT_BIN` are optional environment alternatives for the non-secret tunnel ID/client path.
 
 HTTP fallbacks remain available:
 

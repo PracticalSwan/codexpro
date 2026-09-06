@@ -25,6 +25,16 @@ function runFail(args, env) {
   return `${result.stdout}\n${result.stderr}`;
 }
 
+function runWithInput(args, env, input) {
+  const result = spawnSync(process.execPath, ['scripts/codexpro.mjs', ...args], {
+    cwd: path.resolve('.'), env, input, encoding: 'utf8'
+  });
+  if (result.status !== 0) {
+    throw new Error(`codexpro ${args.join(' ')} failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+  }
+  return `${result.stdout}\n${result.stderr}`;
+}
+
 async function getFreePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -97,6 +107,18 @@ if (!/--openai-tunnel-id must match tunnel_<32 lowercase hexadecimal/i.test(defa
 ${defaultFailure}`);
 }
 
+const storedRuntimeKey = 'runtime-key-stored-securely-for-smoke';
+const saveOutput = runWithInput(['openai-key', 'save'], { ...process.env, CODEXPRO_HOME: home, CONTROL_PLANE_API_KEY: '', OPENAI_API_KEY: '' }, `${storedRuntimeKey}\n`);
+const storedRuntimeKeyPath = path.join(home, 'secrets', 'openai-runtime-key');
+if ((await fs.readFile(storedRuntimeKeyPath, 'utf8')).trim() !== storedRuntimeKey) {
+  throw new Error('openai-key save did not persist the supplied runtime key');
+}
+if (saveOutput.includes(storedRuntimeKey)) throw new Error('openai-key save echoed the runtime key');
+if (process.platform !== 'win32') {
+  const mode = (await fs.stat(storedRuntimeKeyPath)).mode & 0o777;
+  if (mode !== 0o600) throw new Error(`openai-key file mode must be 0600, got ${mode.toString(8)}`);
+}
+
 const tunnelId = 'tunnel_0123456789abcdef0123456789abcdef';
 const fallbackHost = 'codexpro-fallback.ngrok-free.app';
 const token = 'codexpro-openai-local-token-0123456789abcdef';
@@ -153,6 +175,7 @@ if (profile.ngrokFallbackHostname !== fallbackHost || !profile.ngrokFallbackConf
 if (JSON.stringify(profile).includes('runtime-key-must-not-be-saved')) {
   throw new Error('OpenAI runtime API key leaked into the CodexPro profile');
 }
+if (JSON.stringify(profile).includes(storedRuntimeKey)) throw new Error('persisted OpenAI runtime API key leaked into the CodexPro profile');
 
 const invalid = runFail(['settings', 'set', '--root', root, '--tunnel', 'openai', '--openai-tunnel-id', 'tunnel_BAD'], env);
 if (!/tunnel_<32 lowercase hexadecimal/i.test(invalid)) throw new Error(`invalid tunnel id failed unclearly:\n${invalid}`);
@@ -180,7 +203,8 @@ const child = spawn(process.execPath, [
   cwd: path.resolve('.'),
   env: {
     ...env,
-    CONTROL_PLANE_API_KEY: 'runtime-key-for-fake-client',
+    CONTROL_PLANE_API_KEY: '',
+    OPENAI_API_KEY: '',
     CODEXPRO_FAKE_TUNNEL_ARGS: argsFile,
     CODEXPRO_FAKE_TUNNEL_ENV: envFile,
     NO_COLOR: '1'
@@ -204,6 +228,7 @@ try {
   const joinedArgs = tunnelArgs.join(' ');
   for (const expected of [
     'run', '--control-plane.tunnel-id', tunnelId,
+    '--control-plane.api-key', `file:${storedRuntimeKeyPath}`,
     '--mcp.server-url', `channel=main,url=http://127.0.0.1:${port}/mcp`,
     '--mcp.extra-headers', 'Authorization: env:CODEXPRO_TUNNEL_MCP_AUTH_HEADER',
     '--mcp.discovery-extra-headers', 'Authorization: env:CODEXPRO_TUNNEL_MCP_AUTH_HEADER',
@@ -212,7 +237,7 @@ try {
     if (!joinedArgs.includes(expected)) throw new Error(`tunnel-client argv missing ${expected}: ${JSON.stringify(tunnelArgs)}`);
   }
   if (joinedArgs.includes(token)) throw new Error(`raw CodexPro token leaked into tunnel-client argv: ${joinedArgs}`);
-  if (tunnelEnv.auth !== `Bearer ${token}` || tunnelEnv.runtimeKeyPresent !== true) {
+  if (tunnelEnv.auth !== `Bearer ${token}` || tunnelEnv.runtimeKeyPresent !== false) {
     throw new Error(`tunnel-client environment contract mismatch: ${JSON.stringify(tunnelEnv)}`);
   }
 
@@ -222,7 +247,7 @@ try {
       throw new Error(`OpenAI ready output missing ${expected}\n${output}`);
     }
   }
-  if (output.includes('runtime-key-for-fake-client') || output.includes(token)) {
+  if (output.includes(storedRuntimeKey) || output.includes(token)) {
     throw new Error(`launcher output leaked a secret\n${output}`);
   }
 } finally {
@@ -238,4 +263,4 @@ if (fallbackProfile.ngrokFallbackHostname !== fallbackHost) {
   throw new Error(`ngrok fallback metadata disappeared: ${JSON.stringify(fallbackProfile)}`);
 }
 
-console.log('✓ OpenAI Secure MCP Tunnel smoke test passed');
+console.log('âœ“ OpenAI Secure MCP Tunnel smoke test passed');

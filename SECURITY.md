@@ -48,7 +48,7 @@ Review changes against these failure modes before release:
 | Failure mode | Expected control |
 | --- | --- |
 | Tunnel path reaches local MCP without intended auth | OpenAI mode keeps MCP loopback-bound and bearer protected; the official tunnel-client injects the bearer from an environment reference. Public/non-loopback HTTP fallbacks fail closed unless a CodexPro token is configured. |
-| Raw CodexPro, OpenAI runtime, or Cloudflare token appears in UI, argv, logs, docs, profile, or package output | CodexPro tokens are redacted, OpenAI runtime keys are environment-only and never persisted by CodexPro, tunnel-client receives the local bearer through an env reference, and Cloudflare tunnel tokens use local files for persistence. |
+| Raw CodexPro, OpenAI runtime, or Cloudflare token appears in UI, argv, logs, docs, profile, or package output | CodexPro tokens are redacted, OpenAI runtime keys stay out of workspace profiles and may be supplied by environment or a protected per-user secret file, tunnel-client receives only a secret reference, and Cloudflare tunnel tokens use local files for persistence. |
 | ChatGPT can edit outside the intended repo | Allowed roots are explicit; path resolution rejects escapes, blocked globs, and symlink traversal. |
 | ChatGPT can run arbitrary shell by default | Bash defaults to safe mode, can be disabled, and full mode is a trusted-local-only choice. Safe mode can still run repo package scripts, so use `--no-bash` for untrusted repos. |
 | Handoff mode still exposes generic writes | Handoff/pro modes do not advertise generic `write`/`edit`/`apply_patch`; bounded handoff tools write `.ai-bridge` files only. |
@@ -82,7 +82,7 @@ The main risks are:
 Default daily mode after one-time OpenAI Platform tunnel setup:
 
 ```bash
-# Set CONTROL_PLANE_API_KEY in the runtime environment; do not commit or save it in the profile.
+# Run `codexpro openai-key save` once, or set CONTROL_PLANE_API_KEY for a session-only credential.
 codexpro start \
   --root /path/to/repo \
   --bash safe
@@ -97,7 +97,7 @@ codexpro start \
   --bash safe
 ```
 
-OpenAI mode keeps the MCP server on loopback, keeps CodexPro bearer authentication enabled, and passes that bearer to the official tunnel-client through an environment reference. The non-secret `tunnel_...` ID and client path may be saved in the workspace profile; the OpenAI runtime API key must not be.
+OpenAI mode keeps the MCP server on loopback, keeps CodexPro bearer authentication enabled, and passes that bearer to the official tunnel-client through an environment reference. The non-secret `tunnel_...` ID and client path may be saved in the workspace profile. A persisted OpenAI runtime API key is stored only in the protected per-user secret file and is passed to tunnel-client by `file:` reference. Persistent runtime keys live only in `~/.codexpro/secrets/openai-runtime-key` with restrictive local permissions.
 
 For stable public hostnames, keep the CodexPro auth token stable but private:
 
@@ -122,7 +122,7 @@ codexpro start \
 - HTTP tokens shorter than 24 bytes are rejected. Use a generated random token, not a memorable password.
 - Do not commit printed connector URLs that include `codexpro_token`.
 - Production integrations must use OAuth or `Authorization: Bearer <token>`. Query-string tokens are a personal connector compatibility mode, not a shared or multi-user production authentication design.
-- Do not commit or save OpenAI runtime API keys in CodexPro profiles. Use a restricted `CONTROL_PLANE_API_KEY` with only the tunnel permissions required by the official client.
+- Do not commit or save OpenAI runtime API keys in CodexPro profiles. Use `codexpro openai-key save` for protected local persistence, or a restricted `CONTROL_PLANE_API_KEY` for session-only use; grant only the tunnel permissions required by the official client.
 - Do not put the OpenAI runtime API key on the `codexpro` command line or paste it into chat.
 - Do not commit Cloudflare tunnel tokens.
 - Do not paste raw Cloudflare tunnel tokens into browser pages or screenshots. Use `--cloudflare-token-file` or the local page's Cloudflare token file field instead.

@@ -15,6 +15,7 @@ import {
   readCloudflaredAssetResponse,
   verifyCloudflaredAsset
 } from './cloudflared-release.mjs';
+import { resolveOpenAiRuntimeKey, runOpenAiKeyCommand } from './openai-key-store.mjs';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const UNTRACKED_FILE_HASH_BYTES = 64 * 1024;
@@ -48,6 +49,7 @@ Usage:
   codexpro --root /path/to/repo
   codexpro ngrok --hostname your-domain.ngrok-free.dev
   codexpro openai --openai-tunnel-id tunnel_...
+  codexpro openai-key save
   codexpro tailscale --hostname your-device.your-tailnet.ts.net
   codexpro stable --hostname codexpro.example.com --tunnel-name codexpro
   codexpro pro-bundle --root /path/to/repo --copy
@@ -1089,9 +1091,10 @@ function resolveTunnelClient(args = {}) {
   throw new Error(`OpenAI tunnel-client was not found${requested}. Install the official OpenAI tunnel-client, add it to PATH, or pass --tunnel-client <path>.`);
 }
 
-function openAiRuntimeKeyPresent(env = process.env) {
-  return Boolean(env.CONTROL_PLANE_API_KEY || env.OPENAI_API_KEY);
+function openAiRuntimeKeySource(env = process.env) {
+  return resolveOpenAiRuntimeKey(codexProHome(), env);
 }
+
 
 function ngrokConfigPath(root, args, profile = {}) {
   const fallbackConfig = profile.tunnel === 'openai' ? profile.ngrokFallbackConfig ?? '' : '';
@@ -3172,7 +3175,8 @@ async function runDoctor(argv) {
   if (tunnel === 'openai') {
     record(openaiTunnelId && !openaiTunnelIdError ? 'ok' : 'fail', 'OpenAI tunnel ID', openaiTunnelId || openaiTunnelIdError);
     record(tunnelClientPath && !tunnelClientError ? 'ok' : 'fail', 'tunnel-client', tunnelClientPath || tunnelClientError);
-    record(openAiRuntimeKeyPresent() ? 'ok' : 'fail', 'OpenAI runtime key', openAiRuntimeKeyPresent() ? 'CONTROL_PLANE_API_KEY/OPENAI_API_KEY is set' : 'set CONTROL_PLANE_API_KEY with Tunnels Read + Use; CodexPro will not save it');
+    const runtimeKeySource = openAiRuntimeKeySource();
+    record(runtimeKeySource.reference ? 'ok' : 'fail', 'OpenAI runtime key', runtimeKeySource.reference ? runtimeKeySource.description : runtimeKeySource.description + '; use a restricted key with Tunnels Read + Use');
   } else if (tunnel === 'none') {
     record('ok', 'Tunnel', 'local-only mode');
   } else if (tunnel === 'cloudflare') {
@@ -4042,6 +4046,10 @@ async function main() {
     argv = setupArgs;
     subcommand = argv[0];
   }
+  if (subcommand === 'openai-key') {
+    await runOpenAiKeyCommand({ homeDir: codexProHome(), argv: argv.slice(1) });
+    return;
+  }
   if (subcommand === 'settings' || subcommand === 'config') {
     await runSettings(argv.slice(1));
     return;
@@ -4165,8 +4173,9 @@ async function main() {
   const tunnelClientPath = tunnel === 'openai'
     ? resolveTunnelClient({ tunnelClient: optionValue(args, profile, 'tunnelClient', ['TUNNEL_CLIENT_BIN'], '') })
     : '';
-  if (tunnel === 'openai' && !openAiRuntimeKeyPresent()) {
-    throw new Error('OpenAI Secure MCP Tunnel needs a runtime API key. Set CONTROL_PLANE_API_KEY (recommended, restricted to Tunnels Read + Use) or OPENAI_API_KEY, then rerun codexpro start.');
+  const openaiRuntimeKey = tunnel === 'openai' ? openAiRuntimeKeySource() : { reference: '', description: '' };
+  if (tunnel === 'openai' && !openaiRuntimeKey.reference) {
+    throw new Error('OpenAI Secure MCP Tunnel needs a runtime API key. ' + openaiRuntimeKey.description + '. Run codexpro openai-key save for secure persistence, or set CONTROL_PLANE_API_KEY/OPENAI_API_KEY for this launch.');
   }
   const mode = optionValue(args, profile, 'mode', ['CODEXPRO_MODE'], 'agent');
   if (!['agent', 'handoff', 'pro'].includes(mode)) {
@@ -4359,6 +4368,7 @@ async function main() {
     const tunnelArgs = [
       'run',
       '--control-plane.tunnel-id', openaiTunnelId,
+      '--control-plane.api-key', openaiRuntimeKey.reference,
       '--mcp.server-url', `channel=main,url=${localBase}/mcp`,
       '--mcp.extra-headers', 'Authorization: env:CODEXPRO_TUNNEL_MCP_AUTH_HEADER',
       '--mcp.discovery-extra-headers', 'Authorization: env:CODEXPRO_TUNNEL_MCP_AUTH_HEADER',
@@ -4381,10 +4391,10 @@ async function main() {
         'OpenAI Secure MCP Tunnel needs one-time Platform setup:',
         '  1. Create a tunnel scoped to the ChatGPT workspace in OpenAI Platform -> Tunnels.',
         '  2. Create a restricted runtime API key with Tunnels Read + Use.',
-        '  3. Set CONTROL_PLANE_API_KEY in this terminal.',
+        '  3. Run codexpro openai-key save once, or set CONTROL_PLANE_API_KEY for this launch.',
         '  4. Rerun codexpro start with the same tunnel ID.',
         '',
-        'CodexPro does not save the OpenAI runtime API key.'
+        'Persisted keys live only in the protected per-user secret file, never in workspace profiles.'
       ].join('\n');
       throw new Error(`${error instanceof Error ? error.message : String(error)}${hint}`);
     }
