@@ -19,7 +19,7 @@ This is the execution contract for future CodexPro development. It keeps work sp
 Planning work may create or refine `docs/agentic/**`, `docs/superpowers/specs/**`, and `docs/superpowers/plans/**`. It must not modify runtime source, dependencies, generated build output, profiles, tunnels, or external services.
 
 ## Implementation gate
-Implementation begins only when the user authorizes execution of a selected plan. Read that plan and its referenced spec in full; do not execute multiple independent subsystem plans as one undifferentiated change.
+Implementation begins only when the user authorizes the exact plan scope. For single-plan work, read that plan and its referenced spec in full. For explicitly authorized Plans 12–21 batch execution, follow `docs/superpowers/plans/2026-09-06-roadmap-12-21-execution.md` on one dedicated integration worktree/branch, then read each subsystem spec/plan immediately before its milestone. Batch execution is continuous, but subsystem acceptance criteria, focused tests, review, and milestone commits remain distinct; never collapse the batch into one undifferentiated implementation.
 
 ## Agent roles
 - **Controller**: owns scope, state recovery, sequencing, integration, final evidence, and user communication.
@@ -40,7 +40,14 @@ Implementation begins only when the user authorizes execution of a selected plan
 - Shared MCP/tool registration/config: focused smoke + `npm run build` + `npm run smoke`.
 - Process/concurrency/output budgets: add `npm run stress`.
 - Dependency/release work: add `npm audit --audit-level=high` and release packaging checks.
-- For user-authorized CodexPro implementation or defect-fix work, after successful verification automatically update relevant docs/instructions, commit the intended change, integrate into `main`, push `origin/main`, and reinstall the global `codexpro-full` package. This repository instruction supplies the routine post-verification authorization; still require separate authorization for releases/publication/deployment, force operations, or unrelated external mutations, and directly verify every performed integration/install/push.
+- For single user-authorized CodexPro implementation or defect-fix work, after successful verification automatically update relevant docs/instructions, commit the intended change, integrate into `main`, push `origin/main`, and reinstall the global `codexpro-full` package when that install can be performed without violating the runtime-lifecycle rule below. For an explicitly authorized multi-plan batch, create verified milestone commits during the batch but perform integration, push, and global reinstall only once after the final cumulative gate. Releases/publication/deployment, force operations, and unrelated external mutations still require separate authorization; directly verify every external action actually performed.
+
+## Runtime lifecycle rule
+- Detect whether CodexPro is already running before any step that could require replacing the global installation, changing its tunnel/runtime state, or terminating processes.
+- If CodexPro is running, **do not stop it without explicit user approval for that specific stop**. Explain why stopping is required before requesting approval.
+- Agents must **never start or restart CodexPro**. This prohibition applies even after an approved stop, successful reinstall, verification, commit, or push.
+- If stop approval is granted, stop only the CodexPro-owned process tree necessary for the authorized operation, leave CodexPro stopped afterward, and do not terminate unrelated Node processes, tunnels, or other services.
+- If an authorized global reinstall cannot proceed while CodexPro is running and stop approval is absent, leave the runtime untouched, skip/defer the reinstall, and report the reinstall as pending. Source integration/push may proceed when otherwise authorized and safe.
 
 ## Stop conditions
 Stop and report instead of forcing progress when the exact workspace is uncertain, protected/unrelated changes would be overwritten, a security boundary cannot be preserved, required external authorization is absent, or evidence contradicts the plan's assumptions.

@@ -5,8 +5,8 @@ Scope: this repository and all descendants.
 ## Start here
 1. Read `docs/agentic/PROJECT_MEMORY.md` for durable current-state facts.
 2. Read `docs/agentic/DEVELOPMENT_WORKFLOW.md` before planning or implementation.
-3. For roadmap work, open `docs/agentic/PLAN_INDEX.md`, then read only the selected subsystem spec and plan.
-4. Inspect current Git status, branch, upstream state, touched execution paths, and relevant tests before changing source.
+3. For roadmap work, open `docs/agentic/PLAN_INDEX.md`. For a single subsystem, read its spec and plan; for explicitly authorized Plans 12–21 batch execution, read `docs/superpowers/plans/2026-09-06-roadmap-12-21-execution.md` first, then each subsystem spec/plan immediately before that milestone.
+4. Inspect current Git status, branch, upstream state, touched execution paths, relevant tests, and whether a CodexPro runtime is already running before changing source.
 
 ## Development rules
 - Keep CodexPro a local MCP bridge for explicitly allowed workspaces. Preserve its trust boundary and mode gates.
@@ -14,8 +14,10 @@ Scope: this repository and all descendants.
 - Reuse existing dependencies and architecture. Add dependencies only when the selected plan explicitly justifies them.
 - Preserve unrelated dirty, staged, untracked, profile, tunnel, and user-owned state.
 - Planning tasks may create/update planning documentation only; they do not change runtime source.
-- Implementation starts only from an approved subsystem plan. Use an isolated worktree/feature branch when the execution request authorizes implementation.
-- For user-authorized CodexPro implementation or defect-fix work, successful verification is standing authorization to update relevant docs/instructions, commit the intended change, integrate it into `main`, push `origin/main`, and reinstall the global `codexpro-full` package without asking again. Preserve unrelated dirty/untracked work, never force-push, never publish a release/deployment unless separately authorized, and never persist or expose secrets outside approved secret storage.
+- Implementation starts only from approved plan scope. A user may explicitly authorize one subsystem or the Plans 12–21 umbrella execution; batch authorization still requires each subsystem spec/plan to be implemented, reviewed, and verified as a distinct milestone on one isolated integration worktree/branch.
+- For a single user-authorized CodexPro implementation or defect fix, successful verification is standing authorization to update relevant docs/instructions, commit the intended change, integrate it into `main`, push `origin/main`, and reinstall the global `codexpro-full` package without asking again. For an explicitly authorized multi-plan batch, make milestone commits on the integration branch but defer integration, push, and global reinstall until the entire authorized batch reaches its final cumulative gate.
+- **Running CodexPro lifecycle is user-controlled.** If any CodexPro runtime/session is already running, do not stop it unless the user explicitly approves that stop after being told why it is required. Agents must never start or restart CodexPro. If a stop is approved, stop only the CodexPro-owned process tree required for the authorized operation, leave it stopped afterward, and do not touch unrelated runtimes/tunnels. If a global reinstall or other step requires stopping a running CodexPro and approval is absent, skip/defer that step and report it as pending.
+- Preserve unrelated dirty/untracked work, never force-push, never publish a release/deployment unless separately authorized, and never persist or expose secrets outside approved secret storage.
 
 ## Verification
 - Run the narrowest relevant smoke/test first, then `npm run build`.
