@@ -1,3 +1,9 @@
+## Durable touched-file checkpoints
+
+- `write`, `edit`, `apply_patch`, and `apply_change_set` return `chk_*` rollback points.
+- `restore_checkpoint` is all-or-nothing and SHA-guarded against later user edits.
+- Preimages are deduplicated and stored outside the project; whole-repository/Git rollback is intentionally not provided.
+
 # CodexPro Full 0.32.3 — Feature Guide
 
 CodexPro Full is PracticalSwan's independently maintained CodexPro fork. It keeps the `codexpro` CLI and MCP compatibility while adding the 0.31–0.32 agentic, continuity, safety, code-intelligence, artifact, and Durable Goal features. The release package is `codexpro-full`; installing it still provides the `codexpro` CLI.

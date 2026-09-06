@@ -5,6 +5,8 @@ import { spawnSync } from "node:child_process";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { mcpRuntimeCapabilities, registerToolCompat } from "./mcpCompat.js";
 import { projectTrustStatus } from "./projectTrust.js";
+import { CheckpointStore } from "./checkpoints/store.js";
+import { createMutationCheckpoint, finalizeMutationCheckpoint, restoreCheckpoint } from "./checkpoints/ops.js";
 import { runHooks } from "./hooks/runner.js";
 import { z } from "zod";
 import type { CodexProConfig } from "./config.js";
@@ -367,6 +369,7 @@ const MINIMAL_TOOL_NAMES = [
   "prepare_change_set",
   "apply_change_set",
   "revert_operation",
+  "restore_checkpoint",
   "apply_patch",
   "import_file",
   "extract_archive",
@@ -442,6 +445,7 @@ const FULL_TOOL_NAMES = [
   "prepare_change_set",
   "apply_change_set",
   "revert_operation",
+  "restore_checkpoint",
   "apply_patch",
   "import_file",
   "extract_archive",
@@ -492,6 +496,7 @@ const CONNECTION_TEST_HIDDEN_TOOLS = new Set<string>([
   "prepare_change_set",
   "apply_change_set",
   "revert_operation",
+  "restore_checkpoint",
   "apply_patch",
   "import_file",
   "extract_archive",
@@ -549,7 +554,7 @@ export function toolNamesForMode(config: CodexProConfig): string[] {
     }
   }
   if (config.writeMode !== "workspace") {
-    for (const writeTool of ["write", "edit", "prepare_change_set", "apply_change_set", "revert_operation", "apply_patch", "import_file", "extract_archive", "git_stage", "git_commit", "git_push"]) {
+    for (const writeTool of ["write", "edit", "prepare_change_set", "apply_change_set", "revert_operation", "restore_checkpoint", "apply_patch", "import_file", "extract_archive", "git_stage", "git_commit", "git_push"]) {
       const toolIndex = names.indexOf(writeTool);
       if (toolIndex !== -1) names.splice(toolIndex, 1);
     }
@@ -596,7 +601,7 @@ export function registeredToolNames(server: McpServer): string[] {
 function shouldRegisterTool(config: CodexProConfig, name: string): boolean {
   if (config.connectionTest && CONNECTION_TEST_HIDDEN_TOOLS.has(name)) return false;
   if (BASH_DEPENDENT_TOOL_NAMES.has(name) && config.bashMode === "off") return false;
-  if (["write", "edit", "prepare_change_set", "apply_change_set", "revert_operation", "apply_patch", "import_file", "extract_archive", "git_stage", "git_commit", "git_push"].includes(name) && config.writeMode !== "workspace") return false;
+  if (["write", "edit", "prepare_change_set", "apply_change_set", "revert_operation", "restore_checkpoint", "apply_patch", "import_file", "extract_archive", "git_stage", "git_commit", "git_push"].includes(name) && config.writeMode !== "workspace") return false;
   if (name === "git_push" && !config.allowGitPush) return false;
   if (name === "codegraph_sync" && (!config.codeGraphEnabled || config.writeMode !== "workspace")) return false;
   if (name === "export_file" && !config.artifactExportEnabled) return false;
@@ -1175,12 +1180,32 @@ export function createCodexProServer(
   const runtimeState = options.runtimeState ?? new CodexProRuntimeState();
   const ownsRuntimeState = !options.runtimeState;
   const operationManagers = new Map<string, OperationManager>();
+  const checkpointStore = new CheckpointStore({
+    baseDir: config.checkpointDir,
+    maxCheckpoints: config.maxOperationReceipts,
+    maxBytes: config.maxOperationBytes
+  });
   const operationManagerFor = (workspace: Workspace): OperationManager => {
     const existing = operationManagers.get(workspace.id);
     if (existing) return existing;
     const manager = new OperationManager(new OperationStore({ baseDir: configForWorkspace(workspace).operationDir, maxReceipts: configForWorkspace(workspace).maxOperationReceipts }), workspace.id);
     operationManagers.set(workspace.id, manager);
     return manager;
+  };
+
+  const checkpointedMutation = async <T>(workspace: Workspace, paths: string[], task: () => Promise<T>): Promise<{ result: T; checkpointId: string }> => {
+    const workspaceConfig = configForWorkspace(workspace);
+    const resolved = [...new Set(paths)].map((filePath) => guard.resolve(workspace, filePath, { forWrite: true }));
+    return withFileWriteLocks(resolved.map((item) => item.absPath), async () => {
+      const checkpoint = await createMutationCheckpoint({
+        config: workspaceConfig, guard, workspace, store: checkpointStore, paths: resolved.map((item) => item.relPath)
+      });
+      const result = await task();
+      await finalizeMutationCheckpoint({
+        config: workspaceConfig, guard, workspace, store: checkpointStore, checkpointId: checkpoint.id
+      });
+      return { result, checkpointId: checkpoint.id };
+    });
   };
   const workspaceEventTrackerFor = (workspace: Workspace): WorkspaceEventTracker =>
     runtimeState.eventTrackerFor(
@@ -1254,6 +1279,7 @@ export function createCodexProServer(
     }
     if (action === "open_workspace") return;
     const workspace = workspaces.getWorkspace(typeof actionArgs?.workspace_id === "string" ? actionArgs.workspace_id : undefined);
+    if (name === SUPERTOOL_NAME && !shouldRegisterTool(configForWorkspace(workspace), action)) return;
     assertWorkspaceToolPolicy(workspace, action, actionArgs);
   });
   const hookSessionStarted = new Set<string>();
@@ -1411,6 +1437,7 @@ export function createCodexProServer(
         searchBackend,
         mcp: mcpRuntimeCapabilities(),
         projectHooks: { timeoutMs: config.hookTimeoutMs, maxOutputBytes: config.hookMaxOutputBytes },
+        checkpoints: { enabled: config.writeMode === "workspace", maxCheckpoints: config.maxOperationReceipts, maxBytes: config.maxOperationBytes },
         bashTranscript: config.bashTranscript,
         bashSessionId: config.bashSessionId ?? null,
         requireBashSession: config.requireBashSession,
@@ -2771,9 +2798,17 @@ export function createCodexProServer(
       if (!prepared) throw new CodexProError(`Unknown or expired change set id: ${args.change_set_id}`);
       if (prepared.workspaceId !== workspace.id) throw new CodexProError("Change set belongs to a different workspace.");
       assertWorkspaceToolPolicy(workspace, "apply_change_set", args, prepared.paths);
-      const receipt = await applyChangeSet(args.change_set_id);
+      let receipt;
+      let checkpointId: string | undefined;
+      if (prepared.state === "prepared") {
+        const checkpointed = await checkpointedMutation(workspace, prepared.paths, () => applyChangeSet(args.change_set_id));
+        receipt = checkpointed.result;
+        checkpointId = checkpointed.checkpointId;
+      } else {
+        receipt = await applyChangeSet(args.change_set_id);
+      }
       if (receipt.state === "completed") invalidateWorkspaceAnalysis(workspace.id);
-      return textResult(`# Apply Change Set\n\nOperation: ${receipt.id}\nState: ${receipt.state}`, { operation: receipt, change_set: getPreparedChangeSet(args.change_set_id) });
+      return textResult(`# Apply Change Set\n\nOperation: ${receipt.id}\nState: ${receipt.state}${checkpointId ? `\nCheckpoint: ${checkpointId}` : ""}`, { operation: receipt, change_set: getPreparedChangeSet(args.change_set_id), ...(checkpointId ? { checkpoint_id: checkpointId } : {}) });
     }
   );
 
@@ -2794,6 +2829,40 @@ export function createCodexProServer(
       const receipt = await revertOperation(args.operation_id);
       invalidateWorkspaceAnalysis(workspace.id);
       return textResult(`# Revert Operation\n\nOperation: ${receipt.id}\nState: ${receipt.state}`, { operation: receipt, reverted_operation_id: args.operation_id });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "restore_checkpoint",
+    {
+      title: "Restore Checkpoint",
+      description: "Restore files touched by one finalized CodexPro checkpoint only when every current file still matches the recorded post-mutation state.",
+      inputSchema: {
+        workspace_id: z.string().optional(),
+        checkpoint_id: z.string().regex(/^chk_[A-Za-z0-9-]{1,80}$/)
+      },
+      annotations: LOCAL_WRITE_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const checkpoint = await checkpointStore.get(workspace.id, args.checkpoint_id);
+      if (!checkpoint) throw new CodexProError(`Unknown checkpoint id: ${args.checkpoint_id}`);
+      assertWorkspaceToolPolicy(workspace, "restore_checkpoint", args, checkpoint.entries.map((entry) => entry.path));
+      const receipt = await restoreCheckpoint({
+        config: configForWorkspace(workspace),
+        guard,
+        workspace,
+        store: checkpointStore,
+        operationManager: operationManagerFor(workspace),
+        checkpointId: args.checkpoint_id
+      });
+      invalidateWorkspaceAnalysis(workspace.id);
+      return textResult(
+        `# Restore Checkpoint\n\nCheckpoint: ${args.checkpoint_id}\nOperation: ${receipt.id}\nState: ${receipt.state}`,
+        { checkpoint_id: args.checkpoint_id, operation: receipt, paths: checkpoint.entries.map((entry) => entry.path) }
+      );
     }
   );
 
@@ -2826,13 +2895,13 @@ export function createCodexProServer(
       assertWriteToolAllowed(configForWorkspace(workspace), resolved.relPath);
       const execution = await operationManagerFor(workspace).execute(
         { kind: "write", idempotencyKey: args.idempotency_key },
-        () => writeTextFile(configForWorkspace(workspace), guard, workspace, args.path, String(args.content ?? ""), {
+        () => checkpointedMutation(workspace, [resolved.relPath], () => writeTextFile(configForWorkspace(workspace), guard, workspace, args.path, String(args.content ?? ""), {
           createDirs: args.create_dirs !== false, overwrite: args.overwrite !== false, expectedSha256: args.expected_sha256
-        }),
-        (value) => ({ paths: [value.path], bytes: value.bytes, additions: value.diff.additions, deletions: value.diff.deletions, afterHashes: { [value.path]: value.sha256 } })
+        })),
+        (value) => ({ paths: [value.result.path], bytes: value.result.bytes, additions: value.result.diff.additions, deletions: value.result.diff.deletions, afterHashes: { [value.result.path]: value.result.sha256 }, note: `checkpoint ${value.checkpointId}` })
       );
       if (execution.replayed || !execution.result) return textResult("# Write File\n\nOperation " + execution.receipt.id + " already " + execution.receipt.state + "; mutation not repeated.", { operation: execution.receipt, replayed: true });
-      const result = execution.result;
+      const { result, checkpointId } = execution.result;
       if (result.diff.changed) invalidateWorkspaceAnalysis(workspace.id);
       const text = `# Write File\n\nPath: ${result.path}\nExisted before: ${result.existed}\nBytes: ${result.bytes}\nSHA-256: ${result.sha256}\nDiff stats: +${result.diff.additions} -${result.diff.deletions}${diffBlock(result.diff.diff)}`;
       return textResult(text, {
@@ -2845,6 +2914,7 @@ export function createCodexProServer(
         additions: result.diff.additions,
         deletions: result.diff.deletions,
         diff: result.diff.diff,
+        checkpoint_id: checkpointId,
         operation: execution.receipt
       });
     }
@@ -2880,13 +2950,13 @@ export function createCodexProServer(
       assertWriteToolAllowed(configForWorkspace(workspace), resolved.relPath);
       const execution = await operationManagerFor(workspace).execute(
         { kind: "edit", idempotencyKey: args.idempotency_key },
-        () => editTextFile(configForWorkspace(workspace), guard, workspace, args.path, String(args.old_text ?? ""), String(args.new_text ?? ""), {
+        () => checkpointedMutation(workspace, [resolved.relPath], () => editTextFile(configForWorkspace(workspace), guard, workspace, args.path, String(args.old_text ?? ""), String(args.new_text ?? ""), {
           replaceAll: parseBool(args.replace_all, false), expectedReplacements: args.expected_replacements, expectedSha256: args.expected_sha256
-        }),
-        (value) => ({ paths: [value.path], bytes: value.bytes, additions: value.diff.additions, deletions: value.diff.deletions, afterHashes: { [value.path]: value.sha256 } })
+        })),
+        (value) => ({ paths: [value.result.path], bytes: value.result.bytes, additions: value.result.diff.additions, deletions: value.result.diff.deletions, afterHashes: { [value.result.path]: value.result.sha256 }, note: `checkpoint ${value.checkpointId}` })
       );
       if (execution.replayed || !execution.result) return textResult("# Edit File\n\nOperation " + execution.receipt.id + " already " + execution.receipt.state + "; mutation not repeated.", { operation: execution.receipt, replayed: true });
-      const result = execution.result;
+      const { result, checkpointId } = execution.result;
       if (result.diff.changed) invalidateWorkspaceAnalysis(workspace.id);
       const text = `# Edit File\n\nPath: ${result.path}\nReplacements: ${result.replacements}\nBytes: ${result.bytes}\nSHA-256: ${result.sha256}\nDiff stats: +${result.diff.additions} -${result.diff.deletions}${diffBlock(result.diff.diff)}`;
       return textResult(text, {
@@ -2899,6 +2969,7 @@ export function createCodexProServer(
         additions: result.diff.additions,
         deletions: result.diff.deletions,
         diff: result.diff.diff,
+        checkpoint_id: checkpointId,
         operation: execution.receipt
       });
     }
@@ -2926,13 +2997,17 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
+      const patchText = String(args.patch ?? "");
+      const touchedPaths = patchTouchedPaths(patchText);
       const execution = await operationManagerFor(workspace).execute(
         { kind: "apply_patch", idempotencyKey: args.idempotency_key },
-        () => applyWorkspacePatch(configForWorkspace(workspace), guard, workspace, String(args.patch ?? "")),
-        (value) => ({ paths: value.paths, additions: value.additions, deletions: value.deletions })
+        () => touchedPaths.length
+          ? checkpointedMutation(workspace, touchedPaths, () => applyWorkspacePatch(configForWorkspace(workspace), guard, workspace, patchText))
+          : applyWorkspacePatch(configForWorkspace(workspace), guard, workspace, patchText).then((result) => ({ result, checkpointId: "" })),
+        (value) => ({ paths: value.result.paths, additions: value.result.additions, deletions: value.result.deletions, note: value.checkpointId ? `checkpoint ${value.checkpointId}` : undefined })
       );
       if (execution.replayed || !execution.result) return textResult("# Apply Patch\n\nOperation " + execution.receipt.id + " already " + execution.receipt.state + "; mutation not repeated.", { operation: execution.receipt, replayed: true });
-      const result = execution.result;
+      const { result, checkpointId } = execution.result;
       if (result.changed) invalidateWorkspaceAnalysis(workspace.id);
       const text = [
         "# Apply Patch",
@@ -2952,6 +3027,7 @@ export function createCodexProServer(
         deletions: result.deletions,
         changed: result.changed,
         diff: result.diff,
+        ...(checkpointId ? { checkpoint_id: checkpointId } : {}),
         operation: execution.receipt
       });
     }

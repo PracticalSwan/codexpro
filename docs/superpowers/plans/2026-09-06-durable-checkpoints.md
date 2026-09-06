@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Execution status:** Planned only on 2026-09-06. This plan is **not execution-authorized** by the planning request that created it.
+**Execution status:** Implemented and verified on 2026-09-07. This plan is **not execution-authorized** by the planning request that created it.
 
 **Goal:** Provide durable `chk_*` rollback points for CodexPro-owned file mutations without snapshotting entire repositories or overwriting later user work.
 

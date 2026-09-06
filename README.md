@@ -250,6 +250,10 @@ See [docs/workspace-policy.md](docs/workspace-policy.md).
 
 Trusted repositories may define `.codexpro-hooks.json` lifecycle hooks. Hook files never execute merely because they exist: trust is stored outside the repository and binds the canonical workspace plus exact hook-file SHA-256. Inspect or trust the current fingerprint locally with `codexpro trust status` / `codexpro trust hooks`; MCP exposes read-only `project_trust_status`. See [docs/hooks.md](docs/hooks.md).
 
+## Durable checkpoints
+
+CodexPro file mutations (`write`, `edit`, `apply_patch`, and `apply_change_set`) now return a bounded `chk_*` checkpoint. `restore_checkpoint` restores only those touched files and refuses to overwrite later edits. Checkpoint preimages live outside the workspace. See [docs/checkpoints.md](docs/checkpoints.md).
+
 ## Durable operations
 
 State-changing tools can use idempotency keys and return durable `op_*` receipts. Query them with `operation_status`.

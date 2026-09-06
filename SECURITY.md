@@ -77,6 +77,8 @@ The main risks are:
 - leaking a `codexpro_token`, OpenAI runtime API key, or Cloudflare tunnel token
 - trusting a downloaded `cloudflared` binary without understanding where it came from
 
+- Durable checkpoints store only touched-file preimages outside the workspace and restore only when every current postimage hash still matches; they never use Git reset/checkout or overwrite later user edits.
+
 ## Safer Defaults
 
 Default daily mode after one-time OpenAI Platform tunnel setup:
