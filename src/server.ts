@@ -1808,7 +1808,7 @@ export function createCodexProServer(
     "verify_changes",
     {
       title: "Verify Changes",
-      description: "Analyze changed workspace paths, select at most the smallest relevant trusted verification checks, and optionally run them. No arbitrary command input is accepted.",
+      description: "Analyze changed workspace paths, select at most the smallest relevant trusted verification checks, and optionally run them. Returns additive bounded repair evidence without autonomous retries. No arbitrary command input is accepted.",
       inputSchema: {
         workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use the selected workspace."),
         changed_paths: z.array(z.string()).min(1).max(128).describe("Workspace-relative changed paths to analyze."),

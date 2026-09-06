@@ -127,7 +127,7 @@ This is useful when a ChatGPT request may be retried or when several files must 
 | Incremental output | `read_workspace_process_output` | Read bounded output with a cursor; later reads continue instead of replaying everything. |
 | Stop process | `stop_workspace_process` | Stop the workspace-owned process deterministically. |
 | Discover/run checks | `run_checks` | Run trusted project scripts/checks and receive structured test results. |
-| Change-aware verification | `verify_changes` | Select checks based on the actual changed paths. |
+| Change-aware verification | `verify_changes` | Select checks from changed paths and return bounded deterministic repair evidence for pass/fail/not-run outcomes. |
 
 `proc_*` handles are process-runtime state, so they survive separate ChatGPT HTTP/MCP calls while the CodexPro runtime remains alive.
 

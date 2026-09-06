@@ -65,6 +65,8 @@ try {
   assert(verification.selectedChecks.length <= 2, 'verify_changes selected too many checks');
   assert(verification.selectedChecks.every((check) => discovered.some((candidate) => candidate.id === check.id)));
   assert.equal(verification.results.length, 0);
+  assert.equal(verification.repair.status, 'not_run');
+  assert.equal(verification.repair.retryRecommended, false);
 
   console.log('checks smoke passed');
 } finally {

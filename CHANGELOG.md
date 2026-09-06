@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Added bounded deterministic repair metadata to `verify_changes`, including failure categories, likely paths, related tests, retry guidance, and next actions without autonomous repair execution.
 - Added a bounded sanitized per-workspace activity/evidence ledger and read-only `activity_log` tool.
 
 - Added durable touched-file checkpoints for `write`, `edit`, `apply_patch`, and `apply_change_set`, with bounded out-of-workspace preimages and hash-guarded `restore_checkpoint` that refuses to overwrite later user edits.

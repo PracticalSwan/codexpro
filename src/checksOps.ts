@@ -5,6 +5,7 @@ import { runBash } from "./bashOps.js";
 import { discoverVerificationCommands, reviewWorkspaceChanges } from "./analysis/impact.js";
 import type { ChangeAnalysis } from "./analysis/types.js";
 import { parseTestOutput, type StructuredTestResult, type TestFramework } from "./testResultOps.js";
+import { buildVerificationRepairContract, type VerificationRepairContract } from "./verificationEvidence.js";
 
 export interface TrustedCheck {
   id: string;
@@ -126,6 +127,7 @@ export interface VerificationPlanResult {
   selectedChecks: TrustedCheck[];
   results: CheckExecutionResult[];
   ok: boolean | null;
+  repair: VerificationRepairContract;
 }
 
 export async function verifyChanges(request: {
@@ -143,7 +145,7 @@ export async function verifyChanges(request: {
   const discovered = await discoverTrustedChecks(request.config, request.guard, request.workspace);
   const selectedChecks = chooseVerificationChecks(analysis, discovered);
   if (request.run === false || !selectedChecks.length) {
-    return { analysis, selectedChecks, results: [], ok: selectedChecks.length ? null : true };
+    return { analysis, selectedChecks, results: [], ok: selectedChecks.length ? null : true, repair: buildVerificationRepairContract(analysis, []) };
   }
   const executed = await runChecks({
     config: request.config,
@@ -153,5 +155,5 @@ export async function verifyChanges(request: {
     timeoutMs: request.timeoutMs,
     sessionId: request.sessionId
   });
-  return { analysis, selectedChecks, results: executed.results, ok: executed.ok };
+  return { analysis, selectedChecks, results: executed.results, ok: executed.ok, repair: buildVerificationRepairContract(analysis, executed.results) };
 }

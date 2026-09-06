@@ -284,6 +284,8 @@ run_checks
 verify_changes
 ```
 
+`verify_changes` also returns bounded deterministic repair metadata (category, likely paths, related tests, and next actions); CodexPro does not run an autonomous repair loop.
+
 Process handles and event cursors survive separate ChatGPT HTTP/MCP calls while the same CodexPro runtime remains alive.
 
 ## Code intelligence

@@ -23,7 +23,7 @@ Plans 01–11 baseline: 2026-09-05; execution was authorized and those plans are
 | 17 | P1 | Unified Activity and Evidence Ledger | #48 bounded activity/evidence ledger | [spec](../superpowers/specs/2026-09-06-activity-ledger-design.md) | [plan](../superpowers/plans/2026-09-06-activity-ledger.md) | Verified |
 | 18 | P2 | MCP v2 Compatibility and Multi-Round Approvals | #49 v2 compatibility + one-shot interactive approvals | [spec](../superpowers/specs/2026-09-06-mcp-v2-approvals-design.md) | [plan](../superpowers/plans/2026-09-06-mcp-v2-approvals.md) | Planned |
 | 19 | P3 | MCP Tasks Extension Bridge | #50 optional Tasks bridge over existing proc/Goal state | [spec](../superpowers/specs/2026-09-06-mcp-tasks-bridge-design.md) | [plan](../superpowers/plans/2026-09-06-mcp-tasks-bridge.md) | Planned |
-| 20 | P1 | Structured Verification Repair Metadata | #51 bounded repair evidence from `verify_changes` | [spec](../superpowers/specs/2026-09-06-verification-repair-metadata-design.md) | [plan](../superpowers/plans/2026-09-06-verification-repair-metadata.md) | Planned |
+| 20 | P1 | Structured Verification Repair Metadata | #51 bounded repair evidence from `verify_changes` | [spec](../superpowers/specs/2026-09-06-verification-repair-metadata-design.md) | [plan](../superpowers/plans/2026-09-06-verification-repair-metadata.md) | Verified |
 | 21 | P3 | Optional Docker Execution Backend | #52 host/Docker execution adapter; Goal support gated | [spec](../superpowers/specs/2026-09-06-docker-execution-backend-design.md) | [plan](../superpowers/plans/2026-09-06-docker-execution-backend.md) | Planned |
 
 ## Execution rule
