@@ -3,6 +3,7 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { mcpRuntimeCapabilities, registerToolCompat } from "./mcpCompat.js";
 import { z } from "zod";
 import type { CodexProConfig } from "./config.js";
 import { WorkspaceManager, PathGuard, CodexProError, type Workspace, type WorkspaceRegistry } from "./guard.js";
@@ -301,7 +302,7 @@ function assertWriteToolAllowed(config: CodexProConfig, relPath: string): void {
   throw new CodexProError("write/edit/apply_patch tools are disabled because CODEXPRO_WRITE_MODE=off. handoff_to_agent and handoff_to_codex are still available for planning.");
 }
 
-function registerToolCompat(
+function registerWrappedToolCompat(
   server: McpServer,
   name: string,
   options: Record<string, unknown>,
@@ -325,35 +326,19 @@ function registerToolCompat(
       logToolCall(name, status, started);
       return result;
     } catch (error) {
-      telemetry?.record({ stage: "completion", status: "error", tool: name, durationMs: Date.now() - started, errorBoundary: error instanceof Error ? error.message : String(error) });
+      telemetry?.record({
+        stage: "completion",
+        status: "error",
+        tool: name,
+        durationMs: Date.now() - started,
+        errorBoundary: error instanceof Error ? error.message : String(error)
+      });
       const result = tagToolResult(errorResult(error), name, options);
       logToolCall(name, "error", started);
       return result;
     }
   };
-
-  const securitySchemes = [{ type: "noauth" }];
-  const fullOptions: Record<string, unknown> = {
-    securitySchemes,
-    ...options,
-    _meta: {
-      securitySchemes,
-      ...(options._meta as Record<string, unknown> | undefined)
-    }
-  };
-
-  const s = server as any;
-  if (typeof s.registerTool === "function") {
-    s.registerTool(name, fullOptions, wrapped);
-    return;
-  }
-
-  if (typeof s.tool === "function") {
-    s.tool(name, (fullOptions.description as string | undefined) ?? name, fullOptions.inputSchema ?? {}, wrapped);
-    return;
-  }
-
-  throw new Error("Unsupported MCP SDK: McpServer has neither registerTool nor tool.");
+  registerToolCompat(server, name, options, wrapped);
 }
 
 const MINIMAL_TOOL_NAMES = [
@@ -631,7 +616,7 @@ function registerCodexTool(
     workspaceToolPolicyByServer.get(server as object)?.(name, validatedArgs);
     return handler(validatedArgs);
   };
-  registerToolCompat(server, name, descriptorOptionsForConfig(config, name, options), validatedHandler);
+  registerWrappedToolCompat(server, name, descriptorOptionsForConfig(config, name, options), validatedHandler);
   rememberRegisteredTool(server, name);
   rememberRegisteredToolHandler(server, name, validatedHandler);
 }
@@ -1352,6 +1337,7 @@ export function createCodexProServer(
         bashRuntime,
         gitRuntime,
         searchBackend,
+        mcp: mcpRuntimeCapabilities(),
         bashTranscript: config.bashTranscript,
         bashSessionId: config.bashSessionId ?? null,
         requireBashSession: config.requireBashSession,

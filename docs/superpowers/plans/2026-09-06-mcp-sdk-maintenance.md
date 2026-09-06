@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Execution status:** Planned only on 2026-09-06. This plan is **not execution-authorized** by the planning request that created it.
+**Execution status:** Verified on 2026-09-06 in the authorized Plans 12?21 batch.
 
 **Goal:** Move CodexPro Full from the old MCP SDK baseline to the maintained v1 line, isolate SDK-specific compatibility code, and prepare—but not enable—a controlled path to MCP v2.
 

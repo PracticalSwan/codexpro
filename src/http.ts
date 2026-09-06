@@ -4,8 +4,8 @@ import { timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { createHttpTransportCompat, isInitializeRequestCompat } from "./mcpCompat.js";
+import type { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { expandHome, loadConfig, type CodexProConfig } from "./config.js";
 import {
   profilePathForRoot,
@@ -1915,8 +1915,8 @@ async function main(): Promise<void> {
       const existingTransport = getTransport(sessionId);
       if (existingTransport) {
         transport = existingTransport;
-      } else if (!sessionId && isInitializeRequest(req.body)) {
-        transport = new StreamableHTTPServerTransport({
+      } else if (!sessionId && isInitializeRequestCompat(req.body)) {
+        transport = createHttpTransportCompat({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (newSessionId: string) => {
             pruneTransports();

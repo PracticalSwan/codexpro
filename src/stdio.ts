@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { createStdioTransportCompat } from "./mcpCompat.js";
 import { loadConfig } from "./config.js";
 import { createCodexProServer } from "./server.js";
 
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
   process.env.CODEXPRO_ALLOW_NO_HTTP_TOKEN ??= "1";
   const config = loadConfig();
   const server = createCodexProServer(config);
-  const transport = new StdioServerTransport();
+  const transport = createStdioTransportCompat();
   await server.connect(transport);
 }
 
