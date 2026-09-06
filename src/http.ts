@@ -50,7 +50,7 @@ function copyCommand(title: string, description: string, command: string, displa
   </div>`;
 }
 
-const TUNNELS = ["cloudflare", "ngrok", "cloudflare-named", "tailscale", "none"] as const;
+const TUNNELS = ["openai", "ngrok", "cloudflare", "cloudflare-named", "tailscale", "none"] as const;
 const MODES = ["agent", "handoff", "pro"] as const;
 const BASH_MODES = ["safe", "off", "full"] as const;
 const BASH_TRANSCRIPTS = ["compact", "full"] as const;
@@ -106,6 +106,8 @@ const AdminProfilePatch = z.object({
   connectionTest: z.boolean().optional(),
   tunnelName: textField(128),
   ngrokConfig: textField(4096),
+  openaiTunnelId: textField(64),
+  tunnelClient: textField(4096),
   cloudflareConfig: textField(4096),
   cloudflareTokenFile: textField(4096),
   noInstallCloudflared: z.boolean().optional()
@@ -120,6 +122,8 @@ interface ProfileFormValues {
   hostname: string;
   tunnelName: string;
   ngrokConfig: string;
+  openaiTunnelId: string;
+  tunnelClient: string;
   cloudflareConfig: string;
   cloudflareTokenFile: string;
   bash: "off" | "safe" | "full";
@@ -155,7 +159,7 @@ function runtimeTunnelFallback(): TunnelMode {
   if (process.env.CODEXPRO_TUNNEL && TUNNELS.includes(process.env.CODEXPRO_TUNNEL as TunnelMode)) {
     return process.env.CODEXPRO_TUNNEL as TunnelMode;
   }
-  return process.env.CODEXPRO_TUNNEL_MODE === "0" ? "none" : "cloudflare";
+  return process.env.CODEXPRO_TUNNEL_MODE === "0" ? "none" : "openai";
 }
 
 function normalizePublicHostname(value: string | undefined): string {
@@ -208,7 +212,9 @@ function profileValues(config: CodexProConfig, profile = readWorkspaceProfile(co
     tunnel: oneOf(profile.tunnel, TUNNELS, runtimeTunnelFallback()),
     hostname: String(hostname),
     tunnelName: String(profile.tunnelName ?? ""),
-    ngrokConfig: String(profile.ngrokConfig ?? ""),
+    ngrokConfig: String(profile.tunnel === "openai" ? profile.ngrokFallbackConfig ?? "" : profile.ngrokConfig ?? ""),
+    openaiTunnelId: String(profile.openaiTunnelId ?? process.env.CONTROL_PLANE_TUNNEL_ID ?? ""),
+    tunnelClient: String(profile.tunnelClient ?? process.env.TUNNEL_CLIENT_BIN ?? ""),
     cloudflareConfig: String(profile.cloudflareConfig ?? ""),
     cloudflareTokenFile: String(profile.cloudflareTokenFile ?? ""),
     bash: oneOf(profile.bash ?? config.bashMode, BASH_MODES, config.bashMode),
@@ -238,6 +244,7 @@ function profileValues(config: CodexProConfig, profile = readWorkspaceProfile(co
 }
 
 const OPTION_LABELS: Record<string, string> = {
+  openai: "OpenAI Secure MCP Tunnel",
   cloudflare: "Cloudflare quick tunnel",
   ngrok: "ngrok stable URL",
   "cloudflare-named": "Cloudflare named tunnel",
@@ -277,12 +284,14 @@ function serverUrlDisplay(endpoint: string | undefined, authEnabled: boolean): s
 
 function currentTunnelMessage(tunnel: TunnelMode, endpoint: string): string {
   if (endpoint) {
+    if (tunnel === "openai") return "OpenAI Secure MCP Tunnel is active. ChatGPT connects by Tunnel ID; no public inbound MCP URL is exposed.";
     if (tunnel === "cloudflare") return "Cloudflare generated this URL for the current run. Quick tunnel URLs change after restart.";
     if (tunnel === "ngrok") return "ngrok is using the saved public hostname for this run.";
     if (tunnel === "cloudflare-named") return "Cloudflare named tunnel is using the saved public hostname for this run.";
     if (tunnel === "tailscale") return "Tailscale Funnel is using the saved ts.net hostname for this run.";
     return "Local-only endpoint for clients that can reach this machine.";
   }
+  if (tunnel === "openai") return "Set an OpenAI tunnel ID and CONTROL_PLANE_API_KEY, then start CodexPro and choose Connection: Tunnel in ChatGPT.";
   if (tunnel === "cloudflare") return "Cloudflare quick tunnels print a generated URL after the tunnel opens.";
   if (tunnel === "ngrok") return "Enter your reserved ngrok domain, or set NGROK_DOMAIN before starting CodexPro.";
   if (tunnel === "cloudflare-named") return "Enter the Cloudflare hostname routed to your named tunnel.";
@@ -298,10 +307,21 @@ function profileForm(config: CodexProConfig): string {
   const savedLabel = profile.profilePath ? "saved" : "not saved yet";
   const runtimeEndpoint = typeof runtime.endpoint === "string" ? runtime.endpoint : "";
   const runtimeTunnel = oneOf(runtime.tunnel ?? values.tunnel, TUNNELS, values.tunnel);
-  const runtimeUrl = serverUrlDisplay(runtimeEndpoint, Boolean(config.authToken));
-  const savedEndpoint = values.hostname ? `https://${values.hostname}/mcp` : "";
-  const savedUrl = serverUrlDisplay(savedEndpoint, Boolean(config.authToken));
-  const ngrokHostname = process.env.NGROK_DOMAIN ?? (values.tunnel === "ngrok" ? values.hostname : "");
+  const runtimeIsOpenAi = runtimeTunnel === "openai" && /^tunnel_[0-9a-f]{32}$/.test(runtimeEndpoint);
+  const runtimeUrl = runtimeIsOpenAi ? runtimeEndpoint : serverUrlDisplay(runtimeEndpoint, Boolean(config.authToken));
+  const savedEndpoint = values.tunnel === "openai"
+    ? values.openaiTunnelId
+    : values.hostname ? `https://${values.hostname}/mcp` : "";
+  const savedUrl = values.tunnel === "openai" ? savedEndpoint : serverUrlDisplay(savedEndpoint, Boolean(config.authToken));
+  const runtimeLabel = runtimeIsOpenAi ? "Current Tunnel ID" : "Current Server URL";
+  const savedLabelText = values.tunnel === "openai" ? "Saved Tunnel ID" : "Saved Server URL preview";
+  const runtimeCopyAttrs = runtimeIsOpenAi
+    ? `data-copy="${escapeHtml(runtimeEndpoint)}"`
+    : `data-copy-kind="server-url" data-copy-base="${escapeHtml(redactSensitiveText(runtimeEndpoint))}"`;
+  const savedCopyAttrs = values.tunnel === "openai"
+    ? `data-copy="${escapeHtml(savedEndpoint)}"`
+    : `data-copy-kind="server-url" data-copy-base="${escapeHtml(redactSensitiveText(savedEndpoint))}"`;
+  const ngrokHostname = process.env.NGROK_DOMAIN ?? (values.tunnel === "ngrok" ? values.hostname : profile.ngrokFallbackHostname ?? "");
   const cloudflareHostname =
     process.env.CODEXPRO_PUBLIC_HOSTNAME ??
     process.env.CODEXPRO_HOSTNAME ??
@@ -309,19 +329,19 @@ function profileForm(config: CodexProConfig): string {
   const currentUrlBlock = runtimeUrl
     ? `<div class="current-url">
         <div>
-          <span>Current Server URL</span>
+          <span>${escapeHtml(runtimeLabel)}</span>
           <code>${escapeHtml(runtimeUrl)}</code>
-          <p>${escapeHtml(currentTunnelMessage(runtimeTunnel, runtimeEndpoint))}</p>
+          <p>${escapeHtml(runtime.tunnel || runtimeIsOpenAi ? currentTunnelMessage(runtimeIsOpenAi ? "openai" : runtimeTunnel, runtimeEndpoint) : "Current MCP endpoint reported by the launcher.")}</p>
         </div>
-        <button type="button" class="copy-mini" data-copy-kind="server-url" data-copy-base="${escapeHtml(redactSensitiveText(runtimeEndpoint))}">Copy</button>
+        <button type="button" class="copy-mini" ${runtimeCopyAttrs}>Copy</button>
       </div>`
     : `<div class="current-url idle">
         <div>
-          <span>${savedUrl ? "Saved Server URL preview" : "Current Server URL"}</span>
+          <span>${savedUrl ? escapeHtml(savedLabelText) : "Current connection"}</span>
           <code>${savedUrl ? escapeHtml(savedUrl) : "No public URL detected for this run"}</code>
           <p>${escapeHtml(savedUrl ? "This is based on the saved hostname. It becomes current after the launcher starts that tunnel." : currentTunnelMessage(values.tunnel, ""))}</p>
         </div>
-        ${savedEndpoint ? `<button type="button" class="copy-mini" data-copy-kind="server-url" data-copy-base="${escapeHtml(redactSensitiveText(savedEndpoint))}">Copy</button>` : ""}
+        ${savedEndpoint ? `<button type="button" class="copy-mini" ${savedCopyAttrs}>Copy</button>` : ""}
       </div>`;
   return `<section class="panel profile-panel" id="profile">
       <div class="section-head">
@@ -335,12 +355,14 @@ function profileForm(config: CodexProConfig): string {
         ${currentUrlBlock}
         <fieldset class="profile-group">
           <legend>Connection</legend>
-          <p>Choose how ChatGPT reaches this local MCP server. Stable providers use the saved hostname; quick Cloudflare generates the URL at launch.</p>
+          <p>OpenAI Secure MCP Tunnel is recommended. HTTP tunnel providers remain available as explicit fallbacks.</p>
           <div class="form-grid">
             <label><span>Tunnel</span><select name="tunnel" data-tunnel-select data-ngrok-hostname="${escapeHtml(ngrokHostname)}" data-cloudflare-hostname="${escapeHtml(cloudflareHostname)}">${selectOptions(TUNNELS, values.tunnel)}</select></label>
             <label><span>Public hostname</span><input name="hostname" value="${escapeHtml(values.hostname)}" data-hostname-input data-autofilled="0"></label>
             <label><span>Port</span><input name="port" type="number" min="1" max="65535" value="${escapeHtml(values.port)}"></label>
             <label><span>Mode</span><select name="mode">${selectOptions(MODES, values.mode)}</select></label>
+            <label><span>OpenAI tunnel ID</span><input name="openaiTunnelId" value="${escapeHtml(values.openaiTunnelId)}" placeholder="tunnel_..."></label>
+            <label><span>OpenAI tunnel-client</span><input name="tunnelClient" value="${escapeHtml(values.tunnelClient)}" placeholder="tunnel-client"></label>
             <label><span>Cloudflare tunnel name</span><input name="tunnelName" value="${escapeHtml(values.tunnelName)}"></label>
             <label><span>ngrok config file</span><input name="ngrokConfig" value="${escapeHtml(values.ngrokConfig)}"></label>
             <label><span>Cloudflare config file</span><input name="cloudflareConfig" value="${escapeHtml(values.cloudflareConfig)}"></label>
@@ -403,6 +425,9 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
   };
   next.hostname = normalizePublicHostname(next.hostname);
   if (next.tunnel !== "ngrok" && next.tunnel !== "cloudflare-named" && next.tunnel !== "tailscale") next.hostname = "";
+  if (next.tunnel === "openai" && !/^tunnel_[0-9a-f]{32}$/.test(next.openaiTunnelId.trim())) {
+    throw new Error("openaiTunnelId must match tunnel_<32 lowercase hexadecimal characters>.");
+  }
   next.widgetDomain = normalizeWidgetDomain(next.widgetDomain);
   if ((next.tunnel === "ngrok" || next.tunnel === "cloudflare-named" || next.tunnel === "tailscale") && !next.hostname) {
     throw new Error("hostname is required for ngrok, cloudflare-named, and tailscale profiles.");
@@ -416,6 +441,14 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
   const write = effectiveWriteMode(next.mode, next.write);
   const tunnelName = next.tunnel === "cloudflare-named" ? next.tunnelName : "";
   const ngrokConfig = next.tunnel === "ngrok" ? normalizeProfilePath(config.defaultRoot, next.ngrokConfig) : "";
+  const openaiTunnelId = next.tunnel === "openai" ? next.openaiTunnelId.trim() : "";
+  const tunnelClient = next.tunnel === "openai" ? next.tunnelClient.trim() : "";
+  const ngrokFallbackHostname = next.tunnel === "openai"
+    ? String(existing.tunnel === "ngrok" ? existing.hostname ?? "" : existing.ngrokFallbackHostname ?? "")
+    : String(existing.ngrokFallbackHostname ?? "");
+  const ngrokFallbackConfig = next.tunnel === "openai"
+    ? String(existing.tunnel === "ngrok" ? existing.ngrokConfig ?? "" : existing.ngrokFallbackConfig ?? "")
+    : String(existing.ngrokFallbackConfig ?? "");
   const cloudflareConfig = next.tunnel === "cloudflare-named" ? normalizeProfilePath(config.defaultRoot, next.cloudflareConfig) : "";
   const cloudflareTokenFile = next.tunnel === "cloudflare-named" ? normalizeProfilePath(config.defaultRoot, next.cloudflareTokenFile) : "";
   return {
@@ -425,6 +458,10 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
     ...(next.hostname ? { hostname: next.hostname } : {}),
     ...(tunnelName ? { tunnelName } : {}),
     ...(ngrokConfig ? { ngrokConfig } : {}),
+    ...(openaiTunnelId ? { openaiTunnelId } : {}),
+    ...(tunnelClient ? { tunnelClient } : {}),
+    ...(ngrokFallbackHostname ? { ngrokFallbackHostname } : {}),
+    ...(ngrokFallbackConfig ? { ngrokFallbackConfig } : {}),
     ...(cloudflareConfig ? { cloudflareConfig } : {}),
     ...(cloudflareTokenFile ? { cloudflareTokenFile } : {}),
     ...(token ? { token } : {}),
@@ -1481,12 +1518,14 @@ function onboardingPage(config: CodexProConfig): string {
         hostnameInput.value = cloudflareHost;
         hostnameInput.setAttribute("data-autofilled", "1");
       }
-      if ((tunnel === "cloudflare" || tunnel === "none") && hostnameInput.getAttribute("data-autofilled") === "1") {
+      if ((tunnel === "openai" || tunnel === "cloudflare" || tunnel === "none") && hostnameInput.getAttribute("data-autofilled") === "1") {
         hostnameInput.value = "";
         hostnameInput.setAttribute("data-autofilled", "0");
       }
       const preview = serverPreviewFor(hostnameInput.value);
-      if (tunnel === "cloudflare") {
+      if (tunnel === "openai") {
+        hostnameHelp.textContent = "OpenAI Secure MCP Tunnel uses the Tunnel ID above and does not need a public hostname.";
+      } else if (tunnel === "cloudflare") {
         hostnameHelp.textContent = "Cloudflare quick tunnel generates the public URL at launch and this page shows it when the launcher reports it.";
       } else if (tunnel === "ngrok") {
         hostnameHelp.textContent = preview ? "Next Server URL preview: " + preview : "Enter the reserved ngrok domain from your local ngrok setup.";
@@ -1515,6 +1554,8 @@ function onboardingPage(config: CodexProConfig): string {
           hostname: data.hostname,
           tunnelName: data.tunnelName,
           ngrokConfig: data.ngrokConfig,
+          openaiTunnelId: data.openaiTunnelId,
+          tunnelClient: data.tunnelClient,
           cloudflareConfig: data.cloudflareConfig,
           cloudflareTokenFile: data.cloudflareTokenFile,
           port: Number(data.port),

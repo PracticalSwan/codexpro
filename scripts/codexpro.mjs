@@ -36,6 +36,7 @@ Usage:
   codexpro setup
   codexpro start
   codexpro start --root /path/to/repo
+  codexpro start --tunnel openai --openai-tunnel-id tunnel_...
   codexpro settings
   codexpro doctor
   codexpro connection-test --root /path/to/repo
@@ -46,6 +47,7 @@ Usage:
   codexpro loop-handoff --agent opencode --model provider/model --review-command "node ./reviewer.js --status {{status_file}} --diff {{diff_file}} --plan-file {{plan_file}}"
   codexpro --root /path/to/repo
   codexpro ngrok --hostname your-domain.ngrok-free.dev
+  codexpro openai --openai-tunnel-id tunnel_...
   codexpro tailscale --hostname your-device.your-tailnet.ts.net
   codexpro stable --hostname codexpro.example.com --tunnel-name codexpro
   codexpro pro-bundle --root /path/to/repo --copy
@@ -93,8 +95,9 @@ Options:
   --widget-domain <origin>   Dedicated HTTPS origin for ChatGPT widget iframes.
                              Required for app submission. Default: https://rebel0789.github.io.
   --tool-cards <on|off>      Opt in to ChatGPT widget metadata on tool descriptors. Default: off.
-  --tunnel <none|cloudflare|cloudflare-named|ngrok|tailscale>
-                             Expose local MCP. Default: cloudflare.
+  --tunnel <openai|none|cloudflare|cloudflare-named|ngrok|tailscale>
+                             Connect ChatGPT to local MCP. Default: openai.
+                             openai = OpenAI Secure MCP Tunnel using the official tunnel-client.
                              cloudflare = quick tunnel with a new URL each restart.
                              cloudflare-named = stable hostname using a named tunnel.
                              ngrok = stable ngrok dev-domain endpoint using --hostname/--url.
@@ -113,6 +116,8 @@ Options:
   --ngrok <path>            ngrok executable. Default: PATH.
   --ngrok-config <path>     Optional ngrok config file path.
   --tailscale <path>        tailscale executable. Default: PATH.
+  --openai-tunnel-id <id>   OpenAI tunnel id (tunnel_<32 lowercase hex>); env CONTROL_PLANE_TUNNEL_ID.
+  --tunnel-client <path>    Official OpenAI tunnel-client executable; env TUNNEL_CLIENT_BIN.
   --no-profile              Do not load a saved ~/.codexpro workspace profile.
   --save-config             Save setup choices for this workspace when using setup.
   --no-save-config          Do not save setup choices when using setup.
@@ -285,6 +290,7 @@ function statusLine(status, detail = '') {
 
 function profileSummary(profile) {
   if (!profile?.tunnel) return '';
+  if (profile.tunnel === 'openai' && profile.openaiTunnelId) return `Saved OpenAI tunnel: ${profile.openaiTunnelId}`;
   if (profile.tunnel === 'ngrok' && profile.hostname) return `Saved ngrok URL: ${profile.hostname}`;
   if (profile.tunnel === 'cloudflare-named' && profile.hostname) return `Saved Cloudflare URL: ${profile.hostname}`;
   if (profile.tunnel === 'tailscale' && profile.hostname) return `Saved Tailscale Funnel URL: ${profile.hostname}`;
@@ -295,8 +301,10 @@ function profileSummary(profile) {
 
 function profileOneLine(profile, index = 0) {
   const prefix = index ? `${index}. ` : '';
-  const tunnel = profile.tunnel ?? 'cloudflare';
-  const host = profile.hostname ? ` -> ${profile.hostname}` : '';
+  const tunnel = profile.tunnel ?? 'openai';
+  const host = profile.tunnel === 'openai' && profile.openaiTunnelId
+    ? ` -> ${profile.openaiTunnelId}`
+    : profile.hostname ? ` -> ${profile.hostname}` : '';
   const port = profile.port ? ` :${profile.port}` : '';
   return `${prefix}${profile.root}  ${tunnel}${host}${port}`;
 }
@@ -1042,8 +1050,52 @@ function resolveTailscale(args) {
   throw new Error('tailscale was not found on PATH. Install Tailscale and enable Funnel, then run codexpro tailscale --hostname your-device.your-tailnet.ts.net.');
 }
 
+const OPENAI_TUNNEL_ID_RE = /^tunnel_[0-9a-f]{32}$/;
+
+function validateOpenAiTunnelId(value) {
+  const tunnelId = String(value ?? '').trim();
+  if (!OPENAI_TUNNEL_ID_RE.test(tunnelId)) {
+    throw new Error('--openai-tunnel-id must match tunnel_<32 lowercase hexadecimal characters>.');
+  }
+  return tunnelId;
+}
+
+function verifyTunnelClient(binaryPath) {
+  const result = spawnSyncPortable(binaryPath, ['--version'], {
+    stdio: 'ignore',
+    timeout: 15000
+  });
+  if (result.status !== 0) {
+    throw new Error(`OpenAI tunnel-client was found, but ${binaryPath} --version failed.`);
+  }
+}
+
+function tunnelClientCandidates() {
+  const candidates = ['tunnel-client'];
+  candidates.push(path.join(codexProHome(), 'bin', process.platform === 'win32' ? 'tunnel-client.exe' : 'tunnel-client'));
+  return candidates;
+}
+
+function resolveTunnelClient(args = {}) {
+  const explicit = args.tunnelClient ?? process.env.TUNNEL_CLIENT_BIN ?? '';
+  const candidates = explicit ? [explicit] : tunnelClientCandidates();
+  for (const candidate of candidates) {
+    const resolved = isPathLike(candidate) ? resolveExecutablePath(candidate) : candidate;
+    if (!commandAvailable(resolved)) continue;
+    verifyTunnelClient(resolved);
+    return resolved;
+  }
+  const requested = explicit ? ` at ${explicit}` : '';
+  throw new Error(`OpenAI tunnel-client was not found${requested}. Install the official OpenAI tunnel-client, add it to PATH, or pass --tunnel-client <path>.`);
+}
+
+function openAiRuntimeKeyPresent(env = process.env) {
+  return Boolean(env.CONTROL_PLANE_API_KEY || env.OPENAI_API_KEY);
+}
+
 function ngrokConfigPath(root, args, profile = {}) {
-  const configPath = optionValue(args, profile, 'ngrokConfig', ['NGROK_CONFIG', 'CODEXPRO_NGROK_CONFIG'], '');
+  const fallbackConfig = profile.tunnel === 'openai' ? profile.ngrokFallbackConfig ?? '' : '';
+  const configPath = optionValue(args, profile, 'ngrokConfig', ['NGROK_CONFIG', 'CODEXPRO_NGROK_CONFIG'], fallbackConfig);
   return resolveConfigPath(root, configPath);
 }
 
@@ -1212,6 +1264,34 @@ function waitForTunnelStartup(child, label, timeoutMs = 1000) {
     child.once('exit', onExit);
     child.once('error', onError);
   });
+}
+
+async function waitForOpenAiTunnelReady(healthUrlFile, child, timeoutMs = 30000) {
+  const started = Date.now();
+  let lastError = 'health URL file not written yet';
+  while (Date.now() - started < timeoutMs) {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      const tail = typeof child.codexproLogTail === 'function' ? child.codexproLogTail() : '';
+      throw new Error(`OpenAI tunnel-client exited before it became ready, code=${child.exitCode} signal=${child.signalCode}${tail ? `\n\nRecent tunnel-client output:\n${tail}` : ''}`);
+    }
+    try {
+      const healthBase = fs.readFileSync(healthUrlFile, 'utf8').trim().replace(/\/+$/, '');
+      if (healthBase) {
+        const parsed = new URL(healthBase);
+        if (parsed.protocol !== 'http:' || !['127.0.0.1', 'localhost', '::1'].includes(parsed.hostname)) {
+          throw new Error(`tunnel-client health URL must be loopback HTTP, got ${healthBase}`);
+        }
+        const response = await fetch(`${healthBase}/readyz`);
+        if (response.ok) return { healthBase, uiUrl: `${healthBase}/ui` };
+        lastError = `/readyz returned HTTP ${response.status}`;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+    await sleep(100);
+  }
+  const tail = typeof child.codexproLogTail === 'function' ? child.codexproLogTail() : '';
+  throw new Error(`Timed out waiting for OpenAI tunnel-client /readyz: ${lastError}${tail ? `\n\nRecent tunnel-client output:\n${tail}` : ''}`);
 }
 
 function outboundProxyFromEnv(env = process.env) {
@@ -2804,6 +2884,12 @@ function printCreateAppFields(details) {
   console.log('');
   console.log('  Name: CodexPro');
   console.log('  Description: Local coding workspace bridge for ChatGPT.');
+  if (details.connectionType === 'tunnel') {
+    console.log('  Connection: Tunnel');
+    console.log(`  Tunnel ID: ${details.tunnelId}`);
+    console.log('  Authentication: handled by OpenAI Secure MCP Tunnel');
+    return;
+  }
   console.log('  Connection: Server URL');
   console.log(`  Server URL: ${details.serverUrl}`);
   console.log('  Authentication: No Authentication / None');
@@ -2815,6 +2901,44 @@ function printCreateAppFields(details) {
   } else {
     console.log('Authorization: disabled');
   }
+}
+
+function printOpenAiTunnelBlock(tunnelId, token, options = {}) {
+  const localBase = options.localBase ?? '';
+  const details = {
+    endpoint: tunnelId,
+    token: '',
+    serverUrl: '',
+    localStatusUrl: localBase ? endpointWithToken(`${localBase}/`, token) : '',
+    chatgptSettingsUrl: 'https://chatgpt.com/#settings/Connectors',
+    connectionType: 'tunnel',
+    tunnelId,
+    tunnelHealthUrl: options.tunnelHealthUrl ?? '',
+    tunnelUiUrl: options.tunnelUiUrl ?? ''
+  };
+  const opened = !options.headless && options.openChatgpt ? openUrl(details.chatgptSettingsUrl) : false;
+  const mode = options.mode ?? 'agent';
+  const modeTitle = mode === 'agent' ? 'Agent' : mode === 'handoff' ? 'Handoff' : 'Pro planning';
+  console.log('');
+  console.log(paint('bold', 'CodexPro ready'));
+  if (options.root) console.log(`  Workspace  ${options.root}`);
+  console.log(`  Mode       ${modeTitle}  tools=${options.toolMode ?? 'standard'}  write=${options.write ?? 'workspace'}  bash=${options.bash ?? 'safe'}`);
+  console.log('  Connector  OpenAI Secure MCP Tunnel');
+  console.log(`  Tunnel ID  ${tunnelId}`);
+  if (details.tunnelHealthUrl) console.log(`  Tunnel     ready at ${details.tunnelHealthUrl}`);
+  if (details.tunnelUiUrl) console.log(`  Tunnel UI  ${details.tunnelUiUrl}`);
+  console.log(`  Local MCP  ${localBase}/mcp (bearer protected)`);
+  if (options.openChatgpt && !options.headless) {
+    statusLine(opened ? 'ok' : 'warn', opened ? 'Opened ChatGPT connector settings' : 'Could not open ChatGPT automatically');
+  }
+  console.log('');
+  if (options.headless) {
+    console.log(`CODEXPRO_READY_TUNNEL ${tunnelId}`);
+  } else {
+    console.log('Next: open ChatGPT Settings -> Connectors, choose Connection: Tunnel, then select or paste the Tunnel ID above.');
+    console.log('Keys: Enter open | c copy tunnel ID | o status | p fields | h help | q quit');
+  }
+  return { ...details, copied: { ok: false, command: '' }, opened, mode, toolMode: options.toolMode ?? 'standard' };
 }
 
 function printConnectorBlock(endpoint, token, options = {}) {
@@ -2875,8 +2999,8 @@ function printControlHelp() {
   console.log('');
   console.log('Controls');
   console.log('  Enter  open ChatGPT connector settings in your browser');
-  console.log('  c      copy Server URL again');
-  console.log('  u      print Server URL only');
+  console.log('  c      copy connector value (Tunnel ID or Server URL)');
+  console.log('  u      print connector value only');
   console.log('  o      open local setup/status page');
   console.log('  p      print Create App fields');
   console.log('  m      print mode help');
@@ -2964,7 +3088,7 @@ async function runDoctor(argv) {
   const root = realDir(args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
   const profile = args.noProfile ? {} : loadWorkspaceProfile(root);
   const effectiveArgs = { ...profile, ...args };
-  const tunnel = optionValue(args, profile, 'tunnel', ['CODEXPRO_TUNNEL'], 'cloudflare');
+  const tunnel = optionValue(args, profile, 'tunnel', ['CODEXPRO_TUNNEL'], 'openai');
   const host = optionValue(args, profile, 'host', ['CODEXPRO_HOST'], '127.0.0.1');
   const port = String(optionValue(args, profile, 'port', ['CODEXPRO_PORT'], '8787'));
   const mode = optionValue(args, profile, 'mode', ['CODEXPRO_MODE'], 'agent');
@@ -2983,7 +3107,7 @@ async function runDoctor(argv) {
     ?? process.env.CODEXPRO_PUBLIC_HOSTNAME
     ?? process.env.CODEXPRO_HOSTNAME
     ?? process.env.NGROK_DOMAIN
-    ?? profile.hostname
+    ?? (tunnel === 'ngrok' && profile.tunnel === 'openai' ? profile.ngrokFallbackHostname : profile.hostname)
     ?? '';
   const httpPath = path.join(projectRoot, 'dist', 'http.js');
   const serverPath = path.join(projectRoot, 'dist', 'server.js');
@@ -2995,6 +3119,22 @@ async function runDoctor(argv) {
   const tailscalePath = localOrPathCommand(effectiveArgs.tailscale ?? process.env.TAILSCALE_BIN ?? 'tailscale', '');
   const clipboard = clipboardCommand();
   const browser = browserOpenCommand();
+  let openaiTunnelId = '';
+  let openaiTunnelIdError = '';
+  let tunnelClientPath = '';
+  let tunnelClientError = '';
+  if (tunnel === 'openai') {
+    try {
+      openaiTunnelId = validateOpenAiTunnelId(optionValue(args, profile, 'openaiTunnelId', ['CONTROL_PLANE_TUNNEL_ID'], ''));
+    } catch (error) {
+      openaiTunnelIdError = error instanceof Error ? error.message : String(error);
+    }
+    try {
+      tunnelClientPath = resolveTunnelClient({ tunnelClient: optionValue(args, profile, 'tunnelClient', ['TUNNEL_CLIENT_BIN'], '') });
+    } catch (error) {
+      tunnelClientError = error instanceof Error ? error.message : String(error);
+    }
+  }
   const checks = [];
 
   function record(status, label, detail) {
@@ -3029,7 +3169,11 @@ async function runDoctor(argv) {
     record('fail', 'Local port', error instanceof Error ? error.message.split('\n')[0] : String(error));
   }
 
-  if (tunnel === 'none') {
+  if (tunnel === 'openai') {
+    record(openaiTunnelId && !openaiTunnelIdError ? 'ok' : 'fail', 'OpenAI tunnel ID', openaiTunnelId || openaiTunnelIdError);
+    record(tunnelClientPath && !tunnelClientError ? 'ok' : 'fail', 'tunnel-client', tunnelClientPath || tunnelClientError);
+    record(openAiRuntimeKeyPresent() ? 'ok' : 'fail', 'OpenAI runtime key', openAiRuntimeKeyPresent() ? 'CONTROL_PLANE_API_KEY/OPENAI_API_KEY is set' : 'set CONTROL_PLANE_API_KEY with Tunnels Read + Use; CodexPro will not save it');
+  } else if (tunnel === 'none') {
     record('ok', 'Tunnel', 'local-only mode');
   } else if (tunnel === 'cloudflare') {
     record(cloudflaredPath ? 'ok' : 'warn', 'cloudflared', cloudflaredPath || 'missing now; codexpro start can auto-install unless --no-install-cloudflared is used');
@@ -3081,7 +3225,8 @@ async function ask(rl, question, fallback = '') {
   return answer.trim() || fallback;
 }
 
-function tunnelChoiceFromProfile(profile, fallback = 'cloudflare') {
+function tunnelChoiceFromProfile(profile, fallback = 'openai') {
+  if (profile?.tunnel === 'openai') return 'openai';
   if (profile?.tunnel === 'ngrok') return 'ngrok';
   if (profile?.tunnel === 'cloudflare-named') return 'stable';
   if (profile?.tunnel === 'tailscale') return 'tailscale';
@@ -3091,6 +3236,7 @@ function tunnelChoiceFromProfile(profile, fallback = 'cloudflare') {
 }
 
 function tunnelModeFromChoice(choice) {
+  if (choice === 'openai') return 'openai';
   if (choice === 'quick' || choice === 'cloudflare') return 'cloudflare';
   if (choice === 'stable') return 'cloudflare-named';
   if (choice === 'tailscale') return 'tailscale';
@@ -3107,25 +3253,30 @@ function hasExplicitTunnelInput(args) {
 }
 
 async function collectTunnelPreference(rl, defaults, profile, options = {}) {
-  const defaultTunnel = options.defaultTunnel ?? tunnelChoiceFromProfile(profile, 'cloudflare');
-  const tunnelAnswer = await ask(rl, 'Tunnel: cloudflare, ngrok, tailscale, stable, or local?', defaultTunnel);
-  const tunnelChoice = normalizeSetupChoice(tunnelAnswer, ['cloudflare', 'quick', 'ngrok', 'tailscale', 'stable', 'local'], defaultTunnel);
+  const defaultTunnel = options.defaultTunnel ?? tunnelChoiceFromProfile(profile, 'openai');
+  const tunnelAnswer = await ask(rl, 'Tunnel: openai, ngrok, cloudflare, tailscale, stable, or local?', defaultTunnel);
+  const tunnelChoice = normalizeSetupChoice(tunnelAnswer, ['openai', 'cloudflare', 'quick', 'ngrok', 'tailscale', 'stable', 'local'], defaultTunnel);
   const tunnel = tunnelModeFromChoice(tunnelChoice);
   let hostname = '';
   let tunnelName = '';
   let ngrokConfig = '';
   let cloudflareConfig = '';
   let cloudflareTokenFile = '';
+  let openaiTunnelId = '';
+  let tunnelClient = '';
 
-  if (tunnel === 'ngrok') {
+  if (tunnel === 'openai') {
+    openaiTunnelId = validateOpenAiTunnelId(await ask(rl, 'OpenAI tunnel ID', optionValue(defaults, profile, 'openaiTunnelId', ['CONTROL_PLANE_TUNNEL_ID'], '')));
+    tunnelClient = optionValue(defaults, profile, 'tunnelClient', ['TUNNEL_CLIENT_BIN'], '');
+  } else if (tunnel === 'ngrok') {
     hostname = await ask(
       rl,
       'Ngrok domain or URL, without /mcp',
-      optionValue(defaults, profile, 'hostname', ['CODEXPRO_PUBLIC_HOSTNAME', 'CODEXPRO_HOSTNAME', 'NGROK_DOMAIN'], '')
+      optionValue(defaults, profile, 'hostname', ['CODEXPRO_PUBLIC_HOSTNAME', 'CODEXPRO_HOSTNAME', 'NGROK_DOMAIN'], profile.tunnel === 'openai' ? profile.ngrokFallbackHostname ?? '' : '')
     );
     if (!hostname) throw new Error('Ngrok setup needs your reserved domain, for example name.ngrok-free.dev.');
     hostname = normalizePublicHostname(hostname);
-    ngrokConfig = optionValue(defaults, profile, 'ngrokConfig', ['NGROK_CONFIG', 'CODEXPRO_NGROK_CONFIG'], '');
+    ngrokConfig = optionValue(defaults, profile, 'ngrokConfig', ['NGROK_CONFIG', 'CODEXPRO_NGROK_CONFIG'], profile.tunnel === 'openai' ? profile.ngrokFallbackConfig ?? '' : '');
   } else if (tunnel === 'cloudflare-named') {
     hostname = await ask(
       rl,
@@ -3153,7 +3304,9 @@ async function collectTunnelPreference(rl, defaults, profile, options = {}) {
     tunnelName,
     ngrokConfig,
     cloudflareConfig,
-    cloudflareTokenFile
+    cloudflareTokenFile,
+    openaiTunnelId,
+    tunnelClient
   };
 }
 
@@ -3164,6 +3317,8 @@ function applyTunnelPreferenceToArgs(args, preference) {
   if (preference.ngrokConfig) args.ngrokConfig = preference.ngrokConfig;
   if (preference.cloudflareConfig) args.cloudflareConfig = preference.cloudflareConfig;
   if (preference.cloudflareTokenFile) args.cloudflareTokenFile = preference.cloudflareTokenFile;
+  if (preference.openaiTunnelId) args.openaiTunnelId = preference.openaiTunnelId;
+  if (preference.tunnelClient) args.tunnelClient = preference.tunnelClient;
 }
 
 function profileFromPreference(root, args, profile, preference) {
@@ -3189,6 +3344,14 @@ function profileFromPreference(root, args, profile, preference) {
     ...(preference.ngrokConfig ? { ngrokConfig: preference.ngrokConfig } : {}),
     ...(preference.cloudflareConfig ? { cloudflareConfig: preference.cloudflareConfig } : {}),
     ...(preference.cloudflareTokenFile ? { cloudflareTokenFile: preference.cloudflareTokenFile } : {}),
+    ...(preference.openaiTunnelId ? { openaiTunnelId: preference.openaiTunnelId } : {}),
+    ...(preference.tunnelClient ? { tunnelClient: preference.tunnelClient } : {}),
+    ...(preference.tunnel === 'openai' && (profile.tunnel === 'ngrok' ? profile.hostname : profile.ngrokFallbackHostname)
+      ? { ngrokFallbackHostname: profile.tunnel === 'ngrok' ? profile.hostname : profile.ngrokFallbackHostname }
+      : {}),
+    ...(preference.tunnel === 'openai' && (profile.tunnel === 'ngrok' ? profile.ngrokConfig : profile.ngrokFallbackConfig)
+      ? { ngrokFallbackConfig: profile.tunnel === 'ngrok' ? profile.ngrokConfig : profile.ngrokFallbackConfig }
+      : {}),
     ...(token ? { token } : {}),
     ...(bash ? { bash } : {}),
     ...(bashTranscript !== 'compact' ? { bashTranscript } : {}),
@@ -3246,7 +3409,7 @@ async function maybeConfigureFirstRun(root, args, profile) {
 
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    const preference = await collectTunnelPreference(rl, args, profile, { defaultTunnel: 'cloudflare' });
+    const preference = await collectTunnelPreference(rl, args, profile, { defaultTunnel: 'openai' });
     applyTunnelPreferenceToArgs(args, preference);
     const saveAnswer = await ask(rl, 'Save this as the default for this workspace?', 'yes');
     if (!['n', 'no'].includes(saveAnswer.trim().toLowerCase())) {
@@ -3286,8 +3449,10 @@ async function runSetupWizard(argv) {
       printSavedProfileHint(profile);
     }
 
-    const savedTunnel = optionValue(defaults, profile, 'tunnel', ['CODEXPRO_TUNNEL'], 'cloudflare');
-  const defaultTunnel = savedTunnel === 'cloudflare-named'
+    const savedTunnel = optionValue(defaults, profile, 'tunnel', ['CODEXPRO_TUNNEL'], 'openai');
+    const defaultTunnel = savedTunnel === 'openai'
+      ? 'openai'
+      : savedTunnel === 'cloudflare-named'
       ? 'stable'
       : savedTunnel === 'ngrok'
         ? 'ngrok'
@@ -3295,7 +3460,9 @@ async function runSetupWizard(argv) {
           ? 'tailscale'
           : savedTunnel === 'none'
             ? 'local'
-            : 'quick';
+            : savedTunnel === 'cloudflare'
+              ? 'quick'
+              : 'openai';
     const defaultPort = String(optionValue(defaults, profile, 'port', ['CODEXPRO_PORT'], '8787'));
     const defaultMode = normalizeSetupChoice(optionValue(defaults, profile, 'mode', ['CODEXPRO_MODE'], 'agent'), ['agent', 'handoff', 'pro'], 'agent');
 
@@ -3303,8 +3470,9 @@ async function runSetupWizard(argv) {
     const modeAnswer = await ask(rl, 'Mode: agent, handoff, or pro?', defaultMode);
     const mode = normalizeSetupChoice(modeAnswer, ['agent', 'handoff', 'pro'], defaultMode);
 
-    printBox('Public URL', [
-      'ChatGPT needs an HTTPS URL it can reach.',
+    printBox('ChatGPT connection', [
+      'OpenAI Secure MCP Tunnel is the recommended default and does not expose a public inbound MCP URL.',
+      'openai = use OpenAI Secure MCP Tunnel with a Platform tunnel ID.',
       'quick  = CodexPro creates a Cloudflare quick tunnel for demos and local work.',
       'stable = use your own domain with a Cloudflare named tunnel so the ChatGPT app URL does not change.',
       'ngrok  = use your ngrok free dev domain, for example https://name.ngrok-free.dev.',
@@ -3312,8 +3480,8 @@ async function runSetupWizard(argv) {
       'local  = no tunnel, only useful for local MCP clients that can reach 127.0.0.1.'
     ]);
 
-    const tunnelAnswer = await ask(rl, 'Public access: quick, stable, ngrok, tailscale, or local?', defaultTunnel);
-    const tunnelChoice = normalizeSetupChoice(tunnelAnswer, ['quick', 'stable', 'ngrok', 'tailscale', 'local'], defaultTunnel);
+    const tunnelAnswer = await ask(rl, 'Connection: openai, ngrok, quick, stable, tailscale, or local?', defaultTunnel);
+    const tunnelChoice = normalizeSetupChoice(tunnelAnswer, ['openai', 'ngrok', 'quick', 'stable', 'tailscale', 'local'], defaultTunnel);
     const args = ['start', '--root', root, '--port', port, '--mode', mode];
     const bash = optionValue(defaults, profile, 'bash', ['CODEXPRO_BASH_MODE'], '');
     const bashTranscript = bashTranscriptOption(defaults, profile);
@@ -3338,15 +3506,23 @@ async function runSetupWizard(argv) {
     if (defaults.openChatgpt) args.push('--open-chatgpt');
     if (defaults.noCopyUrl) args.push('--no-copy-url');
 
-    let profileTunnel = 'cloudflare';
+    let profileTunnel = 'openai';
     let profileHostname = '';
     let profileTunnelName = '';
     let profileNgrokConfig = '';
     let profileCloudflareConfig = '';
     let profileCloudflareTokenFile = '';
+    let profileOpenAiTunnelId = '';
+    let profileTunnelClient = '';
     let profileToken = optionValue(defaults, profile, 'token', ['CODEXPRO_HTTP_TOKEN', 'CODEBASE_BRIDGE_HTTP_TOKEN'], '');
 
-    if (tunnelChoice === 'local') {
+    if (tunnelChoice === 'openai') {
+      profileTunnel = 'openai';
+      profileOpenAiTunnelId = validateOpenAiTunnelId(await ask(rl, 'OpenAI tunnel ID', optionValue(defaults, profile, 'openaiTunnelId', ['CONTROL_PLANE_TUNNEL_ID'], '')));
+      profileTunnelClient = optionValue(defaults, profile, 'tunnelClient', ['TUNNEL_CLIENT_BIN'], '');
+      args.push('--tunnel', 'openai', '--openai-tunnel-id', profileOpenAiTunnelId);
+      if (profileTunnelClient) args.push('--tunnel-client', profileTunnelClient);
+    } else if (tunnelChoice === 'local') {
       profileTunnel = 'none';
       args.push('--tunnel', 'none');
     } else if (tunnelChoice === 'stable') {
@@ -3417,6 +3593,10 @@ async function runSetupWizard(argv) {
         ...(profileNgrokConfig ? { ngrokConfig: profileNgrokConfig } : {}),
         ...(profileCloudflareConfig ? { cloudflareConfig: profileCloudflareConfig } : {}),
         ...(profileCloudflareTokenFile ? { cloudflareTokenFile: profileCloudflareTokenFile } : {}),
+        ...(profileOpenAiTunnelId ? { openaiTunnelId: profileOpenAiTunnelId } : {}),
+        ...(profileTunnelClient ? { tunnelClient: profileTunnelClient } : {}),
+        ...(profile.tunnel === 'ngrok' && profile.hostname ? { ngrokFallbackHostname: profile.hostname } : profile.ngrokFallbackHostname ? { ngrokFallbackHostname: profile.ngrokFallbackHostname } : {}),
+        ...(profile.tunnel === 'ngrok' && profile.ngrokConfig ? { ngrokFallbackConfig: profile.ngrokConfig } : profile.ngrokFallbackConfig ? { ngrokFallbackConfig: profile.ngrokFallbackConfig } : {}),
         ...(profileToken ? { token: profileToken } : {}),
         ...(bash ? { bash } : {}),
         ...(bashTranscript !== 'compact' ? { bashTranscript } : {}),
@@ -3463,7 +3643,10 @@ function printProfile(root, profile) {
   printBox('CodexPro settings', [
     labelValue('Workspace', root),
     labelValue('Profile', profile.profilePath),
-    labelValue('Tunnel', safe.tunnel ?? 'cloudflare'),
+    labelValue('Tunnel', safe.tunnel ?? 'openai'),
+    ...(safe.openaiTunnelId ? [labelValue('OpenAI tunnel ID', safe.openaiTunnelId)] : []),
+    ...(safe.tunnelClient ? [labelValue('Tunnel client', safe.tunnelClient)] : []),
+    ...(safe.ngrokFallbackHostname ? [labelValue('ngrok fallback', safe.ngrokFallbackHostname)] : []),
     ...(safe.hostname ? [labelValue('Hostname', safe.hostname)] : []),
     ...(safe.tunnelName ? [labelValue('Tunnel name', safe.tunnelName)] : []),
     ...(safe.ngrokConfig ? [labelValue('Ngrok config', safe.ngrokConfig)] : []),
@@ -3504,12 +3687,15 @@ function saveSettingsFromArgs(root, args, profile) {
   if (args.cloudflareToken !== undefined) {
     throw new Error('codexpro settings set does not save raw --cloudflare-token. Save it to a local file and use --cloudflare-token-file <path>; start still accepts --cloudflare-token for a single launch.');
   }
-  const tunnel = optionValue(args, profile, 'tunnel', ['CODEXPRO_TUNNEL'], profile.tunnel ?? 'cloudflare');
-  if (!['none', 'cloudflare', 'cloudflare-named', 'ngrok', 'tailscale'].includes(tunnel)) {
-    throw new Error('--tunnel must be none, cloudflare, cloudflare-named, ngrok, or tailscale');
+  const tunnel = optionValue(args, profile, 'tunnel', ['CODEXPRO_TUNNEL'], profile.tunnel ?? 'openai');
+  if (!['openai', 'none', 'cloudflare', 'cloudflare-named', 'ngrok', 'tailscale'].includes(tunnel)) {
+    throw new Error('--tunnel must be openai, none, cloudflare, cloudflare-named, ngrok, or tailscale');
   }
   const needsHostname = tunnel === 'ngrok' || tunnel === 'cloudflare-named' || tunnel === 'tailscale';
-  const rawHostname = needsHostname ? (args.hostname ?? args.url ?? profile.hostname ?? '') : '';
+  const profileHostname = tunnel === 'ngrok' && profile.tunnel === 'openai'
+    ? profile.ngrokFallbackHostname ?? profile.hostname ?? ''
+    : profile.hostname ?? '';
+  const rawHostname = needsHostname ? (args.hostname ?? args.url ?? profileHostname) : '';
   const hostname = needsHostname ? normalizePublicHostname(rawHostname) : String(rawHostname ?? '').trim();
   if (needsHostname && !hostname) {
     throw new Error('--hostname is required for ngrok, cloudflare-named, and tailscale settings.');
@@ -3528,8 +3714,14 @@ function saveSettingsFromArgs(root, args, profile) {
   const write = writeOption(args, profile, mode);
   const bash = optionalChoice('bash', optionValue(args, profile, 'bash', ['CODEXPRO_BASH_MODE'], profile.bash ?? ''), ['off', 'safe', 'full']);
   const tunnelName = tunnel === 'cloudflare-named' ? (args.tunnelName ?? profile.tunnelName ?? '') : '';
+  const openaiTunnelId = tunnel === 'openai'
+    ? validateOpenAiTunnelId(optionValue(args, profile, 'openaiTunnelId', ['CONTROL_PLANE_TUNNEL_ID'], ''))
+    : '';
+  const tunnelClient = tunnel === 'openai'
+    ? resolveTunnelClient({ tunnelClient: optionValue(args, profile, 'tunnelClient', ['TUNNEL_CLIENT_BIN'], '') })
+    : '';
   const ngrokConfig = tunnel === 'ngrok'
-    ? resolveConfigPath(root, optionValue(args, profile, 'ngrokConfig', ['NGROK_CONFIG', 'CODEXPRO_NGROK_CONFIG'], ''))
+    ? resolveConfigPath(root, optionValue(args, profile, 'ngrokConfig', ['NGROK_CONFIG', 'CODEXPRO_NGROK_CONFIG'], profile.tunnel === 'openai' ? profile.ngrokFallbackConfig ?? '' : ''))
     : '';
   const cloudflareConfig = tunnel === 'cloudflare-named'
     ? resolveConfigPath(root, optionValue(args, profile, 'cloudflareConfig', ['CODEXPRO_CLOUDFLARE_CONFIG', 'CLOUDFLARE_TUNNEL_CONFIG'], ''))
@@ -3541,6 +3733,12 @@ function saveSettingsFromArgs(root, args, profile) {
     ? optionValue(args, profile, 'token', ['CODEXPRO_HTTP_TOKEN', 'CODEBASE_BRIDGE_HTTP_TOKEN'], profile.token ?? '')
     : stableToken(optionValue(args, profile, 'token', ['CODEXPRO_HTTP_TOKEN', 'CODEBASE_BRIDGE_HTTP_TOKEN'], profile.token ?? ''));
   const allowedRoots = configuredProjectRoots(root, args, profile);
+  const ngrokFallbackHostname = tunnel === 'openai'
+    ? (profile.tunnel === 'ngrok' ? profile.hostname : profile.ngrokFallbackHostname) ?? ''
+    : profile.ngrokFallbackHostname ?? '';
+  const ngrokFallbackConfig = tunnel === 'openai'
+    ? (profile.tunnel === 'ngrok' ? profile.ngrokConfig : profile.ngrokFallbackConfig) ?? ''
+    : profile.ngrokFallbackConfig ?? '';
   const savedPath = saveWorkspaceProfile(root, {
     port,
     mode,
@@ -3550,6 +3748,10 @@ function saveSettingsFromArgs(root, args, profile) {
     ...(ngrokConfig ? { ngrokConfig } : {}),
     ...(cloudflareConfig ? { cloudflareConfig } : {}),
     ...(cloudflareTokenFile ? { cloudflareTokenFile } : {}),
+    ...(openaiTunnelId ? { openaiTunnelId } : {}),
+    ...(tunnelClient ? { tunnelClient } : {}),
+    ...(ngrokFallbackHostname ? { ngrokFallbackHostname } : {}),
+    ...(ngrokFallbackConfig ? { ngrokFallbackConfig } : {}),
     ...(token ? { token } : {}),
     ...(bash ? { bash } : {}),
     ...(bashTranscript !== 'compact' ? { bashTranscript } : {}),
@@ -3748,14 +3950,20 @@ function runControlPanel(details, cleanup = cleanupChildren) {
       const normalized = key.toLowerCase();
       if (key === '\r' || key === '\n') {
         const opened = openUrl(details.chatgptSettingsUrl);
-        console.log(opened ? '\nOpened ChatGPT connector settings. The Server URL is already copied; paste it into Server URL.' : '\nCould not open ChatGPT automatically.');
+        console.log(opened
+          ? details.connectionType === 'tunnel'
+            ? '\nOpened ChatGPT connector settings. Choose Connection: Tunnel and use the displayed Tunnel ID.'
+            : '\nOpened ChatGPT connector settings. The Server URL is already copied; paste it into Server URL.'
+          : '\nCould not open ChatGPT automatically.');
         writeControlPrompt();
       } else if (normalized === 'c') {
-        const copied = copyToClipboard(details.serverUrl);
-        console.log(copied.ok ? `\nServer URL copied with ${copied.command}.` : '\nCould not copy automatically.');
+        const value = details.connectionType === 'tunnel' ? details.tunnelId : details.serverUrl;
+        const copied = copyToClipboard(value);
+        const label = details.connectionType === 'tunnel' ? 'Tunnel ID' : 'Server URL';
+        console.log(copied.ok ? `\n${label} copied with ${copied.command}.` : '\nCould not copy automatically.');
         writeControlPrompt();
       } else if (normalized === 'u') {
-        console.log(`\n${details.serverUrl}`);
+        console.log(`\n${details.connectionType === 'tunnel' ? details.tunnelId : details.serverUrl}`);
         writeControlPrompt();
       } else if (normalized === 'o') {
         if (!details.localStatusUrl) {
@@ -3786,14 +3994,14 @@ function runControlPanel(details, cleanup = cleanupChildren) {
   });
 }
 
-function waitForUnexpectedRuntimeExit(server, cleanup = cleanupChildren) {
+function waitForUnexpectedRuntimeExit(server, cleanup = cleanupChildren, label = 'CodexPro HTTP runtime') {
   return new Promise((_, reject) => {
     const fail = (code, signal, error) => {
       cleanup();
       const detail = error
         ? error instanceof Error ? error.message : String(error)
         : `code=${code ?? 'null'} signal=${signal ?? 'null'}`;
-      reject(new Error(`CodexPro HTTP runtime exited unexpectedly (${detail}).`));
+      reject(new Error(`${label} exited unexpectedly (${detail}).`));
     };
     if (server.exitCode !== null || server.signalCode !== null) {
       fail(server.exitCode, server.signalCode);
@@ -3870,6 +4078,10 @@ async function main() {
     await runDoctor(argv.slice(1));
     return;
   }
+  if (argv[0] === 'openai') {
+    argv.shift();
+    argv.unshift('--tunnel', 'openai');
+  }
   if (argv[0] === 'stable') {
     argv.shift();
     argv.unshift('--tunnel', 'cloudflare-named');
@@ -3926,16 +4138,16 @@ async function main() {
     if (summary) statusLine('ok', `${summary}. Future launches from this folder only need: codexpro start`);
   }
 
-  const tunnel = optionValue(args, profile, 'tunnel', ['CODEXPRO_TUNNEL'], 'cloudflare');
-  if (!['none', 'cloudflare', 'cloudflare-named', 'ngrok', 'tailscale'].includes(tunnel)) {
-    throw new Error('--tunnel must be none, cloudflare, cloudflare-named, ngrok, or tailscale');
+  const tunnel = optionValue(args, profile, 'tunnel', ['CODEXPRO_TUNNEL'], 'openai');
+  if (!['openai', 'none', 'cloudflare', 'cloudflare-named', 'ngrok', 'tailscale'].includes(tunnel)) {
+    throw new Error('--tunnel must be openai, none, cloudflare, cloudflare-named, ngrok, or tailscale');
   }
   const stableHostname = args.hostname
     ?? args.url
     ?? process.env.CODEXPRO_PUBLIC_HOSTNAME
     ?? process.env.CODEXPRO_HOSTNAME
     ?? process.env.NGROK_DOMAIN
-    ?? profile.hostname
+    ?? (tunnel === 'ngrok' && profile.tunnel === 'openai' ? profile.ngrokFallbackHostname : profile.hostname)
     ?? '';
   if (tunnel === 'cloudflare-named' && !stableHostname) {
     printStableUrlHelp();
@@ -3946,6 +4158,15 @@ async function main() {
   }
   if (tunnel === 'tailscale' && !stableHostname) {
     throw new Error('--hostname is required with Tailscale Funnel mode. Example: codexpro tailscale --hostname your-device.your-tailnet.ts.net');
+  }
+  const openaiTunnelId = tunnel === 'openai'
+    ? validateOpenAiTunnelId(optionValue(args, profile, 'openaiTunnelId', ['CONTROL_PLANE_TUNNEL_ID'], ''))
+    : '';
+  const tunnelClientPath = tunnel === 'openai'
+    ? resolveTunnelClient({ tunnelClient: optionValue(args, profile, 'tunnelClient', ['TUNNEL_CLIENT_BIN'], '') })
+    : '';
+  if (tunnel === 'openai' && !openAiRuntimeKeyPresent()) {
+    throw new Error('OpenAI Secure MCP Tunnel needs a runtime API key. Set CONTROL_PLANE_API_KEY (recommended, restricted to Tunnels Read + Use) or OPENAI_API_KEY, then rerun codexpro start.');
   }
   const mode = optionValue(args, profile, 'mode', ['CODEXPRO_MODE'], 'agent');
   if (!['agent', 'handoff', 'pro'].includes(mode)) {
@@ -4016,6 +4237,7 @@ async function main() {
     CODEXPRO_ALLOW_GIT_PUSH: allowGitPush ? '1' : '0',
     CODEXPRO_INHERIT_ENV: inheritEnv ? '1' : '0',
     CODEXPRO_MODE: mode,
+    CODEXPRO_TUNNEL: tunnel,
     CODEXPRO_TUNNEL_MODE: tunnel === 'none' ? '0' : '1',
     CODEXPRO_ALLOW_NO_HTTP_TOKEN: args.noAuth ? '1' : '0'
   };
@@ -4050,8 +4272,10 @@ async function main() {
     labelValue('Local URL', `http://${host}:${port}/mcp`),
     labelValue(
       'Tunnel',
-      tunnel === 'cloudflare'
-        ? 'Cloudflare quick tunnel'
+      tunnel === 'openai'
+        ? `OpenAI Secure MCP Tunnel ${openaiTunnelId}`
+        : tunnel === 'cloudflare'
+          ? 'Cloudflare quick tunnel'
         : tunnel === 'cloudflare-named'
           ? `Cloudflare named tunnel for ${stableHostname}`
           : tunnel === 'ngrok'
@@ -4124,6 +4348,68 @@ async function main() {
     });
     saveRuntimeConnection(root, details, runtimeOptions);
     await holdRuntime(server, details, cleanup, headless);
+    return;
+  }
+
+  if (tunnel === 'openai') {
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codexpro-openai-tunnel-'));
+    const healthUrlFile = path.join(tmpRoot, 'health.url');
+    const removeHealthState = () => fs.rmSync(tmpRoot, { recursive: true, force: true });
+    cleanupTunnelCredentials = removeHealthState;
+    const tunnelArgs = [
+      'run',
+      '--control-plane.tunnel-id', openaiTunnelId,
+      '--mcp.server-url', `channel=main,url=${localBase}/mcp`,
+      '--mcp.extra-headers', 'Authorization: env:CODEXPRO_TUNNEL_MCP_AUTH_HEADER',
+      '--mcp.discovery-extra-headers', 'Authorization: env:CODEXPRO_TUNNEL_MCP_AUTH_HEADER',
+      '--health.listen-addr', '127.0.0.1:0',
+      '--health.url-file', healthUrlFile
+    ];
+    const tunnelEnv = { ...process.env, CODEXPRO_TUNNEL_MCP_AUTH_HEADER: `Bearer ${token}` };
+    delete tunnelEnv.CODEXPRO_HTTP_TOKEN;
+    delete tunnelEnv.CODEBASE_BRIDGE_HTTP_TOKEN;
+    statusLine('wait', `Starting OpenAI Secure MCP Tunnel ${openaiTunnelId}`);
+    cloudflared = spawnLogged('tunnel-client', tunnelClientPath, tunnelArgs, { cwd: root, env: tunnelEnv, verbose: verboseLogs });
+    cloudflared.once('exit', removeHealthState);
+    cloudflared.once('error', removeHealthState);
+    let tunnelReady;
+    try {
+      tunnelReady = await waitForOpenAiTunnelReady(healthUrlFile, cloudflared);
+    } catch (error) {
+      const hint = [
+        '',
+        'OpenAI Secure MCP Tunnel needs one-time Platform setup:',
+        '  1. Create a tunnel scoped to the ChatGPT workspace in OpenAI Platform -> Tunnels.',
+        '  2. Create a restricted runtime API key with Tunnels Read + Use.',
+        '  3. Set CONTROL_PLANE_API_KEY in this terminal.',
+        '  4. Rerun codexpro start with the same tunnel ID.',
+        '',
+        'CodexPro does not save the OpenAI runtime API key.'
+      ].join('\n');
+      throw new Error(`${error instanceof Error ? error.message : String(error)}${hint}`);
+    }
+    statusLine('ok', `OpenAI tunnel-client ready at ${tunnelReady.healthBase}/readyz`);
+    const details = printOpenAiTunnelBlock(openaiTunnelId, token, {
+      localBase,
+      tunnelHealthUrl: `${tunnelReady.healthBase}/readyz`,
+      tunnelUiUrl: tunnelReady.uiUrl,
+      headless,
+      openChatgpt: Boolean(args.openChatgpt),
+      mode,
+      toolMode,
+      root,
+      write,
+      bash,
+      bashTranscript,
+      codexSessions,
+      bashSession,
+      requireBashSession
+    });
+    saveRuntimeConnection(root, details, runtimeOptions);
+    await Promise.race([
+      holdRuntime(server, details, cleanup, headless),
+      waitForUnexpectedRuntimeExit(cloudflared, cleanup, 'OpenAI tunnel-client')
+    ]);
     return;
   }
 

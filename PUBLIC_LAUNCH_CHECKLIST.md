@@ -3,7 +3,7 @@
 CodexPro is a local developer bridge. Treat public launch readiness as two separate gates:
 
 1. The fork release artifact/source checkout is safe and understandable for local developers.
-2. The ChatGPT Plugins surface is stable enough for users to connect a Server URL.
+2. The ChatGPT connector surface is stable enough for users to connect the OpenAI Tunnel ID, with Server URL transports kept as tested fallbacks.
 
 Do not present CodexPro as a fully reviewed public ChatGPT app until it has gone through the current app review flow.
 
@@ -25,6 +25,7 @@ The tarball must not include:
 .env files
 local tunnel URLs
 CodexPro tokens
+OpenAI runtime API keys
 Cloudflare or ngrok tokens
 .ai-bridge runtime files
 node_modules
@@ -35,8 +36,9 @@ local screenshots or reports
 
 Before announcing broadly:
 
-- Test in ChatGPT Plugins with a fresh plugin install.
-- Test quick tunnel, saved ngrok domain, and local-only mode.
+- Test a fresh ChatGPT connector using **Connection: Tunnel** and the intended OpenAI tunnel ID/workspace.
+- Run sustained/reconnect validation of the official tunnel-client before declaring the OpenAI path production-ready.
+- Test saved ngrok fallback, Cloudflare quick fallback, and local-only mode separately.
 - Refresh actions after widget URI or metadata changes.
 - Confirm CSP stays enabled (Developer mode prerequisite).
 - Capture screenshots for:
@@ -69,7 +71,8 @@ Use CodexPro. Run bash with pwd, then run bash with a blocked command. Report bo
 
 ## Security Gate
 
-- Keep auth enabled for public tunnels.
+- Keep CodexPro bearer auth enabled for OpenAI mode and all public HTTP fallback tunnels.
+- Verify no OpenAI runtime API key appears in profiles, process argv, logs, screenshots, or release artifacts.
 - Keep `CODEXPRO_BASH_MODE=safe` by default.
 - Keep `CODEXPRO_WRITE_MODE=workspace` only for agent mode.
 - Keep blocked path tests for `.env`, `.git`, `node_modules`, private keys, and symlink escapes.
@@ -88,12 +91,12 @@ The terminal must clearly show:
 
 - workspace root
 - current mode
-- public URL strategy
-- that the Server URL is copied
-- that Enter opens ChatGPT connector settings
+- connector strategy and Tunnel ID for OpenAI mode
+- that OpenAI mode does not claim/copy a public Server URL
+- that Enter opens ChatGPT connector settings and instructs the user to choose Connection: Tunnel
 - how to stop the process
 
-For stable URLs, `codexpro setup` must save enough profile state so future starts from the same workspace only need:
+For the primary OpenAI path, `codexpro setup`/`settings set` must save the non-secret Tunnel ID and client path (never the runtime API key) so future starts from the same workspace only need:
 
 ```bash
 codexpro start
@@ -105,4 +108,5 @@ codexpro start
 - CodexPro does not guarantee a ChatGPT model can call MCP tools.
 - CodexPro does not change ChatGPT, Codex, or OpenAI quota behavior.
 - Quick Cloudflare tunnels are not permanent URLs.
-- A single shared public URL for every user requires a hosted relay architecture, not only a local npm package.
+- OpenAI Secure MCP Tunnel still requires an OpenAI Platform tunnel scoped to the correct ChatGPT workspace and a runtime API key supplied outside the CodexPro profile.
+- A vendor-independent single shared public URL for every user would still require a hosted relay architecture.

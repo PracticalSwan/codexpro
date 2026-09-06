@@ -9,7 +9,7 @@
       content="CodexPro 通过 ChatGPT Plugins 和 MCP，把 ChatGPT Web 连接到你明确允许的本地仓库，支持读取、搜索、编辑、git 检查和安全验证。"
     />
     <meta property="og:title" content="CodexPro 中文文档" />
-    <meta property="og:description" content="本地 MCP 桥：把 Server URL 粘贴到 ChatGPT Plugins，在你允许的仓库上工作。" />
+    <meta property="og:description" content="本地 MCP 桥：默认通过 OpenAI Secure MCP Tunnel 连接 ChatGPT Plugins，并保留 ngrok/Cloudflare/Tailscale HTTP 回退。" />
     <meta property="og:image" content="https://raw.githubusercontent.com/PracticalSwan/codexpro/main/docs/og.svg" />
     <meta name="theme-color" content="#0b1220" />
     <link rel="alternate" hreflang="en" href="./index.html" />
@@ -41,7 +41,7 @@
           <p class="eyebrow">在仓库里安装</p>
           <h1>把 ChatGPT 连接到本地代码。</h1>
           <p class="hero-lede">
-            安装 CLI，在项目里运行 setup，然后把复制好的 Server URL 粘贴到 ChatGPT Plugins。CodexPro 会处理本地 server、token、tunnel 和 workspace 工具。
+            安装 CLI，在项目里运行 setup，然后用 OpenAI Platform 创建的 Tunnel ID 连接 ChatGPT Plugins。CodexPro 会处理本地 server、token、`tunnel-client` 和 workspace 工具。
           </p>
           <div class="install-line" role="group" aria-label="安装命令">
             <code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz
@@ -76,7 +76,7 @@ codexpro setup</code>
               <div class="chat-pane">
                 <small>安装</small>
                 <p><code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz</code><br /><code>codexpro --version</code></p>
-                <div class="message-chip">Server URL 自动复制</div>
+                <div class="message-chip">OpenAI Tunnel 默认连接</div>
               </div>
               <div class="tool-pane">
                 <small>然后 ChatGPT 可以</small>
@@ -123,7 +123,7 @@ codexpro setup</code>
         <div>
           <span>03</span>
           <strong>Paste</strong>
-          <p>创建 ChatGPT Plugin 时粘贴复制好的 Server URL。</p>
+          <p>创建 ChatGPT Plugin 时优先选择 Tunnel，并填写 OpenAI Platform 创建的 <code>tunnel_...</code> ID。</p>
         </div>
       </section>
 
@@ -166,7 +166,7 @@ codexpro setup</code>
           <p class="eyebrow">快速开始</p>
           <h2>全局安装，然后在仓库中运行 setup。</h2>
           <p>
-            默认路径使用 normal coding 模式、workspace 写入、安全 bash 和你选择的 tunnel。setup 保存配置后，日常启动只需要 <code>codexpro start</code>。
+            默认路径使用 normal coding 模式、workspace 写入、安全 bash 和 OpenAI Secure MCP Tunnel。setup 保存 tunnel ID 和其他非密密配置后，日常启动只需要 <code>codexpro start</code>。
           </p>
         </div>
         <div class="steps">
@@ -201,67 +201,62 @@ codexpro setup</code></pre>
           <div>
             <small>ChatGPT 设置路径</small>
             <pre><code>Settings
--> Security and login
--> Developer mode: on
--> Enforce CSP in developer mode: on
+-&gt; Security and login
+-&gt; Developer mode: on
+-&gt; Enforce CSP in developer mode: on
 
 Settings
--> Plugins
--> Plugins 标签页
--> 点击搜索框旁的 +</code></pre>
+-&gt; Plugins
+-&gt; Plugins 标签页
+-&gt; 点击搜索框旁的 +</code></pre>
           </div>
           <div>
             <small>创建 Plugin 字段</small>
             <pre><code>Name: CodexPro
-Connection: Server URL
-Server URL: paste copied URL
-Authentication: No Authentication / None</code></pre>
+Connection: Tunnel
+Tunnel ID: tunnel_...</code></pre>
           </div>
         </div>
         <div>
           <p class="eyebrow">ChatGPT Plugin 设置</p>
-          <h2>在 Plugins 标签页点击 +，再在 New Plugin 中粘贴 CodexPro URL。</h2>
-          <p>
-            保持 Enforce CSP in developer mode 开启。CodexPro 的小组件按 CSP 开启路径设计，不依赖远程脚本、外部字体、iframe 或第三方图片。
-          </p>
-          <p>
-            复制的 Server URL 已包含私有 CodexPro token，只适合个人 connector。连接方式选择 Server URL。共享或多用户生产部署必须使用 OAuth 或 Authorization header。
-          </p>
+          <h2>在 Plugins 标签页点击 +，然后把 OpenAI Platform 创建的 Tunnel ID 填到 New Plugin。</h2>
+          <p>保持 Enforce CSP in developer mode 开启。CodexPro 的小组件按 CSP 开启路径设计，不依赖远程脚本、外部字体、iframe 或第三方图片。</p>
+          <p>OpenAI runtime API key 只放在本机环境变量，不保存到 CodexPro profile。CodexPro 的 bearer token 仍保护 loopback MCP hop，并由官方 <code>tunnel-client</code> 通过环境引用转发。</p>
         </div>
       </section>
 
       <section id="url" class="section">
         <div class="section-heading">
-          <p class="eyebrow">URL 选择</p>
-          <h2>根据使用场景选择 tunnel。</h2>
-          <p>quick tunnel 适合演示，稳定 URL 适合每天使用。</p>
+          <p class="eyebrow">连接方式</p>
+          <h2>OpenAI Tunnel 是默认，HTTP tunnel 保留为回退。</h2>
+          <p>已保存 Tunnel ID 后，日常启动仍是 <code>codexpro start</code>。</p>
         </div>
         <div class="compare-grid">
           <article>
-            <span class="tag">最快</span>
-            <h3>Cloudflare quick tunnel</h3>
-            <p>不需要域名设置，适合 demo。每次重启 URL 都变，因此每次都要更新 ChatGPT App 的 Server URL。</p>
+            <span class="tag">默认</span>
+            <h3>OpenAI Secure MCP Tunnel</h3>
+            <p>使用 OpenAI Platform 创建的 <code>tunnel_...</code> ID。Runtime API key 只保存在本机环境中。</p>
             <pre><code>codexpro start</code></pre>
           </article>
           <article>
-            <span class="tag">推荐</span>
+            <span class="tag">HTTP 回退</span>
             <h3>ngrok free dev domain</h3>
-            <p>推荐给大多数用户。免费 ngrok 账号会给一个 dev domain，保存一次后每天可以复用同一个 ChatGPT App URL。</p>
-            <pre><code>ngrok config add-authtoken YOUR_TOKEN
-codexpro settings set --tunnel ngrok --hostname your-name.ngrok-free.dev
-codexpro start</code></pre>
+            <p>迁移前已保存的 ngrok hostname/config 会继续保留，可显式回退。</p>
+            <pre><code>codexpro ngrok --hostname your-name.ngrok-free.dev</code></pre>
           </article>
           <article>
-            <span class="tag">自定义</span>
-            <h3>Cloudflare named tunnel</h3>
-            <p>适合已有域名的用户。把 DNS 路由到 <code>codexpro.example.com</code> 这样的 hostname，之后 URL 保持不变。</p>
-            <pre><code>codexpro stable --hostname codexpro.example.com --tunnel-name codexpro</code></pre>
+            <span class="tag">快速 HTTP</span>
+            <h3>Cloudflare quick tunnel</h3>
+            <p>适合 demo；URL 每次重启都变。</p>
+            <pre><code>codexpro start --tunnel cloudflare</code></pre>
           </article>
           <article>
-            <span class="tag">Tailnet</span>
-            <h3>Tailscale Funnel</h3>
-            <p>适合已经允许 Funnel HTTPS 的 tailnet。使用这台设备的 <code>.ts.net</code> hostname。</p>
-            <pre><code>codexpro tailscale --hostname your-device.your-tailnet.ts.net</code></pre>
+            <span class="tag">其他回退</span>
+            <h3>Cloudflare named / Tailscale / local</h3>
+            <p>现有显式 tunnel 模式继续可用，不会被 OpenAI 默认路径移除。</p>
+            <pre><code>codexpro stable --hostname codexpro.example.com --tunnel-name codexpro
+codexpro tailscale --hostname your-device.your-tailnet.ts.net
+codexpro start --tunnel none</code></pre>
           </article>
         </div>
       </section>

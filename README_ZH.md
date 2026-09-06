@@ -53,7 +53,7 @@ Source build:
 
 - Node.js 20+
 - 能创建自定义 MCP 插件的 ChatGPT 账号
-- ChatGPT Web 可用的 HTTPS 地址（tunnel 或 Tailscale Funnel）
+- OpenAI Secure MCP Tunnel 的 `tunnel_...` ID；只有使用 HTTP 回退时才需要公网 HTTPS 地址
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -71,10 +71,10 @@ codexpro --version
 1. `Settings -> Security and login` → 打开 **Developer mode**（保持 CSP 开启）。
 2. `Settings -> Plugins` → Plugins 标签页 → 搜索框旁的 **+**。
 3. 创建名为 `CodexPro` 的插件。
-4. 连接方式：**Server URL** → 粘贴 CodexPro 复制的 URL。
-5. 认证：**No Authentication / None**（表单可能默认 OAuth，创建前改掉）。
+4. 连接方式优先选择 **Tunnel**，并填写 OpenAI Platform 创建的 `tunnel_...` ID。
+5. 本机 `codexpro start` 会启动官方 `tunnel-client`；OpenAI runtime API key 只放在本机环境变量中，不保存在 CodexPro profile。
 
-CodexPro 的认证就在这个 URL 里的 token。不要分享该 URL。
+OpenAI Tunnel 模式不需要把 CodexPro token 放进 ChatGPT URL。CodexPro 仍在本机 loopback MCP hop 上保持 bearer token 保护，并由 `tunnel-client` 通过环境引用转发该 header。
 
 | 打开 Plugins 并点击 `+` | 填写 New Plugin 表单 |
 | --- | --- |
@@ -112,7 +112,7 @@ codexpro start
 
 让 ChatGPT 对已允许项目执行 `open_workspace`。`open_current_workspace` 切回启动仓库。
 
-两个 ChatGPT 账号或需要硬隔离时，用不同端口和 Server URL 跑两个 CodexPro 进程。
+两个 ChatGPT 账号或需要硬隔离时，用不同本地端口和不同 Tunnel ID（或不同 HTTP 回退 URL）跑两个 CodexPro 进程。
 
 ## 命令
 
@@ -144,19 +144,29 @@ codexpro start --headless
 CODEXPRO_TOOL_CARDS=1 codexpro start
 ```
 
-## 公网 HTTPS
+## 连接方式
 
-ChatGPT Web 需要 HTTPS：
+默认是 OpenAI Secure MCP Tunnel：
 
 ```bash
-codexpro start --tunnel cloudflare
+# profile 已保存 tunnel ID 后，日常启动
+codexpro start
+
+# 显式 OpenAI 模式
+codexpro start --tunnel openai --openai-tunnel-id tunnel_...
+```
+
+现有 HTTP tunnel 继续作为回退：
+
+```bash
 codexpro ngrok --hostname your.ngrok-free.dev
+codexpro start --tunnel cloudflare
 codexpro stable --hostname codexpro.example.com --tunnel-name codexpro
 codexpro tailscale --hostname your-device.your-tailnet.ts.net
 codexpro start --tunnel none
 ```
 
-稳定主机名请固定 token：
+从已保存的 ngrok profile 迁移到 OpenAI 后，CodexPro 会保留 ngrok hostname/config 作为显式 `codexpro ngrok` 回退。HTTP 回退使用稳定主机名时请固定 token：
 
 ```bash
 mkdir -p ~/.codexpro
@@ -164,7 +174,7 @@ openssl rand -hex 32 > ~/.codexpro/http-token
 chmod 600 ~/.codexpro/http-token
 ```
 
-客户端支持 header 时优先用 `Authorization: Bearer <token>`。`?codexpro_token=` 只是个人兼容回退。
+客户端支持 header 时优先用 `Authorization: Bearer <token>`。`?codexpro_token=` 只用于 HTTP 个人兼容回退。
 
 ## 安全默认
 

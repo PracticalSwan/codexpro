@@ -1,13 +1,15 @@
 # CodexPro Full Domain Setup
 
-This guide explains how to use a Namecheap domain, Cloudflare, or ngrok so CodexPro can keep a stable ChatGPT connector URL.
+This guide covers **HTTP fallback transports** using a Namecheap domain, Cloudflare, or ngrok. The primary ChatGPT path is now OpenAI Secure MCP Tunnel, which does not require you to expose a public inbound MCP URL or own a domain.
+
+Use this guide when you deliberately choose `codexpro ngrok`, `--tunnel cloudflare`, `codexpro stable`, or another Server URL fallback.
 
 There are two different products hiding behind the phrase "one URL":
 
 - Personal stable URL: one developer runs CodexPro locally and keeps a stable URL such as `https://mcp.example.space/mcp`.
 - Hosted relay for all users: every user gets a stable CodexPro URL without managing Cloudflare. This requires a hosted service that routes each ChatGPT request to the correct user's local agent.
 
-The personal stable URL works now. The hosted relay is the product architecture to build before public launch.
+The personal stable HTTP URL works now. A custom hosted relay remains an optional independent product architecture, but it is no longer required for the default CodexPro-to-ChatGPT connection because OpenAI Secure MCP Tunnel already provides the outbound tunnel path.
 
 ## What A Domain Can And Cannot Do
 
@@ -166,7 +168,7 @@ CodexPro MCP token       protects the /mcp endpoint that ChatGPT calls.
 
 ## Ngrok Free Dev Domain
 
-Ngrok is the simpler personal stable URL for most users. A free ngrok account includes a dev domain, which can be saved once in CodexPro and reused every time the local server restarts.
+Ngrok is the preferred stable **HTTP fallback** when OpenAI Secure MCP Tunnel is unavailable or you explicitly need a Server URL. A free ngrok account includes a dev domain, which can be saved once in CodexPro and reused every time the local server restarts.
 
 One-time setup:
 
@@ -204,17 +206,20 @@ CodexPro starts the local MCP server, runs `ngrok http http://127.0.0.1:8787 --u
 
 ## Product Plan For All Users
 
-For open-source users, support three modes:
+For open-source users, the transport order is now:
 
 ```text
-1. Local-only stdio/HTTP
-   No public URL. Best for clients that can launch local MCP commands.
+1. OpenAI Secure MCP Tunnel
+   Primary ChatGPT path. Outbound connection from the official tunnel-client; no public inbound MCP URL.
 
-2. Bring-your-own tunnel
-   User owns Cloudflare/ngrok/domain. Good for power users and contributors.
+2. Bring-your-own HTTP tunnel
+   ngrok/Cloudflare/Tailscale/domain. Explicit fallback for Server URL workflows.
 
-3. CodexPro hosted relay
-   Best public UX. User runs one local command and gets a stable connector URL from your service.
+3. Local-only stdio/HTTP
+   Best for clients that can reach or launch the local MCP server directly.
+
+4. Optional future CodexPro hosted relay
+   Only if the project later needs a vendor-managed transport independent of OpenAI Tunnels.
 ```
 
 The hosted relay needs:

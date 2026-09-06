@@ -268,27 +268,30 @@ They provide compact UI for selected high-signal results while raw reads/searche
 
 ## 17. Tunnels and remote connection options
 
-CodexPro can run:
+CodexPro's primary ChatGPT transport is OpenAI Secure MCP Tunnel. The launcher supervises the official `tunnel-client`, keeps the local MCP server on loopback with CodexPro bearer authentication intact, injects that bearer value through an environment reference rather than argv, and requires tunnel-client `/readyz` before reporting ready.
 
 ```text
+OpenAI Secure MCP Tunnel (default for new/no-profile start)
+ngrok stable dev domain (HTTP fallback)
+Cloudflare quick tunnel (HTTP fallback)
+Cloudflare named tunnel (HTTP fallback)
+Tailscale Funnel (HTTP fallback)
 local-only HTTP
-Cloudflare quick tunnel
-Cloudflare named tunnel
-ngrok stable dev domain
-Tailscale Funnel
 ```
 
 Common commands:
 
 ```bash
-codexpro start --tunnel none
-codexpro start --tunnel cloudflare
+codexpro start
+codexpro openai --openai-tunnel-id tunnel_0123456789abcdef0123456789abcdef
 codexpro ngrok --hostname your-name.ngrok-free.dev
+codexpro start --tunnel cloudflare
 codexpro stable --hostname codexpro.example.com --tunnel-name codexpro
 codexpro tailscale --hostname your-device.your-tailnet.ts.net
+codexpro start --tunnel none
 ```
 
-Public/non-loopback use should keep CodexPro authentication enabled.
+The OpenAI runtime key is read from `CONTROL_PLANE_API_KEY` (or the official client's `OPENAI_API_KEY` fallback) and is never persisted by CodexPro. Public/non-loopback HTTP fallback use should keep CodexPro authentication enabled.
 
 ## 18. Practical Full Access profile
 

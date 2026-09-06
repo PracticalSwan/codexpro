@@ -99,12 +99,12 @@ Settings
 ```text
 Name: CodexPro
 Description: Local workspace bridge for ChatGPT coding
-Connection: Server URL
-Server URL: 粘贴 CodexPro 复制的 URL
-Authentication: No Authentication / None
+Connection: Tunnel
+Tunnel ID: 填写 OpenAI Platform 创建的 tunnel_... ID
 ```
 
-复制的 Server URL 已经包含私有 CodexPro token。
+本机 `codexpro start` 使用官方 `tunnel-client` 连接该 Tunnel。OpenAI runtime API key 只放在本机环境变量中，不要粘贴到 ChatGPT、profile 或仓库。CodexPro bearer token 由 `tunnel-client` 通过环境引用传给本地 MCP server。
+
 
 ## CSP 要保持开启吗？
 
@@ -205,21 +205,23 @@ codexpro start --mode handoff --no-bash
 
 ## 选择哪种 tunnel？
 
-按这个规则选：
+默认优先使用 OpenAI Secure MCP Tunnel：
 
 ```text
-快速 demo：          Cloudflare quick tunnel
-推荐稳定 URL：       ngrok free dev domain
-自定义域名：          Cloudflare named tunnel
-Tailnet 用户：        Tailscale Funnel
-无公网 URL：          local-only，只适合能访问 localhost 的 MCP 客户端
+主路径：             OpenAI Secure MCP Tunnel (`codexpro start`)
+HTTP 稳定回退：      ngrok free dev domain
+快速 HTTP demo：      Cloudflare quick tunnel
+自定义 HTTP 域名：    Cloudflare named tunnel
+Tailnet 回退：        Tailscale Funnel
+无公网：             local-only，只适合能访问 localhost 的 MCP 客户端
 ```
 
-Cloudflare quick tunnel 每次重启 URL 都变。把 quick URL 填到 ChatGPT 后，每次重启都要改 ChatGPT App 的 Server URL。
+OpenAI 模式使用 Platform 创建的 `tunnel_...` ID和本机 runtime API key。API key 不保存到 CodexPro profile；CodexPro 的本地 bearer token 仍保护 loopback MCP hop。
 
-大多数用户建议用 ngrok free dev domain。创建免费 ngrok 账号，在 Universal Gateway -> Domains 找到分配给你的 dev domain，并在 `codexpro setup` 里保存。
+从已保存的 ngrok profile 迁移到 OpenAI 时，CodexPro 保留 ngrok hostname/config，因此需要时可以显式运行 `codexpro ngrok` 回退。Cloudflare/Tailscale/local 模式也继续支持。
 
-如果你有自己的域名，用 Cloudflare named tunnel，把 DNS 路由到例如 `codexpro.example.com` 的主机名。
+
+OpenAI Tunnel 模式先运行 `codexpro doctor`。如果 doctor 报告 tunnel ID、`tunnel-client` 或 runtime key 缺失，先解决这些本机前置条件。下面的 Server URL 故障排查主要适用于 ngrok/Cloudflare/Tailscale HTTP 回退。
 
 ## ChatGPT 创建 connector 时显示 “Something went wrong” 怎么办？
 

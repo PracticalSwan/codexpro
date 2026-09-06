@@ -9,7 +9,7 @@
       content="CodexPro connects ChatGPT Plugins to explicitly allowed local projects through MCP so ChatGPT can inspect, edit, verify, and hand off code safely."
     />
     <meta property="og:title" content="CodexPro Full" />
-    <meta property="og:description" content="Local MCP bridge: paste a Server URL into ChatGPT Plugins and work on repos you allow." />
+    <meta property="og:description" content="Local MCP bridge: connect ChatGPT through OpenAI Secure MCP Tunnel and work on repos you explicitly allow." />
     <meta property="og:image" content="https://raw.githubusercontent.com/PracticalSwan/codexpro/main/docs/og.svg" />
     <meta name="theme-color" content="#0b1220" />
     <link rel="alternate" hreflang="zh-CN" href="./zh.html" />
@@ -41,7 +41,7 @@
           <p class="eyebrow">Install in your repo</p>
           <h1>Use ChatGPT like your local coding agent.</h1>
           <p class="hero-lede">
-            Install the CLI, run setup inside a project, then paste the copied Server URL into ChatGPT Plugins. ChatGPT gets bounded tools for the launch project and any additional projects you explicitly allow.
+            Install the CLI, run setup inside a project, then connect ChatGPT with the OpenAI Secure MCP Tunnel ID. ChatGPT gets bounded tools for the launch project and any additional projects you explicitly allow; ngrok and other Server URL transports remain explicit fallbacks.
           </p>
           <div class="install-line" role="group" aria-label="Install command">
             <code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz
@@ -51,7 +51,7 @@ codexpro setup</code>
           <p class="eyebrow">CodexPro Full 0.32.3 ships independently through GitHub Releases. The upstream npm package is not this fork release.</p>
           <div class="hero-proof" aria-label="Core capabilities">
             <span>explicit project access</span>
-            <span>token-protected URL</span>
+            <span>loopback + bearer protected</span>
             <span>safe bash default</span>
             <span>repo-backed context</span>
           </div>
@@ -116,8 +116,8 @@ codexpro setup</code>
         </div>
         <div>
           <span>03</span>
-          <strong>Paste</strong>
-          <p>Paste the copied Server URL when creating the ChatGPT plugin.</p>
+          <strong>Connect</strong>
+          <p>Choose Connection: Tunnel in ChatGPT and select or paste the OpenAI Tunnel ID.</p>
         </div>
       </section>
 
@@ -214,7 +214,7 @@ codexpro setup</code>
           </div>
           <div>
             <small>Trust model</small>
-            <strong>Your ChatGPT account, your local repo, your explicit tunnel and token.</strong>
+            <strong>Your ChatGPT account, your local repo, your explicit tunnel ID, and environment-only runtime credential.</strong>
           </div>
         </div>
       </section>
@@ -224,7 +224,7 @@ codexpro setup</code>
           <p class="eyebrow">Quick start</p>
           <h2>Install once, then run setup in your repo.</h2>
           <p>
-            The default path uses normal coding mode, workspace writes, safe bash, and a tunnel you choose during setup. After setup, daily startup is just <code>codexpro start</code>.
+            The default path uses normal coding mode, workspace writes, safe bash, and OpenAI Secure MCP Tunnel. After one-time Platform tunnel/key setup and profile migration, daily startup is just <code>codexpro start</code>.
           </p>
         </div>
         <div class="steps">
@@ -246,15 +246,15 @@ codexpro --version</code></pre>
           <div class="step">
             <span>3</span>
             <div>
-              <strong>Create the ChatGPT plugin</strong>
-              <p>In ChatGPT, open Settings -> Security and login and turn on Developer mode (keep CSP enforcement on). Then open Settings -> Plugins, stay on the Plugins tab, and click the circular + beside Search plugins.</p>
+              <strong>Prepare ChatGPT</strong>
+              <p>In ChatGPT, enable Developer mode and keep CSP enforcement on. Then open Settings -> Connectors.</p>
             </div>
           </div>
           <div class="step">
             <span>4</span>
             <div>
-              <strong>Create a ChatGPT plugin</strong>
-              <p>In New Plugin, name it CodexPro. Use Connection: Server URL and paste the copied URL. The form may default to OAuth; set Authentication to No Authentication / None before creating the plugin.</p>
+              <strong>Connect the tunnel</strong>
+              <p>Choose Connection: Tunnel and select or paste the same <code>tunnel_...</code> ID saved for CodexPro. Keep the official tunnel-client and CodexPro running.</p>
             </div>
           </div>
           <div class="step">

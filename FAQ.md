@@ -25,7 +25,7 @@ They can look similar at the transport layer because both use a local MCP-style 
 CodexPro is built around one product loop:
 
 ```text
-install -> setup in a repo -> paste Server URL into ChatGPT Plugins -> inspect/edit/verify/review allowed projects
+install -> setup in a repo -> connect the OpenAI Tunnel ID in ChatGPT -> inspect/edit/verify/review allowed projects
 ```
 
 The main differences are:
@@ -164,7 +164,9 @@ If the client does not provide `download_url` and `file_id`, the tool returns an
 
 ## What do I enable in ChatGPT?
 
-Open ChatGPT and go to:
+For the default OpenAI Secure MCP Tunnel path, first complete the one-time OpenAI Platform tunnel setup and keep the restricted runtime API key in `CONTROL_PLANE_API_KEY`. Do not paste that key into ChatGPT or save it in a CodexPro profile.
+
+Then open ChatGPT and go to:
 
 ```text
 Settings
@@ -173,21 +175,13 @@ Settings
 -> Enforce CSP in developer mode: on
 
 Settings
--> Plugins
--> Create
+-> Connectors
+-> Connection: Tunnel
 ```
 
-When creating the plugin:
+Select the tunnel or paste the same `tunnel_...` ID printed by CodexPro. The local CodexPro bearer token is forwarded by the official `tunnel-client` from a referenced environment value; it is not part of the ChatGPT connector form or public URL.
 
-```text
-Name: CodexPro
-Description: Local workspace bridge for ChatGPT coding
-Connection: Server URL
-Server URL: paste the URL copied by CodexPro
-Authentication: No Authentication / None
-```
-
-The copied Server URL already includes the private CodexPro token.
+If you deliberately use ngrok/Cloudflare/Tailscale instead, follow the HTTP fallback instructions and use the Server URL path for that connector.
 
 ## Should CSP stay enabled?
 
@@ -300,18 +294,17 @@ codexpro start --mode handoff --no-bash
 Use this rule:
 
 ```text
-Fast demo:              Cloudflare quick tunnel
-Recommended stable URL: ngrok free dev domain
-Custom domain:          Cloudflare named tunnel
-Tailnet users:           Tailscale Funnel
-No public tunnel:       local-only mode, only for clients that can reach localhost
+Recommended ChatGPT path: OpenAI Secure MCP Tunnel
+Stable HTTP fallback:     ngrok free dev domain
+Disposable HTTP demo:     Cloudflare quick tunnel
+Custom-domain fallback:   Cloudflare named tunnel
+Tailnet HTTP fallback:    Tailscale Funnel
+Local MCP clients:        local-only mode
 ```
 
-Cloudflare quick tunnel URLs change on restart. If you put a quick-mode URL into ChatGPT, you must edit the ChatGPT app Server URL every time you restart the tunnel.
+`codexpro start` defaults to OpenAI Secure MCP Tunnel for new/no-profile launches. Existing saved profiles keep their current tunnel until you migrate them, so an established ngrok setup is not silently broken. After migrating an ngrok profile to OpenAI, CodexPro keeps the ngrok hostname/config as fallback metadata and `codexpro ngrok` can reuse it.
 
-For most users, the better path is a free ngrok dev domain. Create a free ngrok account, find your assigned dev domain under Universal Gateway -> Domains, and save that hostname during `codexpro setup`.
-
-If you own a domain, use Cloudflare named tunnels and route DNS to a hostname like `codexpro.example.com`.
+Cloudflare quick tunnel URLs change on restart. HTTP fallback modes expose a public/non-loopback endpoint and should keep CodexPro token authentication enabled.
 
 ## Why does ChatGPT show “Something went wrong” when I create a connector?
 
@@ -360,25 +353,15 @@ Official references:
 - Cloudflare Tunnel routing: https://developers.cloudflare.com/tunnel/routing/
 - Cloudflare Tunnel DNS records: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/dns/
 
-## Can I use the same ChatGPT plugin URL every day?
+## Can I keep the same ChatGPT connection every day?
 
-Yes, if you use a stable hostname.
-
-Recommended simple path:
-
-```bash
-codexpro setup
-# choose ngrok
-# enter your ngrok free dev domain
-```
-
-After that:
+Yes. With the default OpenAI Secure MCP Tunnel path, keep the same Platform tunnel ID assigned to the same ChatGPT workspace and save that non-secret ID in the CodexPro workspace profile. Daily startup remains:
 
 ```bash
 codexpro start
 ```
 
-The same hostname and CodexPro token are reused for that workspace.
+The runtime API key is not saved by CodexPro; provide it through `CONTROL_PLANE_API_KEY` in the runtime environment. If you use an HTTP fallback instead, a stable ngrok/Cloudflare/Tailscale hostname can likewise be reused.
 
 ## What if I run CodexPro in two repos at once?
 
@@ -401,14 +384,14 @@ codexpro settings set --clear-projects
 
 Workspace selection is isolated between MCP sessions created by the client. A ChatGPT conversation is not guaranteed to map one-to-one to an MCP session, so use separate CodexPro processes when strict isolation matters.
 
-For separate processes, two ChatGPT accounts, or two ngrok domains on one machine, run two CodexPro processes with different local ports and different public hostnames:
+For strict separation, run two CodexPro processes with different local ports and distinct OpenAI tunnels (or distinct HTTP fallback hostnames):
 
 ```text
-repo A: port 8787, hostname A, ChatGPT plugin URL A
-repo B: port 8788, hostname B, ChatGPT plugin URL B
+repo A: port 8787, tunnel/workspace A
+repo B: port 8788, tunnel/workspace B
 ```
 
-Run `codexpro setup` in each repo and save a profile per workspace. Do not reuse one Server URL across both accounts.
+Run `codexpro setup` in each repo and save a profile per workspace. A Secure MCP Tunnel must be scoped to the ChatGPT workspace that will use it; do not reuse one tunnel/profile as a cross-account trust shortcut.
 
 ## How do multiple ChatGPT sessions avoid overwriting each other?
 
@@ -432,7 +415,7 @@ Public documentation is published at `https://practicalswan.github.io/codexpro/`
 
 CodexPro is a local developer bridge, not an OS sandbox.
 
-Use it with repos you trust. Keep token auth enabled for public tunnels. Keep safe bash on unless you know why you need full bash. Read [SECURITY.md](SECURITY.md) before exposing it through a public tunnel.
+Use it with repos you trust. Keep local CodexPro bearer auth enabled in OpenAI mode and token auth enabled for public HTTP fallbacks. Keep safe bash on unless you know why you need full bash. Read [SECURITY.md](SECURITY.md) before supplying tunnel credentials or exposing a public fallback.
 
 ## Where are saved settings stored?
 

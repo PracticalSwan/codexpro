@@ -47,8 +47,8 @@ Review changes against these failure modes before release:
 
 | Failure mode | Expected control |
 | --- | --- |
-| Public tunnel reachable without a secret | Public/non-loopback HTTP fails closed unless a CodexPro token is configured. |
-| Raw CodexPro or Cloudflare token appears in UI, logs, docs, or package output | Tokens are redacted in profile/status output and tunnel tokens use local files for persistence. |
+| Tunnel path reaches local MCP without intended auth | OpenAI mode keeps MCP loopback-bound and bearer protected; the official tunnel-client injects the bearer from an environment reference. Public/non-loopback HTTP fallbacks fail closed unless a CodexPro token is configured. |
+| Raw CodexPro, OpenAI runtime, or Cloudflare token appears in UI, argv, logs, docs, profile, or package output | CodexPro tokens are redacted, OpenAI runtime keys are environment-only and never persisted by CodexPro, tunnel-client receives the local bearer through an env reference, and Cloudflare tunnel tokens use local files for persistence. |
 | ChatGPT can edit outside the intended repo | Allowed roots are explicit; path resolution rejects escapes, blocked globs, and symlink traversal. |
 | ChatGPT can run arbitrary shell by default | Bash defaults to safe mode, can be disabled, and full mode is a trusted-local-only choice. Safe mode can still run repo package scripts, so use `--no-bash` for untrusted repos. |
 | Handoff mode still exposes generic writes | Handoff/pro modes do not advertise generic `write`/`edit`/`apply_patch`; bounded handoff tools write `.ai-bridge` files only. |
@@ -68,24 +68,24 @@ Review changes against these failure modes before release:
 The main risks are:
 
 - connecting an untrusted MCP client
-- exposing the server through a public tunnel without auth
+- weakening local bearer authentication or exposing an HTTP fallback without auth
 - running with `CODEXPRO_BASH_MODE=full`
 - running with `CODEXPRO_WRITE_MODE=workspace` on an important repo
 - executing an untrusted `.ai-bridge/current-plan.md` or custom `execute-handoff --command`
 - running `loop-handoff` with an untrusted reviewer command or without a small `--max-iters`
 - adding overly broad allowed roots
-- leaking a `codexpro_token` or Cloudflare tunnel token
+- leaking a `codexpro_token`, OpenAI runtime API key, or Cloudflare tunnel token
 - trusting a downloaded `cloudflared` binary without understanding where it came from
 
 ## Safer Defaults
 
-Default daily mode:
+Default daily mode after one-time OpenAI Platform tunnel setup:
 
 ```bash
+# Set CONTROL_PLANE_API_KEY in the runtime environment; do not commit or save it in the profile.
 codexpro start \
   --root /path/to/repo \
-  --bash safe \
-  --tunnel cloudflare
+  --bash safe
 ```
 
 Safer planning-only mode:
@@ -94,9 +94,10 @@ Safer planning-only mode:
 codexpro start \
   --root /path/to/repo \
   --mode handoff \
-  --bash safe \
-  --tunnel cloudflare
+  --bash safe
 ```
+
+OpenAI mode keeps the MCP server on loopback, keeps CodexPro bearer authentication enabled, and passes that bearer to the official tunnel-client through an environment reference. The non-secret `tunnel_...` ID and client path may be saved in the workspace profile; the OpenAI runtime API key must not be.
 
 For stable public hostnames, keep the CodexPro auth token stable but private:
 
@@ -116,11 +117,13 @@ codexpro start \
 
 ## Hard Rules
 
-- Do not run public tunnels with `--no-auth`.
+- Do not disable CodexPro bearer authentication for OpenAI Secure MCP Tunnel or public HTTP fallback modes.
 - Public tunnel mode and non-loopback binds fail closed if `CODEXPRO_HTTP_TOKEN` is missing.
 - HTTP tokens shorter than 24 bytes are rejected. Use a generated random token, not a memorable password.
 - Do not commit printed connector URLs that include `codexpro_token`.
 - Production integrations must use OAuth or `Authorization: Bearer <token>`. Query-string tokens are a personal connector compatibility mode, not a shared or multi-user production authentication design.
+- Do not commit or save OpenAI runtime API keys in CodexPro profiles. Use a restricted `CONTROL_PLANE_API_KEY` with only the tunnel permissions required by the official client.
+- Do not put the OpenAI runtime API key on the `codexpro` command line or paste it into chat.
 - Do not commit Cloudflare tunnel tokens.
 - Do not paste raw Cloudflare tunnel tokens into browser pages or screenshots. Use `--cloudflare-token-file` or the local page's Cloudflare token file field instead.
 - Use `--mode handoff` for planning workflows where ChatGPT should not edit source files. Handoff mode does not advertise generic `write`/`edit` tools.

@@ -83,7 +83,7 @@ If you already have a verified fork tarball, install that tarball directly inste
 
 - Node.js 20+
 - a ChatGPT surface that can connect to custom MCP plugins
-- an HTTPS route to the local MCP server for ChatGPT web, unless the client can reach local HTTP directly
+- the official OpenAI `tunnel-client` plus an OpenAI Platform tunnel/runtime key for the default ChatGPT path; public HTTPS is only needed for HTTP fallback modes
 - Git for Git/Goal features
 - optional CodeGraph 1.6.x or LSP only when those providers are enabled
 
@@ -96,9 +96,9 @@ If you already have a verified fork tarball, install that tarball directly inste
    codexpro start
    ```
 
-2. In ChatGPT, enable Developer mode and keep CSP enforcement enabled.
-3. Create a custom plugin using the Server URL printed/copied by CodexPro.
-4. Keep the connector URL/token private.
+2. One time, create an OpenAI Secure MCP Tunnel for the same ChatGPT workspace and provide its `tunnel_...` ID to CodexPro. Keep the restricted runtime key in `CONTROL_PLANE_API_KEY`; CodexPro does not save it.
+3. In ChatGPT, enable Developer mode and keep CSP enforcement enabled. Open Settings -> Connectors, choose **Connection: Tunnel**, and select or paste the same Tunnel ID.
+4. Keep CodexPro and the official `tunnel-client` running while you use the connector. The local MCP endpoint stays loopback-only and bearer protected.
 5. In chat, start with:
 
    ```text
@@ -207,17 +207,30 @@ Use `open_workspace` for another allowed root and keep the returned `workspace_i
 
 For hard isolation, run separate CodexPro processes on separate ports/hostnames.
 
-## Public HTTPS options
+## Connection options
+
+The primary ChatGPT path is OpenAI Secure MCP Tunnel:
 
 ```bash
-codexpro start --tunnel cloudflare
+# after one-time Platform tunnel/key setup
+$env:CONTROL_PLANE_API_KEY = '<restricted-runtime-key>'   # PowerShell example
+codexpro settings set --tunnel openai --openai-tunnel-id tunnel_0123456789abcdef0123456789abcdef
+codexpro start
+```
+
+Do not paste the runtime API key into chat, commit it, or save it in the CodexPro profile. `CONTROL_PLANE_TUNNEL_ID` and `TUNNEL_CLIENT_BIN` are optional environment alternatives for the non-secret tunnel ID/client path.
+
+HTTP fallbacks remain available:
+
+```bash
 codexpro ngrok --hostname your.ngrok-free.dev
+codexpro start --tunnel cloudflare
 codexpro stable --hostname codexpro.example.com --tunnel-name codexpro
 codexpro tailscale --hostname your-device.your-tailnet.ts.net
 codexpro start --tunnel none
 ```
 
-Public/non-loopback endpoints should keep CodexPro authentication enabled. Prefer `Authorization: Bearer <token>` when the MCP client supports headers. Query-string tokens are a personal compatibility fallback and must not be shared.
+When an existing saved ngrok profile is migrated to OpenAI mode, CodexPro retains its ngrok hostname/config as fallback metadata so `codexpro ngrok` can reuse it. Public/non-loopback HTTP endpoints should keep CodexPro authentication enabled. Prefer `Authorization: Bearer <token>` when the MCP client supports headers. Query-string tokens are a personal compatibility fallback and must not be shared.
 
 ## Workspace policy
 
@@ -360,7 +373,7 @@ The authenticated local control page can save non-secret next-run profile settin
 - environment inheritance is separately gated
 - telemetry is bounded and sanitized
 
-Read [SECURITY.md](SECURITY.md) before exposing a public tunnel.
+Read [SECURITY.md](SECURITY.md) before exposing any public HTTP fallback tunnel or supplying tunnel credentials.
 
 ## Development
 
