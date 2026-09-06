@@ -147,7 +147,8 @@ A strong default ChatGPT workflow is:
 ```text
 1. server_config
 2. open_current_workspace
-3. instructions_for_path / gather_context as needed
+3. instructions_for_path / gather_context
+prepare_subtask_context as needed
 4. read/search/inspect
 5. write/edit/apply_patch
 6. run_checks or verify_changes

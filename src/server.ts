@@ -33,7 +33,7 @@ import { TelemetryRegistry } from "./telemetry.js";
 import { connectionDiagnostics, toolSurfaceDiagnostics } from "./diagnosticsOps.js";
 import { WorkspaceProcessManager } from "./processOps.js";
 import { discoverTrustedChecks, runChecks, verifyChanges } from "./checksOps.js";
-import { readMany, searchMany, gatherContext } from "./contextOps.js";
+import { readMany, searchMany, gatherContextV2, prepareSubtaskContext } from "./contextOps.js";
 import { instructionsForPath } from "./instructionOps.js";
 import { WorkspaceEventTracker } from "./workspaceEvents.js";
 import { CodexProRuntimeState } from "./runtimeState.js";
@@ -396,6 +396,7 @@ const STANDARD_TOOL_NAMES = [
   "read_many",
   "search_many",
   "gather_context",
+  "prepare_subtask_context",
   "instructions_for_path",
   "workspace_events",
   "save_task_snapshot",
@@ -434,6 +435,7 @@ const FULL_TOOL_NAMES = [
   "read_many",
   "search_many",
   "gather_context",
+  "prepare_subtask_context",
   "instructions_for_path",
   "workspace_events",
   "save_task_snapshot",
@@ -1180,6 +1182,10 @@ export function createCodexProServer(
   const runtimeState = options.runtimeState ?? new CodexProRuntimeState();
   const ownsRuntimeState = !options.runtimeState;
   const operationManagers = new Map<string, OperationManager>();
+  const invalidateWorkspaceDerivedState = (workspaceId: string): void => {
+    invalidateWorkspaceAnalysis(workspaceId);
+    runtimeState.invalidateContext(workspaceId);
+  };
   const checkpointStore = new CheckpointStore({
     baseDir: config.checkpointDir,
     maxCheckpoints: config.maxOperationReceipts,
@@ -1570,12 +1576,29 @@ export function createCodexProServer(
     return textResult(`# Instructions For Path\n\n${result.text}`, { workspace_id: workspace.id, ...result });
   });
 
+  const contextInputSchema = {
+    workspace_id: z.string().optional(), target_path: z.string().optional(), target_symbol: z.string().max(256).optional(),
+    changed_paths: z.array(z.string()).max(config.maxOperationFiles).optional(),
+    strategy: z.enum(["task", "symbol", "change"]).optional(), include_tests: z.boolean().optional(),
+    include_recent_changes: z.boolean().optional(), max_bytes: z.number().int().min(1000).optional(),
+    target_tokens: z.number().int().min(1).max(2_000_000).optional()
+  };
   registerCodexTool(config, server, "gather_context", {
-    title: "Gather Context", description: "Gather bounded ranked context for one target path, prioritizing instructions, target content, Git state, and recent commits.",
-    inputSchema: { workspace_id: z.string().optional(), target_path: z.string().optional(), max_bytes: z.number().int().min(1000).optional() }, annotations: READ_ONLY_ANNOTATIONS
+    title: "Gather Context", description: "Gather byte-bounded task/symbol/change context with ranked reasons, optional tests/recent Git evidence, token estimate, and bounded runtime caching.",
+    inputSchema: contextInputSchema, annotations: READ_ONLY_ANNOTATIONS
   }, async (args) => {
-    const workspace = workspaces.getWorkspace(args.workspace_id); const result = await gatherContext({ config: configForWorkspace(workspace), guard, workspace, targetPath: args.target_path, maxBytes: args.max_bytes });
+    const workspace = workspaces.getWorkspace(args.workspace_id);
+    const result = await gatherContextV2({ config: configForWorkspace(workspace), guard, workspace, cache: runtimeState.contextCacheFor(workspace.id), strategy: args.strategy, targetPath: args.target_path, targetSymbol: args.target_symbol, changedPaths: args.changed_paths, includeTests: args.include_tests, includeRecentChanges: args.include_recent_changes, maxBytes: args.max_bytes, targetTokens: args.target_tokens });
     return textResult(`# Gather Context\n\n${result.text}`, { workspace_id: workspace.id, ...result });
+  });
+
+  registerCodexTool(config, server, "prepare_subtask_context", {
+    title: "Prepare Subtask Context", description: "Return the same bounded ranked context as a read-only data bundle for a host-created subtask. Does not launch a model, process, or remote request.",
+    inputSchema: contextInputSchema, annotations: READ_ONLY_ANNOTATIONS
+  }, async (args) => {
+    const workspace = workspaces.getWorkspace(args.workspace_id);
+    const result = await prepareSubtaskContext({ config: configForWorkspace(workspace), guard, workspace, cache: runtimeState.contextCacheFor(workspace.id), strategy: args.strategy, targetPath: args.target_path, targetSymbol: args.target_symbol, changedPaths: args.changed_paths, includeTests: args.include_tests, includeRecentChanges: args.include_recent_changes, maxBytes: args.max_bytes, targetTokens: args.target_tokens });
+    return textResult(`# Subtask Context\n\n${result.text}`, { workspace_id: workspace.id, ...result });
   });
 
   registerCodexTool(config, server, "workspace_events", {
@@ -1583,6 +1606,7 @@ export function createCodexProServer(
     inputSchema: { workspace_id: z.string().optional(), cursor: z.string().optional() }, annotations: READ_ONLY_ANNOTATIONS
   }, async (args) => {
     const workspace = workspaces.getWorkspace(args.workspace_id); const result = await workspaceEventTrackerFor(workspace).page(args.cursor);
+    runtimeState.invalidateContext(workspace.id);
     return textResult(`# Workspace Events\n\n${JSON.stringify(result, null, 2)}`, { workspace_id: workspace.id, ...result });
   });
 
@@ -2807,7 +2831,7 @@ export function createCodexProServer(
       } else {
         receipt = await applyChangeSet(args.change_set_id);
       }
-      if (receipt.state === "completed") invalidateWorkspaceAnalysis(workspace.id);
+      if (receipt.state === "completed") invalidateWorkspaceDerivedState(workspace.id);
       return textResult(`# Apply Change Set\n\nOperation: ${receipt.id}\nState: ${receipt.state}${checkpointId ? `\nCheckpoint: ${checkpointId}` : ""}`, { operation: receipt, change_set: getPreparedChangeSet(args.change_set_id), ...(checkpointId ? { checkpoint_id: checkpointId } : {}) });
     }
   );
@@ -2827,7 +2851,7 @@ export function createCodexProServer(
       const workspaceId = workspaceForRevertOperation(args.operation_id);
       if (workspaceId && workspaceId !== workspace.id) throw new CodexProError("Operation belongs to a different workspace.");
       const receipt = await revertOperation(args.operation_id);
-      invalidateWorkspaceAnalysis(workspace.id);
+      invalidateWorkspaceDerivedState(workspace.id);
       return textResult(`# Revert Operation\n\nOperation: ${receipt.id}\nState: ${receipt.state}`, { operation: receipt, reverted_operation_id: args.operation_id });
     }
   );
@@ -2858,7 +2882,7 @@ export function createCodexProServer(
         operationManager: operationManagerFor(workspace),
         checkpointId: args.checkpoint_id
       });
-      invalidateWorkspaceAnalysis(workspace.id);
+      invalidateWorkspaceDerivedState(workspace.id);
       return textResult(
         `# Restore Checkpoint\n\nCheckpoint: ${args.checkpoint_id}\nOperation: ${receipt.id}\nState: ${receipt.state}`,
         { checkpoint_id: args.checkpoint_id, operation: receipt, paths: checkpoint.entries.map((entry) => entry.path) }
@@ -2902,7 +2926,7 @@ export function createCodexProServer(
       );
       if (execution.replayed || !execution.result) return textResult("# Write File\n\nOperation " + execution.receipt.id + " already " + execution.receipt.state + "; mutation not repeated.", { operation: execution.receipt, replayed: true });
       const { result, checkpointId } = execution.result;
-      if (result.diff.changed) invalidateWorkspaceAnalysis(workspace.id);
+      if (result.diff.changed) invalidateWorkspaceDerivedState(workspace.id);
       const text = `# Write File\n\nPath: ${result.path}\nExisted before: ${result.existed}\nBytes: ${result.bytes}\nSHA-256: ${result.sha256}\nDiff stats: +${result.diff.additions} -${result.diff.deletions}${diffBlock(result.diff.diff)}`;
       return textResult(text, {
         workspace_id: workspace.id,
@@ -2957,7 +2981,7 @@ export function createCodexProServer(
       );
       if (execution.replayed || !execution.result) return textResult("# Edit File\n\nOperation " + execution.receipt.id + " already " + execution.receipt.state + "; mutation not repeated.", { operation: execution.receipt, replayed: true });
       const { result, checkpointId } = execution.result;
-      if (result.diff.changed) invalidateWorkspaceAnalysis(workspace.id);
+      if (result.diff.changed) invalidateWorkspaceDerivedState(workspace.id);
       const text = `# Edit File\n\nPath: ${result.path}\nReplacements: ${result.replacements}\nBytes: ${result.bytes}\nSHA-256: ${result.sha256}\nDiff stats: +${result.diff.additions} -${result.diff.deletions}${diffBlock(result.diff.diff)}`;
       return textResult(text, {
         workspace_id: workspace.id,
@@ -3008,7 +3032,7 @@ export function createCodexProServer(
       );
       if (execution.replayed || !execution.result) return textResult("# Apply Patch\n\nOperation " + execution.receipt.id + " already " + execution.receipt.state + "; mutation not repeated.", { operation: execution.receipt, replayed: true });
       const { result, checkpointId } = execution.result;
-      if (result.changed) invalidateWorkspaceAnalysis(workspace.id);
+      if (result.changed) invalidateWorkspaceDerivedState(workspace.id);
       const text = [
         "# Apply Patch",
         "",
@@ -3077,7 +3101,7 @@ export function createCodexProServer(
       );
       if (execution.replayed || !execution.result) return textResult("# Import File\n\nOperation " + execution.receipt.id + " already " + execution.receipt.state + "; mutation not repeated.", { operation: execution.receipt, replayed: true });
       const result = execution.result;
-      invalidateWorkspaceAnalysis(workspace.id);
+      invalidateWorkspaceDerivedState(workspace.id);
       const text = [
         "# Import File",
         "",
@@ -3262,7 +3286,7 @@ export function createCodexProServer(
         id: String(args.goal_id), expectedSourceHead: String(args.expected_source_head), expectedSourceFingerprint: String(args.expected_source_fingerprint),
         reviewFingerprint: String(args.review_fingerprint), authorize: args.authorize === true
       });
-      invalidateWorkspaceAnalysis(workspace.id);
+      invalidateWorkspaceDerivedState(workspace.id);
       return textResult(`# Goal Projected\n\n${record.id} projected through operation ${record.projectionOperationId}. No commit or push was performed.`, publicGoalRecord(record));
     }
   );
@@ -3334,7 +3358,7 @@ export function createCodexProServer(
         (value) => ({ paths: [value.path], bytes: value.expandedBytes, items: value.entries })
       );
       if (execution.replayed || !execution.result) return textResult(`# Extract Archive\n\nOperation ${execution.receipt.id} already ${execution.receipt.state}; extraction not repeated.`, { operation: execution.receipt, replayed: true });
-      invalidateWorkspaceAnalysis(workspace.id);
+      invalidateWorkspaceDerivedState(workspace.id);
       return textResult(`# Extract Archive\n\nDestination: ${execution.result.path}\nEntries: ${execution.result.entries}\nExpanded bytes: ${execution.result.expandedBytes}`, { workspace_id: workspace.id, ...execution.result, operation: execution.receipt });
     }
   );

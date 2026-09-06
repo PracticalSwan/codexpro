@@ -346,3 +346,7 @@ server_config
 ```
 
 Those three calls tell you the actual version, enabled gates, registered tools, and workspace-specific restrictions for the current session.
+
+## Context Selection v2
+
+`gather_context` supports task, symbol, and change strategies under a hard byte ceiling with bounded scores/reasons, advisory token estimates, and per-workspace runtime caching. `prepare_subtask_context` returns the same evidence as data only and never launches a model or process.
