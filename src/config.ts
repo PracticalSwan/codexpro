@@ -46,6 +46,9 @@ export interface CodexProConfig {
   maxOperationDurationMs: number;
   maxOperationReceipts: number;
   operationDir: string;
+  projectTrustDir: string;
+  hookTimeoutMs: number;
+  hookMaxOutputBytes: number;
   blockedGlobs: string[];
   contextDir: string;
   toolCards: boolean;
@@ -412,6 +415,9 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     maxOperationDurationMs: numberFrom(process.env.CODEXPRO_MAX_OPERATION_DURATION_MS, 600_000, 1_000, 900_000),
     maxOperationReceipts: numberFrom(process.env.CODEXPRO_MAX_OPERATION_RECEIPTS, 256, 8, 2_048),
     operationDir: expandHome(process.env.CODEXPRO_OPERATION_DIR || path.join(os.homedir(), ".codexpro", "operations")),
+    projectTrustDir: expandHome(process.env.CODEXPRO_TRUST_DIR || path.join(os.homedir(), ".codexpro", "trust")),
+    hookTimeoutMs: numberFrom(process.env.CODEXPRO_HOOK_TIMEOUT_MS, 5_000, 100, 30_000),
+    hookMaxOutputBytes: numberFrom(process.env.CODEXPRO_HOOK_MAX_OUTPUT_BYTES, 64_000, 1_024, 1_000_000),
     blockedGlobs: [...DEFAULT_BLOCKED_GLOBS, ...extraBlockedGlobs],
     contextDir: contextDirFrom(process.env.CODEXPRO_CONTEXT_DIR),
     toolCards: boolFrom(toolCardsArg ?? process.env.CODEXPRO_TOOL_CARDS, false),

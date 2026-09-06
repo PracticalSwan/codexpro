@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Added explicit trusted-project lifecycle hooks with out-of-repository path+SHA trust records, CLI-only trust mutation, read-only MCP trust status, argv-only execution, sanitized environment, bounded hook resources, and pre-tool blocking that cannot override declarative policy.
 - Added workspace policy v2 ordered per-action/resource allow/deny rules with normalized filesystem/Bash/Git resources, multi-resource fail-closed behavior, v1 backward compatibility, and supertool-equivalent enforcement.
 - Updated the MCP v1 integration to the maintained 1.30.x line and centralized SDK-specific tool/transport compatibility behind `src/mcpCompat.ts` without enabling MCP v2, input-required approvals, or Tasks.
 - Made the interactive `codexpro openai-key save` prompt render `*` masks for entered characters and erase masks on backspace without echoing the runtime key.

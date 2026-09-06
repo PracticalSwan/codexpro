@@ -246,6 +246,10 @@ A workspace may add `.codexpro-policy.json` to tighten the active profile. It ca
 
 See [docs/workspace-policy.md](docs/workspace-policy.md).
 
+## Trusted project hooks
+
+Trusted repositories may define `.codexpro-hooks.json` lifecycle hooks. Hook files never execute merely because they exist: trust is stored outside the repository and binds the canonical workspace plus exact hook-file SHA-256. Inspect or trust the current fingerprint locally with `codexpro trust status` / `codexpro trust hooks`; MCP exposes read-only `project_trust_status`. See [docs/hooks.md](docs/hooks.md).
+
 ## Durable operations
 
 State-changing tools can use idempotency keys and return durable `op_*` receipts. Query them with `operation_status`.
@@ -420,6 +424,7 @@ This fork preserves upstream attribution and MIT licensing while maintaining its
 - [FAQ](FAQ.md)
 - [Security](SECURITY.md)
 - [Workspace policy](docs/workspace-policy.md)
+- [Trusted project hooks](docs/hooks.md)
 - [Durable Goals](docs/goals.md)
 - [Stable URL guide](DOMAIN_SETUP.md)
 - [Changelog](CHANGELOG.md)

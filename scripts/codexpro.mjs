@@ -50,6 +50,8 @@ Usage:
   codexpro ngrok --hostname your-domain.ngrok-free.dev
   codexpro openai --openai-tunnel-id tunnel_...
   codexpro openai-key save
+  codexpro trust status --root /path/to/repo
+  codexpro trust hooks --root /path/to/repo
   codexpro tailscale --hostname your-device.your-tailnet.ts.net
   codexpro stable --hostname codexpro.example.com --tunnel-name codexpro
   codexpro pro-bundle --root /path/to/repo --copy
@@ -3824,6 +3826,35 @@ async function chooseReusableProfile(rl, currentRoot, profiles = listWorkspacePr
   return reusable[selectedIndex - 1];
 }
 
+async function runTrust(argv) {
+  const action = argv[0] && !argv[0].startsWith('--') ? argv[0] : 'status';
+  const args = parseArgs(action === 'status' && (!argv[0] || argv[0].startsWith('--')) ? argv : argv.slice(1));
+  if (args.help) {
+    console.log('Usage: codexpro trust status|hooks --root /path/to/repo');
+    return;
+  }
+  const root = realDir(args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
+  const trustModule = await import(pathToFileURL(path.join(projectRoot, 'dist', 'projectTrust.js')).href);
+  const trustDir = process.env.CODEXPRO_TRUST_DIR || undefined;
+  if (action === 'status') {
+    const status = await trustModule.projectTrustStatus(root, undefined, trustDir);
+    printBox('CodexPro project trust', [
+      labelValue('Workspace', root),
+      labelValue('Hook file', status.hookPresent ? '.codexpro-hooks.json' : 'not present'),
+      labelValue('Trusted', status.trusted ? 'yes' : 'no'),
+      ...(status.changed ? [labelValue('State', 'hook file changed; trust is stale')] : [])
+    ]);
+    return;
+  }
+  if (action === 'hooks') {
+    const status = await trustModule.trustProjectHooks(root, trustDir);
+    statusLine('ok', `Trusted .codexpro-hooks.json for ${root} at its current SHA-256 fingerprint.`);
+    if (!status.trusted) throw new Error('Project hook trust was not persisted.');
+    return;
+  }
+  throw new Error(`Unknown trust action: ${action}`);
+}
+
 async function runSettings(argv) {
   const action = argv[0] && !argv[0].startsWith('--') ? argv[0] : '';
   const args = parseArgs(action ? argv.slice(1) : argv);
@@ -4086,6 +4117,10 @@ async function main() {
   }
   if (subcommand === 'openai-key') {
     await runOpenAiKeyCommand({ homeDir: codexProHome(), argv: argv.slice(1) });
+    return;
+  }
+  if (subcommand === 'trust') {
+    await runTrust(argv.slice(1));
     return;
   }
   if (subcommand === 'settings' || subcommand === 'config') {

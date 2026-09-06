@@ -178,3 +178,4 @@ CodexPro blocks common sensitive paths by default:
 
 These guards reduce risk. They are not an OS sandbox.
 - Workspace policy v2 may add ordered per-tool/resource allow/deny rules. These rules are tightening-only: global/profile capability gates run first, multi-resource mutations fail when any target is denied, and the supertool cannot bypass the same decision.
+- Project hook files are inert until their canonical workspace path and exact hook-file SHA-256 are trusted with the local CLI. Trust mutation is not exposed through MCP; hook commands use argv execution, sanitized environment, bounded stdin/output/time, and cannot override policy denial.

@@ -4,6 +4,8 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { mcpRuntimeCapabilities, registerToolCompat } from "./mcpCompat.js";
+import { projectTrustStatus } from "./projectTrust.js";
+import { runHooks } from "./hooks/runner.js";
 import { z } from "zod";
 import type { CodexProConfig } from "./config.js";
 import { WorkspaceManager, PathGuard, CodexProError, type Workspace, type WorkspaceRegistry } from "./guard.js";
@@ -266,6 +268,11 @@ const SUPERTOOL_ACTION_ALIASES: Record<string, string> = {
 const registeredToolHandlersByServer = new WeakMap<object, Map<string, CodexToolHandler>>();
 const workspaceToolPolicyByServer = new WeakMap<object, (name: string, args: any) => void>();
 const telemetryByServer = new WeakMap<object, TelemetryRegistry>();
+interface ToolLifecycle {
+  before(name: string, args: Record<string, any>): Promise<void>;
+  after(name: string, args: Record<string, any>, result?: any, error?: unknown): Promise<void>;
+}
+const toolLifecycleByServer = new WeakMap<object, ToolLifecycle>();
 
 function rememberRegisteredToolHandler(server: McpServer, name: string, handler: CodexToolHandler): void {
   const key = server as object;
@@ -350,6 +357,7 @@ const MINIMAL_TOOL_NAMES = [
   "tool_surface_diagnostics",
   "local_telemetry",
   "operation_status",
+  "project_trust_status",
   "codexpro_self_test",
   "open_current_workspace",
   "open_workspace",
@@ -405,6 +413,7 @@ const FULL_TOOL_NAMES = [
   "tool_surface_diagnostics",
   "local_telemetry",
   "operation_status",
+  "project_trust_status",
   "codexpro_self_test",
   "codexpro_inventory",
   "load_skill",
@@ -612,10 +621,19 @@ function registerCodexTool(
   handler: CodexToolHandler
 ): void {
   if (!shouldRegisterTool(config, name)) return;
-  const validatedHandler: CodexToolHandler = (args) => {
+  const validatedHandler: CodexToolHandler = async (args) => {
     const validatedArgs = validateToolArgs(name, options, args);
     workspaceToolPolicyByServer.get(server as object)?.(name, validatedArgs);
-    return handler(validatedArgs);
+    const lifecycle = toolLifecycleByServer.get(server as object);
+    await lifecycle?.before(name, validatedArgs);
+    try {
+      const result = await handler(validatedArgs);
+      await lifecycle?.after(name, validatedArgs, result);
+      return result;
+    } catch (error) {
+      await lifecycle?.after(name, validatedArgs, undefined, error);
+      throw error;
+    }
   };
   registerWrappedToolCompat(server, name, descriptorOptionsForConfig(config, name, options), validatedHandler);
   rememberRegisteredTool(server, name);
@@ -1238,6 +1256,42 @@ export function createCodexProServer(
     const workspace = workspaces.getWorkspace(typeof actionArgs?.workspace_id === "string" ? actionArgs.workspace_id : undefined);
     assertWorkspaceToolPolicy(workspace, action, actionArgs);
   });
+  const hookSessionStarted = new Set<string>();
+  const runWorkspaceHooks = async (workspace: Workspace, event: "session_start" | "before_tool" | "after_tool" | "task_end", input: Record<string, unknown>) => {
+    try {
+      return await runHooks(event, {
+        root: workspace.root,
+        trustDir: config.projectTrustDir,
+        timeoutMs: config.hookTimeoutMs,
+        maxOutputBytes: config.hookMaxOutputBytes,
+        input
+      });
+    } catch (error) {
+      telemetry.record({ stage: "completion", status: "error", backend: "project_hook", errorBoundary: error instanceof Error ? error.message : String(error) });
+      return [];
+    }
+  };
+  toolLifecycleByServer.set(server as object, {
+    async before(name, args) {
+      if (name === SUPERTOOL_NAME || name === "open_workspace" || name === "project_trust_status") return;
+      const workspace = workspaces.getWorkspace(typeof args?.workspace_id === "string" ? args.workspace_id : undefined);
+      if (!hookSessionStarted.has(workspace.id)) {
+        const sessionResults = await runWorkspaceHooks(workspace, "session_start", { tool: name });
+        if (!sessionResults.some((item) => item.status === "skipped")) hookSessionStarted.add(workspace.id);
+      }
+      const results = await runWorkspaceHooks(workspace, "before_tool", { tool: name, argumentKeys: Object.keys(args ?? {}).slice(0, 32) });
+      if (results.some((item) => item.status === "blocked")) throw new CodexProError(`Project before_tool hook blocked ${name}.`);
+    },
+    async after(name, args, _result, error) {
+      if (name === SUPERTOOL_NAME || name === "open_workspace" || name === "project_trust_status") return;
+      const workspace = workspaces.getWorkspace(typeof args?.workspace_id === "string" ? args.workspace_id : undefined);
+      await runWorkspaceHooks(workspace, "after_tool", { tool: name, status: error ? "error" : "ok" });
+      if (!error && ["review_goal", "handoff_to_agent", "handoff_to_codex"].includes(name)) {
+        await runWorkspaceHooks(workspace, "task_end", { tool: name, status: "ok" });
+      }
+    }
+  });
+
   registeredToolNamesByServer.set(server as object, []);
   registerToolCardResource(server, config);
 
@@ -1356,6 +1410,7 @@ export function createCodexProServer(
         gitRuntime,
         searchBackend,
         mcp: mcpRuntimeCapabilities(),
+        projectHooks: { timeoutMs: config.hookTimeoutMs, maxOutputBytes: config.hookMaxOutputBytes },
         bashTranscript: config.bashTranscript,
         bashSessionId: config.bashSessionId ?? null,
         requireBashSession: config.requireBashSession,
@@ -1399,6 +1454,24 @@ export function createCodexProServer(
         registeredToolCount: registeredToolNames(server).length
       };
       return textResult(`# CodexPro Server Config\n\n${JSON.stringify(safeConfig, null, 2)}`, safeConfig);
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "project_trust_status",
+    {
+      title: "Project Trust Status",
+      description: "Report whether this workspace's exact .codexpro-hooks.json fingerprint is trusted. Read-only; trust can only be changed with the local codexpro trust CLI.",
+      inputSchema: { workspace_id: z.string().optional() },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const status = await projectTrustStatus(workspace.root, undefined, config.projectTrustDir);
+      const summary = { hook_file: ".codexpro-hooks.json", ...status };
+      return textResult(`# Project Trust Status\n\n${JSON.stringify(summary, null, 2)}`, summary);
     }
   );
 
