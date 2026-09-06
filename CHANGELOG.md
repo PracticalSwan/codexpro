@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Added a bounded sanitized per-workspace activity/evidence ledger and read-only `activity_log` tool.
 
 - Added durable touched-file checkpoints for `write`, `edit`, `apply_patch`, and `apply_change_set`, with bounded out-of-workspace preimages and hash-guarded `restore_checkpoint` that refuses to overwrite later user edits.
 - Added explicit trusted-project lifecycle hooks with out-of-repository path+SHA trust records, CLI-only trust mutation, read-only MCP trust status, argv-only execution, sanitized environment, bounded hook resources, and pre-tool blocking that cannot override declarative policy.

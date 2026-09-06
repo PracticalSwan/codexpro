@@ -1,3 +1,5 @@
+Activity logs exclude prompts, raw stdout/stderr, authentication values, full environment data, and absolute paths; write failures never change the underlying operation result.
+
 # Security Policy - CodexPro Full
 
 This document applies to the `PracticalSwan/codexpro` fork. Upstream lineage remains `rebel0789/codexpro`; report fork-specific findings against the PracticalSwan repository.

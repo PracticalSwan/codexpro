@@ -1,3 +1,4 @@
+- **Activity/evidence ledger** ? bounded per-user JSONL with workspace cursors, filters, structured IDs, and best-effort writes.
 ## Durable touched-file checkpoints
 
 - `write`, `edit`, `apply_patch`, and `apply_change_set` return `chk_*` rollback points.

@@ -30,6 +30,9 @@ import { OperationStore } from "./operations/store.js";
 import { OperationManager } from "./operations/manager.js";
 import { prepareChangeSet, applyChangeSet, revertOperation, getPreparedChangeSet, workspaceForRevertOperation } from "./operations/changesets.js";
 import { TelemetryRegistry } from "./telemetry.js";
+import { ActivityStore } from "./activity/store.js";
+import { ActivityRegistry } from "./activity/registry.js";
+import type { ActivityKind, ActivityStatus } from "./activity/types.js";
 import { connectionDiagnostics, toolSurfaceDiagnostics } from "./diagnosticsOps.js";
 import { WorkspaceProcessManager } from "./processOps.js";
 import { discoverTrustedChecks, runChecks, verifyChanges } from "./checksOps.js";
@@ -358,6 +361,7 @@ const MINIMAL_TOOL_NAMES = [
   "connection_diagnostics",
   "tool_surface_diagnostics",
   "local_telemetry",
+  "activity_log",
   "operation_status",
   "project_trust_status",
   "codexpro_self_test",
@@ -416,6 +420,7 @@ const FULL_TOOL_NAMES = [
   "connection_diagnostics",
   "tool_surface_diagnostics",
   "local_telemetry",
+  "activity_log",
   "operation_status",
   "project_trust_status",
   "codexpro_self_test",
@@ -1179,6 +1184,9 @@ export function createCodexProServer(
   const reviewCheckpoints = new Map<string, string>();
   const guard = new PathGuard(config, configForWorkspace);
   const telemetry = options.telemetryRegistry ?? new TelemetryRegistry({ maxEvents: 128 });
+  const activity = new ActivityRegistry(new ActivityStore({
+    baseDir: config.activityDir, maxRecords: config.maxActivityRecords, maxBytes: config.maxActivityBytes
+  }));
   const runtimeState = options.runtimeState ?? new CodexProRuntimeState();
   const ownsRuntimeState = !options.runtimeState;
   const operationManagers = new Map<string, OperationManager>();
@@ -1289,6 +1297,29 @@ export function createCodexProServer(
     assertWorkspaceToolPolicy(workspace, action, actionArgs);
   });
   const hookSessionStarted = new Set<string>();
+  const activityInputFor = (workspace: Workspace, name: string, args: Record<string, any>, result: any, error?: unknown) => {
+    const structured = result?.structuredContent && typeof result.structuredContent === "object" ? result.structuredContent : {};
+    const operationId = structured?.operation?.id ?? structured?.operation_id;
+    const checkId = structured?.check_id ?? structured?.check?.id ?? args?.check_id;
+    const processId = structured?.process_id ?? structured?.process?.id ?? args?.process_id;
+    const goalId = structured?.goal_id ?? structured?.goal?.id ?? args?.goal_id;
+    const rawPaths = Array.isArray(structured?.paths) ? structured.paths : typeof structured?.path === "string" ? [structured.path] : [];
+    let kind: ActivityKind = "tool";
+    if (goalId || name.includes("goal")) kind = "goal";
+    else if (processId || name.includes("process")) kind = "process";
+    else if (checkId || name.includes("check") || name === "verify_changes") kind = "check";
+    else if (operationId) kind = "operation";
+    else if (name.startsWith("git_")) kind = "git";
+    const status: ActivityStatus = error || result?.isError ? "error" : "ok";
+    return { workspaceId: workspace.id, kind, action: name, status,
+      ...(operationId ? { operationId: String(operationId) } : {}),
+      ...(checkId ? { checkId: String(checkId) } : {}),
+      ...(processId ? { processId: String(processId) } : {}),
+      ...(goalId ? { goalId: String(goalId) } : {}),
+      ...(rawPaths.length ? { relativePaths: rawPaths.map(String) } : {}),
+      summary: status === "ok" ? "tool call completed" : "tool call failed"
+    };
+  };
   const runWorkspaceHooks = async (workspace: Workspace, event: "session_start" | "before_tool" | "after_tool" | "task_end", input: Record<string, unknown>) => {
     try {
       return await runHooks(event, {
@@ -1314,9 +1345,10 @@ export function createCodexProServer(
       const results = await runWorkspaceHooks(workspace, "before_tool", { tool: name, argumentKeys: Object.keys(args ?? {}).slice(0, 32) });
       if (results.some((item) => item.status === "blocked")) throw new CodexProError(`Project before_tool hook blocked ${name}.`);
     },
-    async after(name, args, _result, error) {
+    async after(name, args, result, error) {
       if (name === SUPERTOOL_NAME || name === "open_workspace" || name === "project_trust_status") return;
       const workspace = workspaces.getWorkspace(typeof args?.workspace_id === "string" ? args.workspace_id : undefined);
+      await activity.appendBestEffort(activityInputFor(workspace, name, args, result, error));
       await runWorkspaceHooks(workspace, "after_tool", { tool: name, status: error ? "error" : "ok" });
       if (!error && ["review_goal", "handoff_to_agent", "handoff_to_codex"].includes(name)) {
         await runWorkspaceHooks(workspace, "task_end", { tool: name, status: "ok" });
@@ -1855,6 +1887,29 @@ export function createCodexProServer(
       const effective = configForWorkspace(workspace);
       const result = toolSurfaceDiagnostics(effective, registeredToolNames(server), toolNamesForMode(effective));
       return textResult(`# Tool Surface Diagnostics\n\n${JSON.stringify(result, null, 2)}`, { ...result });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "activity_log",
+    {
+      title: "Activity Log",
+      description: "Read the bounded sanitized CodexPro activity/evidence ledger for one already-authorized workspace.",
+      inputSchema: {
+        workspace_id: z.string().optional(),
+        after_sequence: z.number().int().min(0).optional(),
+        kinds: z.array(z.enum(["tool", "operation", "check", "process", "goal", "git"])).max(6).optional(),
+        statuses: z.array(z.enum(["started", "ok", "error", "cancelled"])).max(4).optional(),
+        limit: z.number().int().min(1).max(500).optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const page = await activity.read({ workspaceId: workspace.id, afterSequence: args.after_sequence, kinds: args.kinds, statuses: args.statuses, limit: args.limit });
+      return textResult(`# Activity Log\n\n${JSON.stringify(page, null, 2)}`, { workspace_id: workspace.id, ...page });
     }
   );
 

@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Execution status:** Planned only on 2026-09-06. This plan is **not execution-authorized** by the planning request that created it.
+**Execution status:** Implemented and verified on 2026-09-07 in the authorized Plans 12?21 batch.
 
 **Goal:** Give users one sanitized chronological answer to “what did CodexPro do?” by aggregating existing operations, checks, processes, Goals, and tool outcomes into a bounded evidence ledger.
 

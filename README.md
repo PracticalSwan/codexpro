@@ -1,3 +1,5 @@
+Activity evidence: `activity_log` provides a bounded, sanitized per-workspace chronological ledger outside the workspace; it never stores prompts or raw tool output.
+
 <p align="center">
   <img src="docs/favicon.svg" width="72" height="72" alt="CodexPro Full logo">
 </p>

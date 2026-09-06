@@ -47,6 +47,9 @@ export interface CodexProConfig {
   maxOperationReceipts: number;
   operationDir: string;
   checkpointDir: string;
+  activityDir: string;
+  maxActivityRecords: number;
+  maxActivityBytes: number;
   projectTrustDir: string;
   hookTimeoutMs: number;
   hookMaxOutputBytes: number;
@@ -417,6 +420,9 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     maxOperationReceipts: numberFrom(process.env.CODEXPRO_MAX_OPERATION_RECEIPTS, 256, 8, 2_048),
     operationDir: expandHome(process.env.CODEXPRO_OPERATION_DIR || path.join(os.homedir(), ".codexpro", "operations")),
     checkpointDir: expandHome(process.env.CODEXPRO_CHECKPOINT_DIR || path.join(os.homedir(), ".codexpro", "checkpoints")),
+    activityDir: expandHome(process.env.CODEXPRO_ACTIVITY_DIR || path.join(os.homedir(), ".codexpro", "activity")),
+    maxActivityRecords: numberFrom(process.env.CODEXPRO_MAX_ACTIVITY_RECORDS, 2000, 16, 20_000),
+    maxActivityBytes: numberFrom(process.env.CODEXPRO_MAX_ACTIVITY_BYTES, 2_000_000, 4096, 50_000_000),
     projectTrustDir: expandHome(process.env.CODEXPRO_TRUST_DIR || path.join(os.homedir(), ".codexpro", "trust")),
     hookTimeoutMs: numberFrom(process.env.CODEXPRO_HOOK_TIMEOUT_MS, 5_000, 100, 30_000),
     hookMaxOutputBytes: numberFrom(process.env.CODEXPRO_HOOK_MAX_OUTPUT_BYTES, 64_000, 1_024, 1_000_000),
