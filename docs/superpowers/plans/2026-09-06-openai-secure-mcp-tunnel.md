@@ -1,6 +1,6 @@
 # OpenAI Secure MCP Tunnel Migration — Implementation Plan
 
-**Status:** Approved for execution by user on 2026-09-06  
+**Status:** Approved for execution by user on 2026-09-06
 **Spec:** `docs/superpowers/specs/2026-09-06-openai-secure-mcp-tunnel-design.md`
 
 ## Scope

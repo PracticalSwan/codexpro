@@ -1,6 +1,6 @@
 # OpenAI Secure MCP Tunnel Migration — Design
 
-**Status:** Approved for implementation by user on 2026-09-06  
+**Status:** Approved for implementation by user on 2026-09-06
 **Scope:** CodexPro launcher, profile/settings surface, diagnostics, tests, and operator docs
 
 ## Goal
