@@ -66,5 +66,10 @@ const failedCheckRecord = logged.structuredContent.records.find((record) => reco
 assert.ok(failedCheckRecord, 'failed check invocation was not recorded as a completed tool call');
 assert.match(failedCheckRecord.summary ?? '', /fail/i, 'activity summary must distinguish a completed failing check from a passing check');
 assert.ok(!JSON.stringify(logged.structuredContent).includes('visible\n'));
+const beforeSelfReadSequence = logged.structuredContent.nextSequence;
+const selfRead = await client.callTool({ name: 'activity_log', arguments: { workspace_id: ws, after_sequence: beforeSelfReadSequence, limit: 20 } });
+assert.notEqual(selfRead.isError, true);
+assert.equal(selfRead.structuredContent.records.length, 0, 'activity_log must not record its own read');
+assert.equal(selfRead.structuredContent.nextSequence, beforeSelfReadSequence, 'activity_log must not advance the ledger sequence');
 await client.close();
 console.log('activity ledger smoke passed');

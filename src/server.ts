@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -1161,7 +1162,7 @@ function publicGoalRecord(record: GoalRecord): Record<string, unknown> {
     source_head: record.sourceHead ?? null,
     source_fingerprint: record.sourceFingerprint ?? null,
     source_dirty_paths: record.sourceDirtyPaths ?? [],
-    isolation_active: Boolean(record.isolation),
+    isolation_active: Boolean(record.isolation && fs.existsSync(record.isolation.root)),
     review_fingerprint: record.reviewFingerprint ?? null,
     reviewed_patch_sha256: record.reviewedPatchSha256 ?? null,
     reviewed_paths: record.reviewedPaths ?? [],
@@ -1359,7 +1360,9 @@ export function createCodexProServer(
     async after(name, args, result, error) {
       if (name === SUPERTOOL_NAME || name === "open_workspace" || name === "project_trust_status") return;
       const workspace = workspaces.getWorkspace(typeof args?.workspace_id === "string" ? args.workspace_id : undefined);
-      await activity.appendBestEffort(activityInputFor(workspace, name, args, result, error));
+      if (name !== "activity_log") {
+        await activity.appendBestEffort(activityInputFor(workspace, name, args, result, error));
+      }
       await runWorkspaceHooks(workspace, "after_tool", { tool: name, status: error ? "error" : "ok" });
       if (!error && ["review_goal", "handoff_to_agent", "handoff_to_codex"].includes(name)) {
         await runWorkspaceHooks(workspace, "task_end", { tool: name, status: "ok" });

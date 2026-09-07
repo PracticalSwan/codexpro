@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Fixed `activity_log` self-recording so reading the evidence ledger is observational and does not advance its own sequence.
+- Fixed Durable Goal `isolation_active` reporting so projected Goals no longer report active isolation after their worktree has been removed, while retained isolation metadata remains durable provenance.
 - Fixed workspace-policy v2 write-family enforcement so a `write` resource rule also governs the mutation tools `edit`, `apply_patch`, and `apply_change_set`; non-mutating `prepare_change_set` can be governed independently, while application rechecks every prepared target and denies the entire transaction when any member is denied.
 - Fixed Context Selection v2 change-strategy relationship direction so directly dependent tests are selected even when their filenames do not resemble the changed source file.
 - Fixed CodeGraph readiness diagnostics so an installed but uninitialized workspace index is reported unavailable instead of current.

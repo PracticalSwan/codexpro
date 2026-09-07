@@ -51,7 +51,11 @@ try {
   const status=await second.request("tools/call",{name:"goal_status",arguments:{goal_id:id}});assert.equal(status.structuredContent.state,"awaiting_review");assert.equal(status.structuredContent.isolation_active,true);assert(!JSON.stringify(status).includes(path.join(goalBase,workspaceId)));
   const review=await second.request("tools/call",{name:"review_goal",arguments:{goal_id:id}});assert.equal(review.structuredContent.state,"awaiting_projection");
   const projected=await second.request("tools/call",{name:"project_goal",arguments:{goal_id:id,expected_source_head:review.structuredContent.source_head,expected_source_fingerprint:review.structuredContent.source_fingerprint,review_fingerprint:review.structuredContent.review_fingerprint,authorize:true}});
-  assert.equal(projected.structuredContent.state,"projected");second.close();
+  assert.equal(projected.structuredContent.state,"projected");
+  assert.equal(projected.structuredContent.isolation_active,false,'projected Goal must not report active isolation after cleanup');
+  const projectedStatus=await second.request("tools/call",{name:"goal_status",arguments:{goal_id:id}});
+  assert.equal(projectedStatus.structuredContent.isolation_active,false,'projected Goal status must not report active isolation after cleanup');
+  second.close();
   assert.equal(await fs.readFile(path.join(root,"mcp-goal.txt"),"utf8"),"mcp goal");
   assert.equal(git(["log","-1","--pretty=%s"]),"base");
   console.log("goals MCP durability smoke passed");

@@ -8,7 +8,7 @@ Records contain only an action, status, timestamp/sequence, optional duration, e
 
 `status` describes whether the CodexPro action itself completed (`ok`) or failed (`error`); it is not the domain result of a test suite. For check/verification actions, the sanitized summary distinguishes passed, failed, and not-run outcomes while the associated check/operation result remains the authoritative detailed evidence.
 
-The read-only `activity_log` MCP tool accepts `after_sequence`, `kinds`, `statuses`, and a bounded `limit`.
+The read-only `activity_log` MCP tool accepts `after_sequence`, `kinds`, `statuses`, and a bounded `limit`. Reading the ledger is observational: `activity_log` is excluded from its own activity append path, so repeated reads do not advance the workspace sequence by themselves.
 
 ## Privacy and failure behavior
 

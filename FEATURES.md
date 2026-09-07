@@ -236,6 +236,7 @@ Key properties:
 - bounded DAG dependency scheduling
 - detached Git-worktree execution
 - Goal state that survives the initiating MCP connection
+- `isolation_active` reflects whether the retained Goal worktree still exists; after successful projection cleanup it reports `false` while durable provenance metadata remains available
 - exact proposal/review fingerprints
 - explicit projection authorization with `authorize=true`
 - source HEAD/state guards before projection
