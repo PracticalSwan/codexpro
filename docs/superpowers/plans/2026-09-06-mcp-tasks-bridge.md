@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Execution status:** Planned only on 2026-09-06. This plan is **not execution-authorized** by the planning request that created it.
+**Execution status:** Capability gate evaluated on 2026-09-07 in the authorized Plans 12-21 batch. Implementation is blocked/deferred: the official Tasks extension remains Draft, MCP SDK v2 does not serve it from core, and current ChatGPT developer documentation does not establish support. No Tasks runtime surface was added.
 
 **Goal:** Expose selected existing long-running CodexPro processes/Goals through a standard MCP Tasks extension only when that extension is stable and the connected ChatGPT client demonstrably supports it.
 

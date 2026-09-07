@@ -1,7 +1,7 @@
 # MCP Tasks Extension Bridge Design
 
 **Date:** 2026-09-06
-**Status:** Planned
+**Status:** Blocked - official Tasks extension remains Draft and is not served by MCP SDK v2 core; ChatGPT support is not documented
 **Priority:** P3
 **Plan ID:** 19
 **Depends on:** 18
