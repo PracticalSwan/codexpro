@@ -39,6 +39,7 @@ Depending on the active profile, ChatGPT can:
 - use durable operation receipts, idempotency, transactions, and safe revert
 - run trusted checks and own bounded long-running workspace processes
 - keep event cursors and durable task checkpoints across MCP calls
+- run on the stable MCP TypeScript SDK v2 package split while retaining the legacy 2025 protocol era unless a future verified client capability explicitly enables newer interaction behavior
 - inspect Git history, blame, package relationships, change impact, and preflight state
 - stage explicit paths and create guarded commits
 - use built-in analysis plus optional CodeGraph/LSP providers

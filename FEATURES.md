@@ -52,6 +52,7 @@ CodexPro exposes tools according to the active configuration and optional `.code
 | Gate | Typical values | Effect |
 | --- | --- | --- |
 | Tool mode | `minimal`, `standard`, `full` | Controls how much of the MCP toolbox is advertised. |
+| MCP compatibility | SDK v2 / legacy protocol | Uses the stable split MCP v2 packages, but defaults to the 2025 protocol era; interactive `ask` and Tasks stay disabled until separately verified client capabilities exist. |
 | Write mode | `off`, `handoff`, `workspace` | Controls direct workspace mutation. |
 | Bash mode | `off`, `safe`, `full` | Removes Bash entirely, allows restricted verification, or permits trusted full shell use. |
 | Analysis | on/off | Enables built-in repository analysis. |

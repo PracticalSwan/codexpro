@@ -1,6 +1,6 @@
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
+import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
+import { isInitializeRequest } from "@modelcontextprotocol/server";
 
 export interface McpRuntimeCapabilities {
   sdkLine: "v1" | "v2";
@@ -13,7 +13,7 @@ export type McpToolHandler = (args: unknown) => Promise<unknown> | unknown;
 
 export function mcpRuntimeCapabilities(): McpRuntimeCapabilities {
   return {
-    sdkLine: "v1",
+    sdkLine: "v2",
     protocolEra: "2025",
     supportsInputRequired: false,
     supportsTaskExtension: false
@@ -58,8 +58,8 @@ export function createStdioTransportCompat(): StdioServerTransport {
 
 export function createHttpTransportCompat(
   options: Record<string, unknown>
-): StreamableHTTPServerTransport {
-  return new StreamableHTTPServerTransport(options as any);
+): NodeStreamableHTTPServerTransport {
+  return new NodeStreamableHTTPServerTransport(options as any);
 }
 
 export function isInitializeRequestCompat(value: unknown): boolean {

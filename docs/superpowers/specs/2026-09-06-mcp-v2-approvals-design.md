@@ -1,7 +1,7 @@
 # MCP v2 Compatibility and Multi-Round Approvals Design
 
 **Date:** 2026-09-06
-**Status:** Planned
+**Status:** In Progress - SDK v2 compatibility verified; interactive approvals capability-gated
 **Priority:** P2
 **Plan ID:** 18
 **Depends on:** 12, 13

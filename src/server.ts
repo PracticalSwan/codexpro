@@ -2,7 +2,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import { mcpRuntimeCapabilities, registerToolCompat } from "./mcpCompat.js";
 import { projectTrustStatus } from "./projectTrust.js";
 import { CheckpointStore } from "./checkpoints/store.js";
@@ -1369,7 +1369,7 @@ export function createCodexProServer(
         "Stable mixed-capability wrapper for advanced ChatGPT connector setups. Pass action plus args to call an already-registered CodexPro tool without changing the visible schema; it cannot call tools disabled by the current mode. Because the selected action determines whether a call is read-only, local-mutating, or open-world, this wrapper intentionally omits static safety annotations; prefer explicit tools when precise per-action annotations matter.",
       inputSchema: {
         action: z.string().optional().describe("Action or registered tool name. Use list_actions to see what this server mode allows."),
-        args: z.record(z.any()).optional().describe("Arguments for the selected action. Same shape as the wrapped CodexPro tool.")
+        args: z.record(z.string(), z.any()).optional().describe("Arguments for the selected action. Same shape as the wrapped CodexPro tool.")
       },
       _meta: {
         ...toolCardMeta(),

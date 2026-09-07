@@ -1,6 +1,6 @@
 # CodexPro Project Memory
 
-Last verified: 2026-09-06 (Asia/Bangkok)
+Last verified: 2026-09-07 (Asia/Bangkok)
 
 ## Canonical workspace
 - Repository: `D:\Side Projects\codexpro`
@@ -43,7 +43,7 @@ The integration branch includes Windows output decoding/runtime fixes, search fa
 ## Roadmap state
 - Planning workspace prepared on 2026-09-05.
 - Plans 01–11 are implemented and verified locally. Plans 01–04 form the `0.31.0` maintenance/policy/operation/diagnostics baseline; Plans 05–11 are delivered in `0.32.0`.
-- On 2026-09-06, a research-driven roadmap extension was planned as Plans 12–21: MCP SDK maintenance, granular policy rules, trusted hooks/project trust, durable touched-file checkpoints, context v2/subtask bundles, an activity ledger, MCP v2 one-shot approvals, an optional MCP Tasks bridge, structured verification repair metadata, and a deferred optional Docker execution backend. **All Plans 12–21 remain Planned only and are not execution-authorized.** Their specs/plans are under `docs/superpowers/{specs,plans}/2026-09-06-*`, with routing/status in `PLAN_INDEX.md`.
+- The authorized Plans 12–21 batch is in progress on the isolated roadmap worktree. Plans 12–17 and 20 are implemented and verified. Plan 18 Stage 1 is verified on MCP SDK v2 (`server/client/node` 2.0.0 with Zod 4), while interactive approvals remain capability-gated and fail-closed; Plan 19 remains externally blocked because the Tasks extension is not yet a stable supported ChatGPT surface; Plan 21 remains pending. Status routing is authoritative in `PLAN_INDEX.md`.
 - The ten subsystem plans are consolidated for future one-go execution by `docs/superpowers/plans/2026-09-06-roadmap-12-21-execution.md`. Explicit batch authorization permits one cumulative integration worktree/branch, but each plan retains independent acceptance criteria, focused verification, review, status evidence, and a milestone commit; final main integration/push/global reinstall are deferred until the cumulative gate.
 - Runtime lifecycle is user-controlled: agents must not stop an already-running CodexPro without explicit approval for that stop and must never start or restart CodexPro. An approved stop leaves CodexPro stopped; a global reinstall that requires an unapproved stop remains pending instead of disrupting the runtime.
 - The extension deliberately rejects model/provider routing, a second workflow DSL, autonomous self-repair loops, unrestricted recursive subagent orchestration, mandatory Docker, and approval/publication bypass. These boundaries are recorded in `DECISIONS.md`.

@@ -4,8 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { ActivityStore } from '../dist/activity/store.js';
 import { ActivityRegistry } from '../dist/activity/registry.js';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { Client } from '@modelcontextprotocol/client';
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 
 const baseDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-activity-'));
 const store = new ActivityStore({ baseDir, maxRecords: 4, maxBytes: 6000 });

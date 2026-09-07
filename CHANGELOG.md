@@ -1,13 +1,14 @@
 # Changelog
 
 ## Unreleased
+- Migrated the MCP TypeScript runtime to the stable v2 split packages (`@modelcontextprotocol/server`, `client`, and `node`) with Zod 4, while deliberately retaining the legacy 2025 protocol era by default. Interactive `ask` policy remains fail-closed because hosted ChatGPT server-driven multi-round approval support is not yet verified.
 - Added bounded deterministic repair metadata to `verify_changes`, including failure categories, likely paths, related tests, retry guidance, and next actions without autonomous repair execution.
 - Added a bounded sanitized per-workspace activity/evidence ledger and read-only `activity_log` tool.
 
 - Added durable touched-file checkpoints for `write`, `edit`, `apply_patch`, and `apply_change_set`, with bounded out-of-workspace preimages and hash-guarded `restore_checkpoint` that refuses to overwrite later user edits.
 - Added explicit trusted-project lifecycle hooks with out-of-repository path+SHA trust records, CLI-only trust mutation, read-only MCP trust status, argv-only execution, sanitized environment, bounded hook resources, and pre-tool blocking that cannot override declarative policy.
 - Added workspace policy v2 ordered per-action/resource allow/deny rules with normalized filesystem/Bash/Git resources, multi-resource fail-closed behavior, v1 backward compatibility, and supertool-equivalent enforcement.
-- Updated the MCP v1 integration to the maintained 1.30.x line and centralized SDK-specific tool/transport compatibility behind `src/mcpCompat.ts` without enabling MCP v2, input-required approvals, or Tasks.
+- Established the MCP compatibility seam on the maintained v1 line, then migrated that seam to the stable v2 split packages under Plan 18 while preserving legacy protocol behavior and keeping input-required approvals and Tasks disabled.
 - Made the interactive `codexpro openai-key save` prompt render `*` masks for entered characters and erase masks on backspace without echoing the runtime key.
 - Fixed Full Access profile capability persistence: `settings set` and setup now preserve Analysis, Artifact Export, Durable Goals, CodeGraph, LSP, Git push, and environment-inheritance flags; `settings show` reports their effective state.
 - Made OpenAI Secure MCP Tunnel the primary ChatGPT transport for new/no-profile `codexpro start` launches, using the official `tunnel-client`, tunnel-ID validation, `/readyz` supervision, and loopback-only local MCP forwarding.

@@ -5,7 +5,7 @@ import path from "node:path";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { createHttpTransportCompat, isInitializeRequestCompat } from "./mcpCompat.js";
-import type { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import { expandHome, loadConfig, type CodexProConfig } from "./config.js";
 import {
   profilePathForRoot,
@@ -1779,7 +1779,7 @@ async function main(): Promise<void> {
   });
 
   type TransportRecord = {
-    transport: StreamableHTTPServerTransport;
+    transport: NodeStreamableHTTPServerTransport;
     createdAt: number;
     lastSeenAt: number;
   };
@@ -1828,7 +1828,7 @@ async function main(): Promise<void> {
     }
   }
 
-  function getTransport(sessionId: string | undefined): StreamableHTTPServerTransport | undefined {
+  function getTransport(sessionId: string | undefined): NodeStreamableHTTPServerTransport | undefined {
     if (!sessionId || !sessionIdPattern.test(sessionId)) return undefined;
     pruneTransports();
     const record = transports.get(sessionId);
@@ -1910,7 +1910,7 @@ async function main(): Promise<void> {
   app.post("/mcp", express.json({ limit: "20mb" }), async (req, res) => {
     try {
       const sessionId = requestSessionId(req);
-      let transport: StreamableHTTPServerTransport;
+      let transport: NodeStreamableHTTPServerTransport;
 
       const existingTransport = getTransport(sessionId);
       if (existingTransport) {

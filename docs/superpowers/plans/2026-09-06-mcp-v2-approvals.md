@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Execution status:** Planned only on 2026-09-06. This plan is **not execution-authorized** by the planning request that created it.
+**Execution status:** Stage 1 implemented and verified on 2026-09-07 in the authorized Plans 12-21 batch. Stage 2 remains blocked until a live ChatGPT client demonstrates a supported server-driven approval interaction path; `ask` remains unavailable and fail-closed.
 
 **Goal:** Adopt the stable MCP v2 package line in a compatibility-controlled stage, then use supported multi-round input requests for one-shot `ask` policy decisions without breaking legacy ChatGPT clients.
 

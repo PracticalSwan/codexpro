@@ -33,7 +33,7 @@ Use the read-only `effective_policy` MCP tool to inspect the configured/effectiv
 
 Version 2 may add `toolRules` entries with `action`, `resource`, and `effect` (`allow` or `deny`). Rules are evaluated in declaration order and the last matching rule wins for each resource. No matching rule preserves the already-authorized global/profile behavior; an `allow` rule therefore never enables a tool or capability that is otherwise disabled.
 
-Filesystem resources use workspace-relative POSIX-style paths, Bash resources use normalized full command text, and `git_push` resources use `remote/branch`. Multi-resource operations are denied when any target resolves to a deny rule. The `codexpro` supertool passes through the same evaluator as the explicit child tool. Interactive `ask` rules are not part of version 2 yet.
+Filesystem resources use workspace-relative POSIX-style paths, Bash resources use normalized full command text, and `git_push` resources use `remote/branch`. Multi-resource operations are denied when any target resolves to a deny rule. The `codexpro` supertool passes through the same evaluator as the explicit child tool. Interactive `ask` rules remain unavailable. MCP SDK v2 does not enable them by package version alone; until the connected ChatGPT client proves a supported server-driven approval path, `effect:"ask"` is rejected by policy validation and authority remains allow/deny only.
 
 ```json
 {

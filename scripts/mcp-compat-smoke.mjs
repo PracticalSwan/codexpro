@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 async function main() {
   const compat = await import("../dist/mcpCompat.js");
   assert.deepEqual(compat.mcpRuntimeCapabilities(), {
-    sdkLine: "v1",
+    sdkLine: "v2",
     protocolEra: "2025",
     supportsInputRequired: false,
     supportsTaskExtension: false

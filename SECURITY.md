@@ -64,6 +64,7 @@ Review changes against these failure modes before release:
 | Autonomous loop drives ChatGPT Web or bypasses approvals | `loop-handoff` only runs local terminal commands over `.ai-bridge` files; it does not resume browser sessions, approve prompts, or expose a remote MCP executor. |
 | Optional Git write path stages/pushes more than intended | Staging is explicit-path; guarded commit checks expected branch/HEAD/staged set; `git_push` is hidden unless separately enabled, and no force-push interface exists. |
 | Durable Goal changes source before review | Goal execution runs in detached worktrees and stops at review/projection boundaries; source projection requires exact fingerprints plus explicit authorization. |
+| Installing MCP SDK v2 silently enables interactive authority | Runtime capability reporting remains `protocolEra=2025`, `supportsInputRequired=false`, and `supportsTaskExtension=false`; unsupported workspace-policy `ask` rules are rejected rather than auto-allowed. |
 | Hidden workspace events expose blocked paths | Allowed hidden workspace paths may generate events, but PathGuard continues to exclude blocked paths such as `.git`, `.env*`, and private-key locations. |
 | Reviewer masks a failed external command | `loop-handoff` requires explicit reviewer verdict assignments and rejects reviewer `PASS` after failed executor, test, or reviewer commands unless the user opts into the supported executor/test override behavior. |
 
