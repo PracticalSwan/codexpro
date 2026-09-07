@@ -17,6 +17,7 @@ await fs.writeFile(path.join(root, 'AGENTS.md'), '# Instructions\n\nKeep changes
 await fs.writeFile(path.join(root, 'src', 'a.ts'), 'export function alpha() { return 1; }\n');
 await fs.writeFile(path.join(root, 'src', 'b.ts'), "import { alpha } from './a.js';\nexport const beta = alpha();\n");
 await fs.writeFile(path.join(root, 'test', 'a.test.ts'), "import { alpha } from '../src/a.js';\nalpha();\n");
+await fs.writeFile(path.join(root, 'test', 'regression.test.ts'), "import { alpha } from '../src/a.js';\nalpha();\n");
 spawnSync('git', ['init'], { cwd: root, encoding: 'utf8' });
 const config = { ...loadConfig(['--root', root, '--allow-root', root, '--bash', 'off', '--write', 'workspace', '--tool-mode', 'full']), analysisEnabled: true };
 const workspace = new WorkspaceManager(config).defaultWorkspace();
@@ -40,6 +41,7 @@ assert.ok(symbol.selectedItems.some((item) => item.path === 'src/a.ts' && item.r
 const changed = await gatherContextV2({ config, guard, workspace, cache, strategy: 'change', changedPaths: ['src/a.ts'], includeTests: true, includeRecentChanges: true, maxBytes: 6000 });
 assert.equal(changed.strategy, 'change');
 assert.ok(changed.selectedItems.some((item) => item.path === 'test/a.test.ts'));
+assert.ok(changed.selectedItems.some((item) => item.path === 'test/regression.test.ts'), 'change strategy must include a direct dependent test even when its filename does not match the source stem');
 assert.ok(changed.sections.some((section) => section.kind === 'git'));
 
 const subtask = await prepareSubtaskContext({ config, guard, workspace, cache, strategy: 'task', targetPath: 'src/a.ts', maxBytes: 3000 });

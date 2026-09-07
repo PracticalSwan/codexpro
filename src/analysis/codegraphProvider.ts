@@ -38,6 +38,7 @@ function run(config:CodexProConfig, root:string, args:string[]): {stdout:string;
 
 function parseJson(text:string):any { try{return JSON.parse(text);}catch{throw new Error("CodeGraph did not return valid JSON.");} }
 function staleStatus(value:any,maxAgeMs:number): string | null {
+  if(value?.initialized===false) return "CodeGraph is installed, but this workspace is not initialized.";
   if(value?.stale===true||value?.current===false) return "CodeGraph index is stale.";
   const analysis=String(value?.analysis??value?.status??"").toLowerCase();
   if(/stale|out.?of.?date|drift|needs?.?sync|dirty/.test(analysis)) return `CodeGraph index is stale (${analysis}).`;

@@ -130,6 +130,8 @@ This is useful when a ChatGPT request may be retried or when several files must 
 | Discover/run checks | `run_checks` | Run trusted project scripts/checks and receive structured test results. |
 | Change-aware verification | `verify_changes` | Select checks from changed paths and return bounded deterministic repair evidence for pass/fail/not-run outcomes. |
 
+Structured check failure locations are normalized to workspace-relative paths before verification repair evidence is synthesized; out-of-workspace failure locations are omitted rather than exposed as likely repair paths.
+
 `proc_*` handles are process-runtime state, so they survive separate ChatGPT HTTP/MCP calls while the CodexPro runtime remains alive.
 
 Optional Docker execution is selected only with `CODEXPRO_EXECUTION_BACKEND=docker` plus an already-local `CODEXPRO_DOCKER_IMAGE`. Host remains the default. Docker mode keeps existing Bash authorization and PathGuard checks, mounts only the selected workspace at `/workspace`, disables networking, bounds memory/CPU/PIDs, passes no inherited host environment into the container, and never installs Docker or pulls/builds/logs into a registry. Explicit Docker selection fails closed when the daemon or configured local image is unavailable; it does not fall back to host execution.
@@ -176,7 +178,7 @@ CodexPro always has built-in lexical/repository analysis. Optional providers add
 | CodeGraph sync | `codegraph_sync` | Run only when the index is stale and explicit sync is appropriate. |
 | LSP adapter | optional | Available only when explicitly configured and enabled. |
 
-CodexPro 0.32.3 supports CodeGraph 1.6.x, including Windows npm-shim execution without generic shell interpolation.
+CodexPro 0.32.3 supports CodeGraph 1.6.x, including Windows npm-shim execution without generic shell interpolation. Provider readiness is workspace-specific: an installed but uninitialized CodeGraph workspace is reported unavailable, while built-in analysis remains usable without that index.
 
 ## 11. Codex session navigation
 
@@ -355,4 +357,4 @@ Those three calls tell you the actual version, enabled gates, registered tools, 
 
 ## Context Selection v2
 
-`gather_context` supports task, symbol, and change strategies under a hard byte ceiling with bounded scores/reasons, advisory token estimates, and per-workspace runtime caching. `prepare_subtask_context` returns the same evidence as data only and never launches a model or process.
+`gather_context` supports task, symbol, and change strategies under a hard byte ceiling with bounded scores/reasons, advisory token estimates, and per-workspace runtime caching. Change strategy follows analyzer relationships in both directions so directly dependent tests do not depend on filename-stem heuristics. `prepare_subtask_context` returns the same evidence as data only and never launches a model or process.

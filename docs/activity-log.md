@@ -1,10 +1,12 @@
-﻿# Activity Log
+# Activity Log
 
 CodexPro keeps a bounded, sanitized activity/evidence ledger outside each project under the per-user activity directory. It is audit evidence, not an event-sourced execution engine.
 
 ## Recorded evidence
 
 Records contain only an action, status, timestamp/sequence, optional duration, existing operation/check/process/Goal IDs, bounded workspace-relative paths, and a sanitized short summary. Each workspace has an independent monotonic sequence cursor.
+
+`status` describes whether the CodexPro action itself completed (`ok`) or failed (`error`); it is not the domain result of a test suite. For check/verification actions, the sanitized summary distinguishes passed, failed, and not-run outcomes while the associated check/operation result remains the authoritative detailed evidence.
 
 The read-only `activity_log` MCP tool accepts `after_sequence`, `kinds`, `statuses`, and a bounded `limit`.
 

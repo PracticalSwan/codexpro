@@ -37,9 +37,10 @@ await broken.appendBestEffort({ workspaceId: 'ws_fail', kind: 'tool', action: 'r
 const mcpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-activity-mcp-'));
 const mcpActivity = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-activity-mcp-store-'));
 await fs.writeFile(path.join(mcpRoot, 'visible.txt'), 'visible\n');
+await fs.writeFile(path.join(mcpRoot, 'package.json'), JSON.stringify({ scripts: { test: 'node -e \"process.exit(1)\"' } }, null, 2));
 const transport = new StdioClientTransport({
   command: process.execPath,
-  args: ['dist/stdio.js', '--root', mcpRoot, '--allow-root', mcpRoot, '--bash', 'off', '--write', 'off', '--tool-mode', 'minimal'],
+  args: ['dist/stdio.js', '--root', mcpRoot, '--allow-root', mcpRoot, '--bash', 'safe', '--write', 'off', '--tool-mode', 'minimal'],
   env: { ...process.env, CODEXPRO_ACTIVITY_DIR: mcpActivity, CODEXPRO_ALLOW_NO_HTTP_TOKEN: '1' }
 });
 const client = new Client({ name: 'activity-ledger-smoke', version: '0.1.0' });
@@ -50,11 +51,20 @@ const okRead = await client.callTool({ name: 'read', arguments: { workspace_id: 
 assert.notEqual(okRead.isError, true);
 const badRead = await client.callTool({ name: 'read', arguments: { workspace_id: ws, path: 'missing.txt' } });
 assert.equal(badRead.isError, true);
+const checks = await client.callTool({ name: 'run_checks', arguments: { workspace_id: ws } });
+const checkId = checks.structuredContent.checks?.find((check) => check.command === 'npm test')?.id;
+assert.ok(checkId, 'npm test check was not discovered');
+const failedCheck = await client.callTool({ name: 'run_checks', arguments: { workspace_id: ws, check_ids: [checkId] } });
+assert.equal(failedCheck.isError, undefined);
+assert.equal(failedCheck.structuredContent.ok, false);
 const logged = await client.callTool({ name: 'activity_log', arguments: { workspace_id: ws, limit: 20 } });
 assert.notEqual(logged.isError, true);
 const readRecords = logged.structuredContent.records.filter((record) => record.action === 'read');
 assert.ok(readRecords.some((record) => record.status === 'ok'));
 assert.ok(readRecords.some((record) => record.status === 'error'));
+const failedCheckRecord = logged.structuredContent.records.find((record) => record.action === 'run_checks' && record.status === 'ok' && record.operationId);
+assert.ok(failedCheckRecord, 'failed check invocation was not recorded as a completed tool call');
+assert.match(failedCheckRecord.summary ?? '', /fail/i, 'activity summary must distinguish a completed failing check from a passing check');
 assert.ok(!JSON.stringify(logged.structuredContent).includes('visible\n'));
 await client.close();
 console.log('activity ledger smoke passed');

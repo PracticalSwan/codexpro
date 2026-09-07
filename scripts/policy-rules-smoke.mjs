@@ -10,6 +10,9 @@ const rules = [
 assert.equal(evaluatePolicyRules(rules, 'write', ['secrets/key.txt']).effect, 'deny');
 assert.equal(evaluatePolicyRules(rules, 'write', ['secrets/public.txt']).effect, 'allow');
 assert.equal(evaluatePolicyRules(rules, 'write', ['src/a.ts', 'secrets/key.txt']).effect, 'deny');
+assert.equal(evaluatePolicyRules(rules, 'edit', ['secrets/key.txt']).effect, 'deny');
+assert.equal(evaluatePolicyRules(rules, 'apply_patch', ['secrets/key.txt']).effect, 'deny');
+assert.equal(evaluatePolicyRules(rules, 'apply_change_set', ['secrets/key.txt']).effect, 'deny');
 assert.equal(evaluatePolicyRules([], 'write', ['src/a.ts']).effect, 'allow');
 assert.equal(normalizePolicyResource('path', '.\\src\\a.ts'), 'src/a.ts');
 assert.equal(normalizePolicyResource('bash', ' npm   test  '), 'npm test');

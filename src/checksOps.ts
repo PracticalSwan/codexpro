@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import path from "node:path";
 import type { CodexProConfig } from "./config.js";
 import { CodexProError, type PathGuard, type Workspace } from "./guard.js";
 import { runBash } from "./bashOps.js";
@@ -33,6 +34,21 @@ export interface CheckRunResult {
 
 function checkId(source: string, command: string): string {
   return `check_${createHash("sha256").update(source).update("\0").update(command).digest("hex").slice(0, 16)}`;
+}
+
+function normalizeStructuredFailurePaths(structured: StructuredTestResult, workspaceRoot: string): StructuredTestResult {
+  return {
+    ...structured,
+    failures: structured.failures.map((failure) => {
+      if (!failure.file) return failure;
+      const raw = failure.file.trim();
+      const absolute = path.isAbsolute(raw) ? path.resolve(raw) : path.resolve(workspaceRoot, raw);
+      const relative = path.relative(workspaceRoot, absolute);
+      const outside = !relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+      const { file: _file, ...rest } = failure;
+      return outside ? rest : { ...rest, file: relative.split(path.sep).join("/") };
+    })
+  };
 }
 
 function frameworkFor(command: string): TestFramework {
@@ -98,7 +114,10 @@ export async function runChecks(request: {
       durationMs: result.durationMs,
       terminationReason: result.terminationReason,
       ok: result.exitCode === 0 && result.terminationReason === "normal",
-      structured: parseTestOutput(check.framework, result.stdout, result.stderr, request.config.maxCheckOutputBytes)
+      structured: normalizeStructuredFailurePaths(
+        parseTestOutput(check.framework, result.stdout, result.stderr, request.config.maxCheckOutputBytes),
+        request.workspace.root
+      )
     });
   }
   return { ok: results.every((result) => result.ok), selectedChecks, results };

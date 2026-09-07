@@ -154,6 +154,43 @@ const secondaryPolicy = await client.request('tools/call', { name: 'effective_po
 assert(secondaryPolicy.structuredContent.effective.toolMode === 'standard', 'secondary effective policy was not resolved independently');
 assert(Array.isArray(secondaryPolicy.structuredContent.tool_rules) && secondaryPolicy.structuredContent.tool_rules[0]?.effect === 'deny', 'effective_policy did not expose bounded v2 tool rules');
 client.close();
+
+const txRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-policy-change-set-'));
+await fs.mkdir(path.join(txRoot, 'protected'), { recursive: true });
+await fs.writeFile(path.join(txRoot, 'protected', 'existing.txt'), 'before\n');
+await fs.writeFile(path.join(txRoot, WORKSPACE_POLICY_FILE), JSON.stringify({
+  version: 2,
+  toolRules: [
+    { action: 'write', resource: 'protected/**', effect: 'deny' },
+    { action: 'prepare_change_set', resource: 'protected/**', effect: 'allow' }
+  ]
+}, null, 2));
+const txClient = new McpStdioClient('node', ['dist/stdio.js', '--root', txRoot, '--allow-root', txRoot, '--bash', 'off', '--write', 'workspace', '--tool-mode', 'full'], {
+  cwd: path.resolve('.'),
+  env: { ...process.env, CODEXPRO_ROOT: txRoot, CODEXPRO_ALLOWED_ROOTS: txRoot, CODEXPRO_ALLOW_NO_HTTP_TOKEN: '1' }
+});
+await txClient.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'codexpro-policy-change-set-smoke', version: '0.1.0' } });
+txClient.notify('notifications/initialized');
+const directDenied = await txClient.request('tools/call', { name: 'write', arguments: { path: 'protected/direct.txt', content: 'blocked\n' } });
+assert(directDenied.isError === true && /denied by workspace policy/i.test(JSON.stringify(directDenied)), `direct write deny did not apply: ${JSON.stringify(directDenied)}`);
+const editDenied = await txClient.request('tools/call', { name: 'edit', arguments: { path: 'protected/existing.txt', old_text: 'before', new_text: 'after' } });
+assert(editDenied.isError === true && /denied by workspace policy/i.test(JSON.stringify(editDenied)), `edit bypassed write deny: ${JSON.stringify(editDenied)}`);
+const editViaSupertool = await txClient.request('tools/call', { name: 'codexpro', arguments: { action: 'edit', args: { path: 'protected/existing.txt', old_text: 'before', new_text: 'after' } } });
+assert(editViaSupertool.isError === true && /denied by workspace policy/i.test(JSON.stringify(editViaSupertool)), `supertool edit bypassed write deny: ${JSON.stringify(editViaSupertool)}`);
+const patchDenied = await txClient.request('tools/call', { name: 'apply_patch', arguments: { patch: '--- a/protected/existing.txt\n+++ b/protected/existing.txt\n@@ -1 +1 @@\n-before\n+after' } });
+assert(patchDenied.isError === true && /denied by workspace policy/i.test(JSON.stringify(patchDenied)), `apply_patch bypassed write deny: ${JSON.stringify(patchDenied)}`);
+assert(await fs.readFile(path.join(txRoot, 'protected', 'existing.txt'), 'utf8') === 'before\n', 'denied edit/patch changed protected file');
+const txPrepared = await txClient.request('tools/call', { name: 'prepare_change_set', arguments: { changes: [
+  { path: 'allowed.txt', content: 'allowed\n' },
+  { path: 'protected/denied.txt', content: 'denied\n' }
+] } });
+const txId = txPrepared.structuredContent?.change_set?.id;
+assert(txId, `policy change set did not prepare: ${JSON.stringify(txPrepared)}`);
+const txApplied = await txClient.request('tools/call', { name: 'apply_change_set', arguments: { change_set_id: txId } });
+assert(txApplied.isError === true && /denied by workspace policy/i.test(JSON.stringify(txApplied)), `apply_change_set bypassed write deny: ${JSON.stringify(txApplied)}`);
+await assertRejects(() => fs.access(path.join(txRoot, 'allowed.txt')), /ENOENT|no such file/i, 'allowed member of denied transaction was written');
+await assertRejects(() => fs.access(path.join(txRoot, 'protected', 'denied.txt')), /ENOENT|no such file/i, 'denied member of transaction was written');
+txClient.close();
 console.log('? workspace policy smoke test passed');
 
 async function assertRejects(fn, pattern, label) {

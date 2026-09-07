@@ -45,7 +45,9 @@ assert.equal(bounded.failures.length, 8);
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-repair-mcp-'));
 await fs.writeFile(path.join(root, 'package.json'), JSON.stringify({ scripts: { test: 'node test-fixture.cjs' } }, null, 2));
 await fs.writeFile(path.join(root, 'src.ts'), 'export const value = 1;\n');
-await fs.writeFile(path.join(root, 'test-fixture.cjs'), "console.error('test/a.test.ts:4:2 expected 1 to be 2'); process.exit(1);\n");
+await fs.mkdir(path.join(root, 'test'), { recursive: true });
+await fs.writeFile(path.join(root, 'test', 'a.test.ts'), 'export const testMarker = true;\n');
+await fs.writeFile(path.join(root, 'test-fixture.cjs'), "const p=require('node:path').join(process.cwd(),'test','a.test.ts'); console.error(p+':4:2 expected 1 to be 2'); process.exit(1);\n");
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: ['dist/stdio.js', '--root', root, '--allow-root', root, '--bash', 'safe', '--write', 'workspace', '--tool-mode', 'full'],
@@ -60,6 +62,8 @@ try {
   assert.equal(failing.structuredContent.repair.status, 'failed');
   assert.equal(failing.structuredContent.repair.retryRecommended, true);
   assert.ok(failing.structuredContent.repair.failures.length <= 8);
+  assert.equal(failing.structuredContent.results[0].structured.failures[0].file, 'test/a.test.ts');
+  assert.equal(failing.structuredContent.repair.failures[0].likelyPaths[0], 'test/a.test.ts');
   await fs.writeFile(path.join(root, 'test-fixture.cjs'), "console.log('1 passed'); process.exit(0);\n");
   const passing = await client.callTool({ name: 'verify_changes', arguments: { changed_paths: ['src.ts'], run: true } });
   assert.equal(passing.structuredContent.repair.status, 'passed');

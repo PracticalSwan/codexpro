@@ -45,7 +45,8 @@ export function rankContextCandidates(request: ContextRankingRequest): RankedCon
     const touchesTarget = Boolean(request.targetPath) && (rel.from === request.targetPath || rel.to === request.targetPath);
     const touchesChange = changed.has(rel.from) || changed.has(rel.to);
     if (!touchesTarget && !touchesChange) continue;
-    const candidate = rel.from === request.targetPath || changed.has(rel.to) ? rel.to : rel.from;
+    const anchorIsSource = rel.from === request.targetPath || changed.has(rel.from);
+    const candidate = anchorIsSource ? rel.to : rel.from;
     const test = roleFor(request.analysis, candidate) === "test" || rel.kind === "tests";
     const base = request.strategy === "change" ? 780 : 700;
     add(candidate, test ? base + 90 : base, `${rel.kind} ${rel.from === candidate ? "dependent" : "dependency"}`);

@@ -1312,13 +1312,23 @@ export function createCodexProServer(
     else if (operationId) kind = "operation";
     else if (name.startsWith("git_")) kind = "git";
     const status: ActivityStatus = error || result?.isError ? "error" : "ok";
+    const verificationStatus = structured?.repair?.status;
+    const summary = status === "error"
+      ? "tool call failed"
+      : kind === "check" && structured?.ok === false
+        ? "verification completed with failures"
+        : kind === "check" && structured?.ok === true
+          ? "verification passed"
+          : kind === "check" && verificationStatus === "not_run"
+            ? "verification not run"
+            : "tool call completed";
     return { workspaceId: workspace.id, kind, action: name, status,
       ...(operationId ? { operationId: String(operationId) } : {}),
       ...(checkId ? { checkId: String(checkId) } : {}),
       ...(processId ? { processId: String(processId) } : {}),
       ...(goalId ? { goalId: String(goalId) } : {}),
       ...(rawPaths.length ? { relativePaths: rawPaths.map(String) } : {}),
-      summary: status === "ok" ? "tool call completed" : "tool call failed"
+      summary
     };
   };
   const runWorkspaceHooks = async (workspace: Workspace, event: "session_start" | "before_tool" | "after_tool" | "task_end", input: Record<string, unknown>) => {

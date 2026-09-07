@@ -51,8 +51,12 @@ export function policyResourcesForTool(action: string, args: Record<string, any>
   return ["*"];
 }
 
+const WRITE_POLICY_ACTIONS = new Set(["write", "edit", "apply_patch", "prepare_change_set", "apply_change_set"]);
+
 function ruleMatches(rule: PolicyRule, action: string, resource: string): boolean {
-  return minimatch(action, rule.action, { dot: true, nocase: false }) && minimatch(resource, rule.resource, { dot: true, nocase: false });
+  const actions = WRITE_POLICY_ACTIONS.has(action) && action !== "write" ? [action, "write"] : [action];
+  return actions.some((candidate) => minimatch(candidate, rule.action, { dot: true, nocase: false }))
+    && minimatch(resource, rule.resource, { dot: true, nocase: false });
 }
 
 export function evaluatePolicyRules(rules: PolicyRule[], action: string, resources: string[]): PolicyDecision {

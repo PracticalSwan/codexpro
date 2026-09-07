@@ -57,6 +57,8 @@ The integration branch includes Windows output decoding/runtime fixes, search fa
 - Plans: `docs/superpowers/plans/`.
 
 ## Verification baseline
+
+- On 2026-09-08, the safe runtime QA remediation branch verified fixes for workspace-policy write-family enforcement across edit/patch/change-set mutations, Context v2 changed-path relationship direction, CodeGraph uninitialized-workspace readiness, workspace-relative structured verification failure paths, and check-outcome activity summaries. The pre-existing Windows process smoke was also stabilized by bounded output polling instead of a fixed 500 ms scheduler assumption. Fresh build, full smoke, stress, audit (0 vulnerabilities), release-pack, and diff checks passed before integration.
 On 2026-09-05, CodexPro `0.32.3` passed the authoritative TypeScript build, focused hidden-path context/event regression, MCP smoke, and every script in the full `npm run smoke` chain when executed individually in package order. `npm audit --audit-level=high` reported 0 vulnerabilities, the release guard and release-package dry run passed, and `git diff --check` passed. Stress was not rerun because 0.32.3 does not change process/concurrency/output-limit behavior.
 - Historical pre-publication local tarball before the fork package split: `codexpro-0.32.3.tgz`, 2,571,729 bytes, SHA-256 `EAD55B93F18165DDE9874EA9D111492418006FD70579CEA31C5540F053DC3736`. It is not the canonical public release artifact.
 - Global CodexPro is installed as `0.32.3`; the CSX4213 practical profile and all other saved profile hashes were unchanged by installation. `codexpro doctor` passed and port 8787 is available.
