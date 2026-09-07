@@ -123,6 +123,10 @@ git add src/checksOps.ts src/bashOps.ts src/server.ts scripts/checks-smoke.mjs s
 git commit -m "feat: bound composite verification calls"
 ```
 
+## Task-aware browser continuation integration
+
+A deadline-yielded verification remains incomplete exactly as defined here. Plans 29–36 may later notify the user that another model turn is useful, but they cannot reinterpret pending checks as success and cannot submit a continuation automatically.
+
 ## Acceptance Criteria
 
 - At the default 20-minute setting, two 15-minute checks can no longer create one ~30-minute synchronous MCP call; at any configured value, child checks share that one effective call budget.

@@ -19,7 +19,7 @@ This is the execution contract for future CodexPro development. It keeps work sp
 Planning work may create or refine `docs/agentic/**`, `docs/superpowers/specs/**`, and `docs/superpowers/plans/**`. It must not modify runtime source, dependencies, generated build output, profiles, tunnels, or external services.
 
 ## Implementation gate
-Implementation begins only when the user authorizes the exact plan scope. For single-plan work, read that plan and its referenced spec in full. For explicitly authorized Plans 12–21 batch execution, follow `docs/superpowers/plans/2026-09-06-roadmap-12-21-execution.md`. For explicitly authorized Plans 22–28 batch execution, follow `docs/superpowers/plans/2026-09-08-deadline-resilience-execution.md`. Use one dedicated cumulative integration worktree/branch for the authorized batch, then read each subsystem spec/plan immediately before its milestone. Batch execution is continuous, but subsystem acceptance criteria, focused tests, review, and milestone commits remain distinct; never collapse the batch into one undifferentiated implementation.
+Implementation begins only when the user authorizes the exact plan scope. For single-plan work, read that plan and its referenced spec in full. For explicitly authorized Plans 12–21 batch execution, follow `docs/superpowers/plans/2026-09-06-roadmap-12-21-execution.md`. For explicitly authorized Plans 22–28 batch execution, follow `docs/superpowers/plans/2026-09-08-deadline-resilience-execution.md`. For explicitly authorized Plans 29–36 browser-continuation batch execution, follow `docs/superpowers/plans/2026-09-08-task-aware-browser-continuation-execution.md`. Use one dedicated cumulative integration worktree/branch for the authorized batch, then read each subsystem spec/plan immediately before its milestone. Batch execution is continuous, but subsystem acceptance criteria, focused tests, review, and milestone commits remain distinct; never collapse the batch into one undifferentiated implementation.
 
 ## Codex CLI prohibition
 - Do not use Codex CLI for CodexPro implementation, debugging, testing, review, delegation, or repository mutation. This includes `codex`, `codex exec`, `codex review`, `codex apply`, and all other Codex CLI subcommands.
@@ -52,6 +52,17 @@ Implementation begins only when the user authorizes the exact plan scope. For si
 - Never reduce requested scope, acceptance criteria, review depth, required verification, or safety checks to fit one call. If correct work will not comfortably fit, persist truthful progress and continue through the appropriate resumable primitive.
 - Composite synchronous operations must share one remaining effective deadline budget across phases; they may not reset the configured budget for each child operation.
 - Status/polling calls should return promptly and use condition-based progress. Repeated polling with no state change is not material progress.
+
+## Browser continuation fail-closed rule
+- Plans 29–36 must derive interruption timing from current runtime status (`runtimeGenerationId`, effective `syncCallDeadlineMs`, transport readiness), never from the 20-minute default or saved next-run profile.
+- Runtime/tunnel loss, restart, browser reconnect after a long gap, manual user message/Stop action, task completion/cancel, auth loss, wrong/stale chat route, streaming, or generic platform busy/error/retry/unknown UI suppress continuation; no auto-Retry/model switch/tunnel restart is allowed.
+- Terminal task revision and user intent take precedence over stale browser popup/notification state.
+
+## Browser authentication stop rule
+- For Plans 29–36 implementation or live browser verification, any ChatGPT/provider sign-in, CAPTCHA, passkey, 2FA, email confirmation, or similar security verification is a mandatory human boundary.
+- Launch/open only the dedicated managed browser profile, then **STOP** and report `WAITING_FOR_USER_AUTH`. Never ask for credentials/codes in chat/terminal and never capture login screenshots/keystrokes.
+- Resume only after the user completes authentication directly in the browser and sends `continue`; recover repository/process/browser/task state first, then verify only coarse signed-in health.
+- Authentication stop requirements override continuous batch execution.
 
 ## Runtime lifecycle rule
 - Detect whether CodexPro is already running before any step that could require replacing the global installation, changing its tunnel/runtime state, or terminating processes.

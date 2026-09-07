@@ -218,3 +218,62 @@ MCP dispatch -> DeadlineBudget(effective runtime value; default 20 min)
 
 Authoritative design: `docs/superpowers/specs/2026-09-08-tool-deadline-resilience-design.md`.
 Controller plan: `docs/superpowers/plans/2026-09-08-deadline-resilience-execution.md`.
+
+## 2026-09-08 task-aware browser-continuation roadmap extension
+
+This extension adds a human-gated conversation-resume layer after the deadline-resilience foundations. It does not bypass the host tool window: actual long work remains in `proc_*`, `job_*`, `batch_*`, and Durable Goals; the browser companion only preserves task awareness, signals when another model turn is useful, and lets the user explicitly continue the one bound chat.
+
+### Extension architecture
+
+```text
+ChatGPT semantic controller
+   -> continuation task state (29)
+   -> loopback browser bridge + MV3 companion (30)
+   -> dedicated persistent Chrome/Edge profile + manual auth (31)
+   -> explicit chat bind + user Continue task action (32)
+   -> conservative watchdog / anti-loop (33)
+   -> settings/admin controls (34)
+   -> deadline/proc/job/batch/Goal integration (35)
+   -> security/package/live QA (36)
+```
+
+### Feature mapping
+
+| # | Feature | Priority | Plan | Main dependency |
+|---:|---|---|---|---|
+| 64 | Durable continuation task state | P0 | 29 | 06, 22 |
+| 65 | Semantic continuation MCP lifecycle API | P0 | 29 | 64 |
+| 66 | Narrow MV3 browser companion | P0 | 30 | 29 |
+| 67 | Loopback least-privilege browser pairing | P0 | 30 | 29 |
+| 68 | Dedicated durable ChatGPT browser profile | P0 | 31 | 30 |
+| 69 | Manual auth/re-auth hard-stop workflow | P0 | 31 | 68 |
+| 70 | Explicit ChatGPT conversation binding | P0 | 32 | 29–31 |
+| 71 | User-gated continuation dispatch | P0 | 32 | 70 |
+| 72 | Conservative interruption readiness | P0 | 33 | 22, 29–32 |
+| 73 | Nonce/cooldown/ack anti-loop controls | P0 | 33 | 72 |
+| 74 | Continuation CLI/profile/admin UX | P1 | 34 | 29–33 |
+| 75 | Deadline/process/job/batch/Goal integration | P0 | 35 | 22–34 |
+| 76 | ChatGPT continuation/recovery guidance | P0 | 35 | 75 |
+| 77 | Browser-continuation threat/redaction controls | P0 | 36 | 29–35 |
+| 78 | Extension/package privacy integrity | P0 | 36 | 30–35 |
+| 79 | Live managed-browser regression matrix | P0 | 36 | 31–35 |
+
+### Recommended sequence
+
+`29 → 30 → 31 → 32 → 33 → 34 → 35 → 36`
+
+### Extension design rules
+
+- Version 1 never auto-submits ChatGPT messages and never scrapes conversation/output text.
+- Every continuation dispatch requires the user's explicit **Continue task** action.
+- Browser authentication/security verification is always manual; implementation/live QA stops until the user authenticates and sends `continue`.
+- Use a dedicated browser profile and separate continuation credential; do not import a personal browser profile or expose MCP authority to the extension.
+- Browser state never decides semantic task completion; completed/canceled record revisions invalidate stale continuation authorization.
+- Watchdog timing uses the current runtime deadline/generation/transport snapshot only; saved/default deadlines, stopped tunnels, restart/sleep/reconnect gaps, manual user turns/Stop actions, and generic platform busy/error/retry/unknown UI cannot manufacture readiness.
+- Stable conversation identity is required for binding; full private routes remain extension-local and route changes fail closed.
+- The continuation layer never auto-Retries ChatGPT, switches models, dismisses blocking/safety UI, or starts/restarts CodexPro/tunnels.
+- Actual long-running execution remains in Plans 22–28/existing durable primitives.
+- Current service terms/policies relevant to browser automation/output extraction/restriction circumvention/authentication must be rechecked before implementation/live/release claims without extrapolating unrelated rules.
+
+Authoritative design: `docs/superpowers/specs/2026-09-08-task-aware-browser-continuation-design.md`.
+Controller plan: `docs/superpowers/plans/2026-09-08-task-aware-browser-continuation-execution.md`.

@@ -115,6 +115,10 @@ git add src/telemetry.ts src/diagnosticsOps.ts src/server.ts src/http.ts scripts
 git commit -m "feat: expose deadline resilience diagnostics"
 ```
 
+## Task-aware browser continuation integration
+
+After Plans 29–36 exist, diagnostics may additionally report continuation feature/browser availability, user-action-required state, current runtime generation/transport availability, and current-runtime vs saved-next-run deadline mismatch. They must keep browser credentials, account identity, full conversation URLs, and ChatGPT output out of diagnostics and telemetry. If the runtime snapshot is absent, report `transport_unavailable/unknown` rather than fabricating the 20-minute default as an active deadline.
+
 ## Acceptance Criteria
 
 - Diagnostics show the current effective deadline, the 20-minute default, and the supported 5–60 minute range.

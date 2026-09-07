@@ -173,12 +173,16 @@ git add src/deadline.ts src/config.ts src/server.ts src/profileStore.ts src/http
 git commit -m "feat: add configurable synchronous call deadline"
 ```
 
+## Task-aware browser continuation integration
+
+Plan 22 remains transport-only. It must not depend on browser continuation being available. When Plans 29–36 are later enabled, their watchdog must consume the **current running** `syncCallDeadlineMs` from runtime/config status, never `DEFAULT_SYNC_CALL_DEADLINE_MS` or the saved next-run profile. A runtime restart/config-generation change resets inferred timing. Browser continuation does not change deadline semantics or auto-submit a new ChatGPT turn.
+
 ## Acceptance Criteria
 
 - Default effective deadline is exactly 1,200,000 ms (20 minutes).
 - Saved/launchable deadline is configurable from 5–60 minutes through CLI and authenticated local website using one validation contract.
 - Profile storage uses `syncCallDeadlineMs`; user-facing settings use minutes.
-- `server_config` and runtime status expose the current effective value without claiming knowledge of ChatGPT's external cutoff.
+- `server_config` and runtime status expose the current effective value without claiming knowledge of ChatGPT's external cutoff; downstream continuation consumers can distinguish that current value from saved next-run settings.
 - Saved website changes apply only after restart/next launch; the current runtime is not mutated.
 - A deadline context is available to every MCP handler without unsafe generic forced cancellation.
 - Fake-clock tests prove remaining-budget and handoff behavior without long sleeps.

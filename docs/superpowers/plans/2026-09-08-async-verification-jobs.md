@@ -111,6 +111,10 @@ git add src/jobs/verification.ts src/jobs/runner.ts src/checksOps.ts src/server.
 git commit -m "feat: add asynchronous verification jobs"
 ```
 
+## Task-aware browser continuation integration
+
+Async verification should normally finish locally before a continuation turn is requested. Plans 29–36 may surface a user-ready continuation only when the terminal verification result requires model interpretation; they do not poll by repeatedly messaging ChatGPT.
+
 ## Acceptance Criteria
 
 - Long verification can be launched in a short MCP call and tracked by `job_*`.

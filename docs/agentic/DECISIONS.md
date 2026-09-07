@@ -81,3 +81,23 @@
 ## D-020 — Long work uses distinct existing/durable execution roles
 **Decision:** Long shell commands remain owned by `proc_*`; structured long operations may use a bounded persistent `job_*` substrate; expensive in-process scans may use `batch_*` cursors; multi-stage isolated engineering remains owned by Durable Goals. A future job substrate must not become another generic command runner or workflow DSL.
 **Why:** Separating execution roles keeps ownership, cancellation, persistence, policy, and recovery understandable while solving the tool-window problem without duplicating proven process/Goal machinery.
+
+## D-021 — Browser continuation is human-gated, not a restriction bypass
+**Decision:** A future browser continuation companion may maintain task-aware readiness, bind/focus one ChatGPT conversation, and prepare a fixed continuation action, but version 1 may submit a message only after the user explicitly presses **Continue task**. It may not scrape ChatGPT output, auto-submit, click approvals/login/safety controls, or attempt to bypass host tool/session restrictions.
+**Why:** Conversation resumption must preserve user control and product/security boundaries rather than converting a transport limit into an autonomous browser loop.
+
+## D-022 — ChatGPT authentication state belongs to a dedicated browser profile
+**Decision:** Browser continuation uses a CodexPro-managed dedicated Chrome/Edge profile by default. Passwords, cookies, 2FA/passkeys, and provider authentication remain browser/user-controlled; CodexPro stores only coarse auth health and profile metadata. Implementation and live QA must STOP for user authentication and resume only after the user sends `continue`.
+**Why:** Reusing/copying a personal browser profile or automating credentials would expose unrelated account data and create a much larger trust surface.
+
+## D-023 — Browser pairing has separate least privilege
+**Decision:** The continuation browser companion uses a loopback-only credential distinct from the main CodexPro MCP/admin token. Its authority is limited to continuation status/events and cannot invoke MCP tools, filesystem/Bash/Git/Goal operations, or arbitrary DOM scripts.
+**Why:** A compromised webpage or extension must not become a path to local development authority.
+
+## D-024 — Continuation timing follows current runtime generation and transport truth
+**Decision:** Browser/watchdog readiness consumes the current running CodexPro `syncCallDeadlineMs`, a per-launch runtime generation, and local transport-ready state. Saved next-run settings and the 20-minute default are never substituted as current timing authority. Runtime/tunnel loss or generation/reconnect changes reset inferred-interruption timing and cannot auto-start/reconnect CodexPro.
+**Why:** Otherwise deadline changes, restarts, deliberate tunnel shutdowns, sleep/wake gaps, or stale runtime-status files can create false continuation opportunities.
+
+## D-025 — User interaction, terminal task state, and ambiguous ChatGPT UI fail closed
+**Decision:** `completed`/`canceled` task revisions invalidate outstanding continuation authorization. Manual user message submission or Stop-generating pauses inferred continuation until semantic reconciliation. Streaming, generic platform-busy/error/retry/safety/unknown states suppress continuation; the companion never auto-retries, switches models, or dismisses blocking controls.
+**Why:** Browser UI state cannot reliably determine semantic task intent or why ChatGPT is delayed, so terminal/user intent and uncertainty must take precedence over automation.
