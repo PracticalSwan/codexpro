@@ -1,6 +1,6 @@
 # CodexPro Plan Index
 
-Plans 01–11 baseline: 2026-09-05; execution was authorized and those plans are Verified. Roadmap extension: 2026-09-06; **Plans 12–21 are planning-only and are not execution-authorized.** Their detailed subsystem specs/plans and the unified one-go execution controller are prepared. Status values: Planned → Approved → In Progress → Verified → Released. Update status only from evidence.
+Plans 01–11 baseline: 2026-09-05; execution was authorized and those plans are Verified. Roadmap extension: 2026-09-06; Plans 12–21 were explicitly authorized as one cumulative batch and executed to the currently satisfiable capability gates. Plans 12–17 and 20 are Verified, Plan 18 and Plan 21 remain In Progress at their documented external/platform gates, and Plan 19 remains Blocked by the current MCP/ChatGPT Tasks capability gate. Status values: Planned → Approved → In Progress → Verified → Released. Update status only from evidence.
 
 | ID | Priority | Subsystem | Features covered | Design | Implementation plan | Status |
 |---|---|---|---|---|---|---|

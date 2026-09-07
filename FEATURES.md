@@ -1,10 +1,3 @@
-- **Activity/evidence ledger** ? bounded per-user JSONL with workspace cursors, filters, structured IDs, and best-effort writes.
-## Durable touched-file checkpoints
-
-- `write`, `edit`, `apply_patch`, and `apply_change_set` return `chk_*` rollback points.
-- `restore_checkpoint` is all-or-nothing and SHA-guarded against later user edits.
-- Preimages are deduplicated and stored outside the project; whole-repository/Git rollback is intentionally not provided.
-
 # CodexPro Full 0.32.3 — Feature Guide
 
 CodexPro Full is PracticalSwan's independently maintained CodexPro fork. It keeps the `codexpro` CLI and MCP compatibility while adding the 0.31–0.32 agentic, continuity, safety, code-intelligence, artifact, and Durable Goal features. The release package is `codexpro-full`; installing it still provides the `codexpro` CLI.
@@ -115,6 +108,7 @@ State-changing tools can return durable `op_*` receipts and accept idempotency k
 | Prepare transaction | `prepare_change_set` | Build a SHA-guarded multi-file change set. |
 | Apply transaction | `apply_change_set` | Apply the prepared set only if preconditions still match. |
 | Safe revert | `revert_operation` | Revert a supported operation while its in-memory preimages remain available. |
+| Durable touched-file rollback | `restore_checkpoint` | Restore a `chk_*` returned by `write`, `edit`, `apply_patch`, or `apply_change_set` only when later user edits have not made it stale. |
 
 This is useful when a ChatGPT request may be retried or when several files must change as one guarded unit.
 
@@ -268,6 +262,7 @@ The executor/watch/loop commands remain local CLI features; they are not exposed
 | Connection diagnostics | `connection_diagnostics` | Check MCP/HTTP health and bounded failure counters. |
 | Tool-surface diagnostics | `tool_surface_diagnostics` | Compare expected vs registered tools for the current gates. |
 | Local telemetry | `local_telemetry` | Inspect bounded tool timing/count/error metadata without prompts/source contents. |
+| Activity/evidence ledger | `activity_log` | Read bounded sanitized per-workspace evidence. Ledger reads are observational and do not append themselves. |
 | Self-test | `codexpro_self_test` | Run read-only runtime/security/toolchain checks; optional write probe is separate. |
 | Authenticated local control page | local browser UI | Inspect status and save non-secret next-run profile settings. Tokens stay hidden. |
 
