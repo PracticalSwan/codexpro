@@ -161,8 +161,7 @@ await fs.writeFile(path.join(txRoot, 'protected', 'existing.txt'), 'before\n');
 await fs.writeFile(path.join(txRoot, WORKSPACE_POLICY_FILE), JSON.stringify({
   version: 2,
   toolRules: [
-    { action: 'write', resource: 'protected/**', effect: 'deny' },
-    { action: 'prepare_change_set', resource: 'protected/**', effect: 'allow' }
+    { action: 'write', resource: 'protected/**', effect: 'deny' }
   ]
 }, null, 2));
 const txClient = new McpStdioClient('node', ['dist/stdio.js', '--root', txRoot, '--allow-root', txRoot, '--bash', 'off', '--write', 'workspace', '--tool-mode', 'full'], {

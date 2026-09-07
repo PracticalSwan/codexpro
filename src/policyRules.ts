@@ -51,7 +51,7 @@ export function policyResourcesForTool(action: string, args: Record<string, any>
   return ["*"];
 }
 
-const WRITE_POLICY_ACTIONS = new Set(["write", "edit", "apply_patch", "prepare_change_set", "apply_change_set"]);
+const WRITE_POLICY_ACTIONS = new Set(["write", "edit", "apply_patch", "apply_change_set"]);
 
 function ruleMatches(rule: PolicyRule, action: string, resource: string): boolean {
   const actions = WRITE_POLICY_ACTIONS.has(action) && action !== "write" ? [action, "write"] : [action];

@@ -38,15 +38,14 @@ try {
   assert.ok(noisy.operationId?.startsWith('op_'));
 
   const outputDeadline = Date.now() + 3000;
-  while (manager.status(noisy.id).observedOutputBytes <= 4096 && Date.now() < outputDeadline) {
+  let first = manager.readOutput(noisy.id, { maxBytes: 4096 });
+  while ((first.nextCursor <= first.cursor || (!first.truncated && !first.hasMore)) && Date.now() < outputDeadline) {
     await new Promise((resolve) => setTimeout(resolve, 50));
+    first = manager.readOutput(noisy.id, { maxBytes: 4096 });
   }
-  const observed = manager.status(noisy.id).observedOutputBytes;
-  assert.ok(observed > 4096, 'workspace process did not produce more than one output page within 3 seconds');
-  const first = manager.readOutput(noisy.id, { maxBytes: 4096 });
-  assert.ok(first.nextCursor > first.cursor);
+  assert.ok(first.nextCursor > first.cursor, 'workspace process did not produce readable output within 3 seconds');
   assert.ok(Buffer.byteLength(first.stdout + first.stderr, 'utf8') <= 5000);
-  assert.equal(first.truncated || first.hasMore, true);
+  assert.equal(first.truncated || first.hasMore, true, 'workspace process did not produce enough output to exercise cursor paging within 3 seconds');
   const second = manager.readOutput(noisy.id, { cursor: first.nextCursor, maxBytes: 4096 });
   assert.ok(second.cursor >= first.nextCursor);
   assert.throws(() => manager.status('proc_not_owned'), /Unknown process id/i);

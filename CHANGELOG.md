@@ -1,7 +1,7 @@
 # Changelog
 
 ## Unreleased
-- Fixed workspace-policy v2 write-family enforcement so a `write` resource rule also governs `edit`, `apply_patch`, `prepare_change_set`, and `apply_change_set`; prepared change sets recheck every target before mutation and deny the entire transaction when any member is denied.
+- Fixed workspace-policy v2 write-family enforcement so a `write` resource rule also governs the mutation tools `edit`, `apply_patch`, and `apply_change_set`; non-mutating `prepare_change_set` can be governed independently, while application rechecks every prepared target and denies the entire transaction when any member is denied.
 - Fixed Context Selection v2 change-strategy relationship direction so directly dependent tests are selected even when their filenames do not resemble the changed source file.
 - Fixed CodeGraph readiness diagnostics so an installed but uninitialized workspace index is reported unavailable instead of current.
 - Normalized structured verification failure locations to workspace-relative paths before repair synthesis, omitting out-of-workspace locations, and made activity-ledger check summaries distinguish passed/failed/not-run verification while retaining invocation-level `ok`/`error` status semantics.

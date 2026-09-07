@@ -54,7 +54,7 @@ Review changes against these failure modes before release:
 | ChatGPT can edit outside the intended repo | Allowed roots are explicit; path resolution rejects escapes, blocked globs, and symlink traversal. |
 | ChatGPT can run arbitrary shell by default | Bash defaults to safe mode, can be disabled, and full mode is a trusted-local-only choice. Safe mode can still run repo package scripts, so use `--no-bash` for untrusted repos. |
 | Handoff mode still exposes generic writes | Handoff/pro modes do not advertise generic `write`/`edit`/`apply_patch`; bounded handoff tools write `.ai-bridge` files only. |
-| A workspace `write` deny is bypassed through another mutation tool | The write-policy action family covers `write`, `edit`, `apply_patch`, `prepare_change_set`, and `apply_change_set`; change-set application rechecks all prepared target paths and fails atomically if any member is denied. |
+| A workspace `write` deny is bypassed through another mutation tool | The write-policy action family covers the actual mutation tools `write`, `edit`, `apply_patch`, and `apply_change_set`; non-mutating preparation may be governed separately, and change-set application rechecks all prepared target paths and fails atomically if any member is denied. |
 | Local Codex history is treated as ChatGPT memory | Codex session access is opt-in metadata/read mode and never attaches to a live Codex app session. |
 | Browser admin mutates live runtime unexpectedly | Admin profile changes apply on restart; active runtime policy stays stable for the current session. |
 | Repeated public token guesses consume unlimited attempts | HTTP authentication rejects tokens shorter than 24 bytes and rate-limits failed attempts per client address. |
