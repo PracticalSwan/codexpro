@@ -132,6 +132,10 @@ This is useful when a ChatGPT request may be retried or when several files must 
 
 `proc_*` handles are process-runtime state, so they survive separate ChatGPT HTTP/MCP calls while the CodexPro runtime remains alive.
 
+Optional Docker execution is selected only with `CODEXPRO_EXECUTION_BACKEND=docker` plus an already-local `CODEXPRO_DOCKER_IMAGE`. Host remains the default. Docker mode keeps existing Bash authorization and PathGuard checks, mounts only the selected workspace at `/workspace`, disables networking, bounds memory/CPU/PIDs, passes no inherited host environment into the container, and never installs Docker or pulls/builds/logs into a registry. Explicit Docker selection fails closed when the daemon or configured local image is unavailable; it does not fall back to host execution.
+
+Current support status: Stage A (one-shot Bash and workspace processes) is live-verified on Windows Docker Desktop. Durable Goal tasks remain host-only because the detached-worktree compatibility probe cannot provide required Git metadata without mounting repository state outside the selected worktree. Linux host support is not advertised until a real Linux-host live validation is completed.
+
 ## 8. Workspace continuity
 
 | Capability | Tools | How to use it |

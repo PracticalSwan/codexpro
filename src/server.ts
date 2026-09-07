@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { McpServer } from "@modelcontextprotocol/server";
 import { mcpRuntimeCapabilities, registerToolCompat } from "./mcpCompat.js";
+import { executionBackendStatus } from "./execution/index.js";
 import { projectTrustStatus } from "./projectTrust.js";
 import { CheckpointStore } from "./checkpoints/store.js";
 import { createMutationCheckpoint, finalizeMutationCheckpoint, restoreCheckpoint } from "./checkpoints/ops.js";
@@ -1458,7 +1459,10 @@ export function createCodexProServer(
       }
     },
     async () => {
-      const bashRuntime = resolveBashRuntime(config);
+      const execution = executionBackendStatus(config);
+      const bashRuntime = execution.kind === "docker"
+        ? { available: execution.available, executable: execution.available ? "/bin/sh" : null, runtime: "docker" as const, source: "docker" as const, ...(execution.detail ? { error: execution.detail } : {}) }
+        : resolveBashRuntime(config);
       const gitRuntime = gitRuntimeInfo();
       const searchBackend = searchBackendInfo();
       const goalPlatform = goalPlatformStatus(config.goalDir);
@@ -1474,6 +1478,9 @@ export function createCodexProServer(
         gitRuntime,
         searchBackend,
         mcp: mcpRuntimeCapabilities(),
+        executionBackend: config.executionBackend,
+        execution,
+        goalExecutionBackend: "host",
         projectHooks: { timeoutMs: config.hookTimeoutMs, maxOutputBytes: config.hookMaxOutputBytes },
         checkpoints: { enabled: config.writeMode === "workspace", maxCheckpoints: config.maxOperationReceipts, maxBytes: config.maxOperationBytes },
         bashTranscript: config.bashTranscript,
@@ -1960,7 +1967,10 @@ export function createCodexProServer(
       const checks: Array<{ name: string; status: SelfTestStatus; detail: string }> = [];
       const filesTouched: string[] = [];
       const probePath = `${workspaceConfig.contextDir}/codexpro-self-test.md`;
-      const bashRuntime = resolveBashRuntime(config);
+      const executionStatus = executionBackendStatus(workspaceConfig);
+      const bashRuntime = executionStatus.kind === "docker"
+        ? { available: executionStatus.available, executable: executionStatus.available ? "/bin/sh" : null, runtime: "docker" as const, source: "docker" as const, ...(executionStatus.detail ? { error: executionStatus.detail } : {}) }
+        : resolveBashRuntime(workspaceConfig);
       const gitRuntime = gitRuntimeInfo();
       const searchBackend = searchBackendInfo();
       let bashToolchain: ReturnType<typeof probeBashToolchain> | undefined;
@@ -2180,27 +2190,28 @@ export function createCodexProServer(
           if (workspaceConfig.bashMode === "off") {
             check("bash policy", "skipped", "bash disabled");
           } else {
-            bashToolchain = probeBashToolchain(workspaceConfig, workspace);
-            const toolSummary = (["node", "npm", "npx", "git", "rg"] as const)
-              .map((name) => {
-                const tool = bashToolchain?.tools[name];
-                return `${name}=${tool?.version || tool?.path || "unavailable"}`;
-              })
-              .join("; ");
-            const inconsistentNodeToolchain = !bashToolchain.tools.node.path && Boolean(bashToolchain.tools.npm.path || bashToolchain.tools.npx.path);
-            check(
-              "bash toolchain",
-              inconsistentNodeToolchain ? "warn" : "pass",
-              `${bashToolchain.cwd || "cwd unavailable"}; ${toolSummary}`
-            );
-            const shellGit = bashToolchain.tools.git;
-            if (gitRuntime.available) {
-              const aligned = Boolean(shellGit.version && gitRuntime.version && shellGit.version === gitRuntime.version);
+            if (executionStatus.kind === "docker") {
               check(
-                "git toolchain alignment",
-                aligned ? "pass" : "warn",
-                `dedicated=${gitRuntime.version || "unavailable"} (${gitRuntime.executable || "PATH"}); shell=${shellGit.version || "unavailable"} (${shellGit.path || "unavailable"})`
+                "bash toolchain",
+                executionStatus.available ? "pass" : "fail",
+                executionStatus.available ? "Docker backend available; container tool versions are image-defined" : executionStatus.detail || "Docker backend unavailable"
               );
+              check("git toolchain alignment", "skipped", "Docker container toolchain is image-defined; dedicated host Git remains separate");
+            } else {
+              bashToolchain = probeBashToolchain(workspaceConfig, workspace);
+              const toolSummary = (["node", "npm", "npx", "git", "rg"] as const)
+                .map((name) => {
+                  const tool = bashToolchain?.tools[name];
+                  return `${name}=${tool?.version || tool?.path || "unavailable"}`;
+                })
+                .join("; ");
+              const inconsistentNodeToolchain = !bashToolchain.tools.node.path && Boolean(bashToolchain.tools.npm.path || bashToolchain.tools.npx.path);
+              check("bash toolchain", inconsistentNodeToolchain ? "warn" : "pass", `${bashToolchain.cwd || "cwd unavailable"}; ${toolSummary}`);
+              const shellGit = bashToolchain.tools.git;
+              if (gitRuntime.available) {
+                const aligned = Boolean(shellGit.version && gitRuntime.version && shellGit.version === gitRuntime.version);
+                check("git toolchain alignment", aligned ? "pass" : "warn", `dedicated=${gitRuntime.version || "unavailable"} (${gitRuntime.executable || "PATH"}); shell=${shellGit.version || "unavailable"} (${shellGit.path || "unavailable"})`);
+              }
             }
             const bashProbeOptions = { timeoutMs: 10_000, sessionId: workspaceConfig.bashSessionId };
             const pwd = await runBash(configForWorkspace(workspace), guard, workspace, "pwd", bashProbeOptions);

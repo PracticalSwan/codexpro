@@ -289,6 +289,8 @@ verify_changes
 
 Process handles and event cursors survive separate ChatGPT HTTP/MCP calls while the same CodexPro runtime remains alive.
 
+For optional Docker-backed Bash/process execution, set `CODEXPRO_EXECUTION_BACKEND=docker` and `CODEXPRO_DOCKER_IMAGE` to an image that already exists locally. CodexPro does not install Docker, pull/build images, log in to registries, expose the Docker socket, or fall back to host execution when Docker was explicitly selected. Containers mount only the selected workspace, use no network, and run with bounded resources. Durable Goals currently stay on the host backend; Windows Stage A is verified, while Linux live validation remains pending.
+
 ## Code intelligence
 
 Built-in search/analysis always remains available.

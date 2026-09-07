@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import path from "node:path";
 import type { CodexProConfig } from "./config.js";
 import { CodexProError, type PathGuard, type Workspace } from "./guard.js";
@@ -9,10 +9,10 @@ import {
   assertBashSession,
   decodeBashOutput,
   makeRestrictedBashEnv,
-  resolveBashRuntime,
-  terminateProcessTree
+  resolveBashRuntime
 } from "./bashOps.js";
 import { redactSensitiveText } from "./redact.js";
+import { resolveExecutionBackend, type BackendProcessHandle, type ExecutionBackend } from "./execution/index.js";
 import type { OperationManager } from "./operations/manager.js";
 
 export type WorkspaceProcessState = "running" | "stopping" | "exited" | "failed";
@@ -33,6 +33,7 @@ export interface WorkspaceProcessRecord {
   retainedOutputBytes: number;
   droppedOutputBytes: number;
   error?: string;
+  cleanupError?: string;
 }export interface ProcessOutputPage {
   processId: string;
   cursor: number;
@@ -60,6 +61,8 @@ interface OutputChunk {
 interface ProcessEntry {
   id: string;
   child: ChildProcess;
+  backend: ExecutionBackend;
+  backendHandle: BackendProcessHandle;
   record: WorkspaceProcessRecord;
   chunks: OutputChunk[];
   observedBytes: number;
@@ -116,21 +119,36 @@ export class WorkspaceProcessManager {
     const active = [...this.entries.values()].filter((entry) => entry.record.state === "running" || entry.record.state === "stopping").length;
     if (active >= this.maxProcesses) throw new CodexProError(`Workspace process limit reached (${this.maxProcesses}).`);
 
-    const runtime = resolveBashRuntime(this.options.config);
-    if (!runtime.available || !runtime.executable) throw new CodexProError(runtime.error || "Bash is unavailable.");
+    const backend = resolveExecutionBackend(this.options.config);
+    let hostExecutable: string | undefined;
+    if (backend.kind === "host") {
+      const runtime = resolveBashRuntime(this.options.config);
+      if (!runtime.available || !runtime.executable) throw new CodexProError(runtime.error || "Bash is unavailable.");
+      hostExecutable = runtime.executable;
+    }
     const receipt = await this.options.operationManager.start({ kind: "workspace_process" });
     const id = `proc_${randomUUID()}`;    let resolveClosed!: () => void;
     const closed = new Promise<void>((resolve) => { resolveClosed = resolve; });
-    const child = spawn(runtime.executable, ["-lc", command], {
-      cwd: cwdResolved.absPath,
-      env: makeRestrictedBashEnv(this.options.config),
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: process.platform !== "win32",
-      windowsHide: true
-    });
+    let backendHandle: BackendProcessHandle;
+    try {
+      backendHandle = backend.start({
+        config: this.options.config,
+        workspace: this.options.workspace,
+        command,
+        cwdAbs: cwdResolved.absPath,
+        cwdRel: relativeCwd(this.options.workspace, cwdResolved.absPath),
+        ...(backend.kind === "host" ? { hostExecutable, hostEnv: makeRestrictedBashEnv(this.options.config) } : {})
+      });
+    } catch (error) {
+      await this.options.operationManager.fail(receipt.id, error).catch(() => {});
+      throw error;
+    }
+    const child = backendHandle.child;
     const entry: ProcessEntry = {
       id,
       child,
+      backend,
+      backendHandle,
       record: {
         id,
         workspaceId: this.options.workspace.id,
@@ -253,6 +271,7 @@ export class WorkspaceProcessManager {
     entry.record.exitCode = exitCode;
     entry.record.signal = signal;
     entry.record.terminationReason = entry.requestedTermination ?? (signal ? "signal" : "exit");
+    if (entry.backendHandle.cleanupError) entry.record.cleanupError = entry.backendHandle.cleanupError;
     entry.resolveClosed();
     const durationMs = Math.max(0, Date.now() - Date.parse(entry.record.startedAt));
     void this.options.operationManager.complete(entry.record.operationId, { durationMs, exitCode }).catch(() => {});
@@ -262,14 +281,16 @@ export class WorkspaceProcessManager {
     if (entry.record.state !== "running" && entry.record.state !== "stopping") return publicRecord(entry);
     entry.record.state = "stopping";
     entry.requestedTermination = reason;
-    terminateProcessTree(entry.child, "SIGTERM");
+    entry.backend.stop(entry.backendHandle, "SIGTERM");
+    if (entry.backendHandle.cleanupError) entry.record.cleanupError = entry.backendHandle.cleanupError;
     const timeout = new Promise<void>((resolve) => {
       const timer = setTimeout(resolve, 1_500);
       timer.unref();
     });
     await Promise.race([entry.closed, timeout]);
     if (["running", "stopping"].includes(entry.record.state)) {
-      terminateProcessTree(entry.child, "SIGKILL");
+      entry.backend.stop(entry.backendHandle, "SIGKILL");
+      if (entry.backendHandle.cleanupError) entry.record.cleanupError = entry.backendHandle.cleanupError;
       await Promise.race([entry.closed, new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, 1_000);
         timer.unref();

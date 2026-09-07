@@ -1,7 +1,7 @@
 # Optional Docker Execution Backend Design
 
 **Date:** 2026-09-06
-**Status:** Planned
+**Status:** In Progress - Windows Stage A verified; Goals host-only; Linux live validation pending
 **Priority:** P3 / deferred
 **Plan ID:** 21
 **Depends on:** 03, 05, 11, 13

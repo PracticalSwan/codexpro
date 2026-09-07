@@ -187,6 +187,7 @@ export function applyWorkspacePolicy(config: CodexProConfig, policy: WorkspacePo
 function safeConfig(config: CodexProConfig): Record<string, unknown> {
   return {
     bashMode: config.bashMode, writeMode: config.writeMode, toolMode: config.toolMode,
+    executionBackend: config.executionBackend, dockerImageConfigured: Boolean(config.dockerImage), dockerMemoryMb: config.dockerMemoryMb, dockerCpus: config.dockerCpus, dockerPidsLimit: config.dockerPidsLimit, goalExecutionBackend: "host",
     codexSessions: config.codexSessions, analysisEnabled: config.analysisEnabled, allowGitPush: config.allowGitPush, codeGraphEnabled: config.codeGraphEnabled, lspEnabled: config.lspEnabled, artifactExportEnabled: config.artifactExportEnabled, goalsEnabled: config.goalsEnabled,
     maxReadBytes: config.maxReadBytes, maxWriteBytes: config.maxWriteBytes,
     maxOutputBytes: config.maxOutputBytes, maxBashObservedOutputBytes: config.maxBashObservedOutputBytes,

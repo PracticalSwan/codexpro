@@ -59,7 +59,8 @@ function runtimeForGoal(config:CodexProConfig,isolationRoot:string):CodexProConf
     codeGraphEnabled:false,
     lspEnabled:false,
     artifactExportEnabled:false,
-    codexSessions:"off"
+    codexSessions:"off",
+    executionBackend:"host"
   };
 }
 

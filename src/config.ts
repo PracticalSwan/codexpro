@@ -20,6 +20,12 @@ export interface CodexProConfig {
   requireHttpToken: boolean;
   bashMode: BashMode;
   bashExecutable?: string;
+  executionBackend: "host" | "docker";
+  dockerExecutable: string;
+  dockerImage?: string;
+  dockerMemoryMb: number;
+  dockerCpus: number;
+  dockerPidsLimit: number;
   bashTranscript: BashTranscriptMode;
   bashSessionId?: string;
   requireBashSession: boolean;
@@ -213,6 +219,39 @@ function bashExecutableFrom(value: string | undefined): string | undefined {
   return fs.realpathSync.native(resolved);
 }
 
+function executionBackendFrom(value: string | undefined): "host" | "docker" {
+  if (value === "docker") return "docker";
+  return "host";
+}
+
+function dockerExecutableFrom(value: string | undefined): string {
+  const raw = value?.trim() || "docker";
+  if (raw.length > 1000 || /[\0\r\n]/.test(raw)) throw new Error("CODEXPRO_DOCKER_EXECUTABLE must be one line.");
+  if (!/[\\/]/.test(raw)) {
+    if (!/^[A-Za-z0-9._-]+$/.test(raw)) throw new Error("CODEXPRO_DOCKER_EXECUTABLE must be a command name or absolute file path.");
+    return raw;
+  }
+  const expanded = expandHome(raw);
+  if (!path.isAbsolute(expanded) && !path.win32.isAbsolute(expanded)) throw new Error("CODEXPRO_DOCKER_EXECUTABLE path must be absolute.");
+  const resolved = path.resolve(expanded);
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) throw new Error(`CODEXPRO_DOCKER_EXECUTABLE does not point to a file: ${resolved}`);
+  return fs.realpathSync.native(resolved);
+}
+
+function dockerImageFrom(value: string | undefined): string | undefined {
+  const raw = value?.trim();
+  if (!raw) return undefined;
+  if (!/^[A-Za-z0-9][A-Za-z0-9._/:@-]{0,499}$/.test(raw)) {
+    throw new Error("CODEXPRO_DOCKER_IMAGE must be a single local image reference and cannot begin with an option prefix.");
+  }
+  return raw;
+}
+
+function decimalFrom(value: string | undefined, fallback: number, min: number, max: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
 function bashTranscriptFrom(value: string | undefined): BashTranscriptMode {
   if (value === "compact" || value === "full") return value;
   return "compact";
@@ -375,6 +414,11 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   if (requireBashSession && !bashSessionId) {
     throw new Error("CODEXPRO_REQUIRE_BASH_SESSION requires CODEXPRO_BASH_SESSION_ID or --bash-session.");
   }
+  const executionBackend = executionBackendFrom(process.env.CODEXPRO_EXECUTION_BACKEND);
+  const dockerImage = dockerImageFrom(process.env.CODEXPRO_DOCKER_IMAGE);
+  if (executionBackend === "docker" && !dockerImage) {
+    throw new Error("CODEXPRO_EXECUTION_BACKEND=docker requires CODEXPRO_DOCKER_IMAGE for an already-local image.");
+  }
   const maxReadBytes = numberFrom(process.env.CODEXPRO_MAX_READ_BYTES, 180_000, 4_000, 2_000_000);
   const maxOutputBytes = numberFrom(process.env.CODEXPRO_MAX_OUTPUT_BYTES, 120_000, 4_000, 2_000_000);
   const maxBashObservedOutputBytes = Math.max(
@@ -392,6 +436,12 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     requireHttpToken,
     bashMode: bashModeFrom(bashArg ?? process.env.CODEXPRO_BASH_MODE),
     bashExecutable: bashExecutableFrom(process.env.CODEXPRO_BASH_EXECUTABLE),
+    executionBackend,
+    dockerExecutable: dockerExecutableFrom(process.env.CODEXPRO_DOCKER_EXECUTABLE),
+    dockerImage,
+    dockerMemoryMb: numberFrom(process.env.CODEXPRO_DOCKER_MEMORY_MB, 512, 64, 32_768),
+    dockerCpus: decimalFrom(process.env.CODEXPRO_DOCKER_CPUS, 1, 0.1, 32),
+    dockerPidsLimit: numberFrom(process.env.CODEXPRO_DOCKER_PIDS_LIMIT, 256, 16, 4_096),
     bashTranscript: bashTranscriptFrom(bashTranscriptArg ?? process.env.CODEXPRO_BASH_TRANSCRIPT),
     bashSessionId,
     requireBashSession,

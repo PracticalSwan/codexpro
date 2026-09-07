@@ -292,6 +292,9 @@ if (!diagnosticConfig.structuredContent.gitRuntime?.version) {
 if (!diagnosticConfig.structuredContent.searchBackend?.backend) {
   throw new Error(`server_config omitted search backend diagnostics: ${JSON.stringify(diagnosticConfig.structuredContent)}`);
 }
+if (diagnosticConfig.structuredContent.executionBackend !== 'host' || diagnosticConfig.structuredContent.execution?.kind !== 'host' || diagnosticConfig.structuredContent.execution?.available !== true || diagnosticConfig.structuredContent.goalExecutionBackend !== 'host') {
+  throw new Error(`server_config did not preserve host-default execution diagnostics: ${JSON.stringify(diagnosticConfig.structuredContent.execution)}`);
+}
 if (process.platform === 'win32' && diagnosticConfig.structuredContent.bashRuntime.runtime === 'wsl' && diagnosticConfig.structuredContent.bashRuntime.source !== 'configured') {
   throw new Error(`server_config silently auto-selected WSL: ${JSON.stringify(diagnosticConfig.structuredContent.bashRuntime)}`);
 }

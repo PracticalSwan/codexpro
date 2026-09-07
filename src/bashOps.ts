@@ -8,14 +8,16 @@ import type { CodexProConfig } from "./config.js";
 import type { Workspace } from "./guard.js";
 import { CodexProError, PathGuard } from "./guard.js";
 import { redactSensitiveText } from "./redact.js";
+import { resolveExecutionBackend } from "./execution/index.js";
+import { terminateHostProcessTree } from "./execution/hostBackend.js";
 
-export type BashRuntimeKind = "native-bash" | "wsl" | "unix-bash" | "unavailable";
+export type BashRuntimeKind = "native-bash" | "wsl" | "unix-bash" | "docker" | "unavailable";
 
 export interface BashRuntimeInfo {
   available: boolean;
   executable: string | null;
   runtime: BashRuntimeKind;
-  source: "configured" | "git-for-windows" | "path" | "system" | "unavailable";
+  source: "configured" | "git-for-windows" | "path" | "system" | "docker" | "unavailable";
   error?: string;
 }
 
@@ -495,21 +497,7 @@ export function decodeBashOutput(
 }
 
 export function terminateProcessTree(child: ChildProcess, signal: NodeJS.Signals): void {
-  if (!child.pid) return;
-  if (process.platform === "win32") {
-    // Windows does not provide Unix-style cooperative signals to process trees.
-    // Force the full tree while the parent PID still identifies its descendants;
-    // otherwise the shell can exit first and orphan an output-heavy grandchild.
-    const args = ["/pid", String(child.pid), "/t", "/f"];
-    const result = spawnSync("taskkill", args, { stdio: "ignore", windowsHide: true });
-    if (result.status !== 0) child.kill(signal);
-    return;
-  }
-  try {
-    process.kill(-child.pid, signal);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ESRCH") child.kill(signal);
-  }
+  terminateHostProcessTree(child, signal);
 }
 
 export async function runBash(
@@ -526,20 +514,22 @@ export async function runBash(
   const cwd = cwdResolved.absPath;
   const timeoutMs = Math.max(1_000, Math.min(options.timeoutMs ?? 30_000, config.maxBashTimeoutMs));
   const start = Date.now();
-  const bashRuntime = resolveBashRuntime(config);
+  const backend = resolveExecutionBackend(config);
+  const bashRuntime: BashRuntimeInfo = backend.kind === "host"
+    ? resolveBashRuntime(config)
+    : { available: true, executable: "/bin/sh", runtime: "docker", source: "docker" };
   if (!bashRuntime.available || !bashRuntime.executable) {
     throw new CodexProError(bashRuntime.error || "Bash is unavailable.");
   }
   const bashExecutable = bashRuntime.executable;
+  const cwdRel = path.relative(workspace.root, cwd).split(path.sep).join("/") || ".";
 
   return new Promise((resolve, reject) => {
-    const child = spawn(bashExecutable, ["-lc", command], {
-      cwd,
-      env: makeEnv(config),
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: process.platform !== "win32",
-      windowsHide: true
+    const backendHandle = backend.start({
+      config, workspace, command, cwdAbs: cwd, cwdRel,
+      ...(backend.kind === "host" ? { hostExecutable: bashExecutable, hostEnv: makeEnv(config) } : {})
     });
+    const child = backendHandle.child;
 
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
@@ -559,7 +549,7 @@ export async function runBash(
     const terminate = (signal: NodeJS.Signals) => {
       if (closed) return;
       terminationStarted = true;
-      terminateProcessTree(child, signal);
+      backend.stop(backendHandle, signal);
     };
     const terminateWithEscalation = () => {
       if (terminationStarted || closed) return;
@@ -616,6 +606,7 @@ export async function runBash(
       } else if (killedByOutputLimit) {
         stderr += `\n[codexpro] Command terminated after exceeding ${observedOutputLimit} observed output bytes.`;
       }
+      if (backendHandle.cleanupError) stderr += `\n[codexpro] Docker cleanup warning: ${redactSensitiveText(backendHandle.cleanupError).slice(0, 320)}`;
       const out = trimOutput(
         redactSensitiveText(decodedStdout.text),
         config.maxOutputBytes,
