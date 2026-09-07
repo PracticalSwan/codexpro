@@ -129,6 +129,6 @@ The final cumulative implementation gate must demonstrate: synthetic composite o
 
 ## Conversation-resume boundary
 
-Plans 22–28 deliberately stop at preserving/recovering work across MCP calls. They do not drive ChatGPT Web or initiate another conversation turn. Optional task-aware browser continuation is specified separately in `docs/superpowers/specs/2026-09-08-task-aware-browser-continuation-design.md` and Plans 29–36.
+Plans 22–28 deliberately stop at preserving/recovering work across MCP calls. They do not drive ChatGPT Web or initiate another conversation turn. Optional task-aware browser continuation is specified separately in `docs/superpowers/specs/2026-09-08-task-aware-browser-continuation-design.md` and Plans 29–37.
 
 That later layer remains human-gated: browser state may notify/focus/prepare one explicitly bound conversation, but every continuation dispatch requires the user's explicit action. Deadline resilience must remain fully functional when browser continuation is disabled, unavailable, signed out, or unpaired.

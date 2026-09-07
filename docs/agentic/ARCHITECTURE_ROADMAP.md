@@ -234,7 +234,8 @@ ChatGPT semantic controller
    -> conservative watchdog / anti-loop (33)
    -> settings/admin controls (34)
    -> deadline/proc/job/batch/Goal integration (35)
-   -> security/package/live QA (36)
+   -> Telegram remote user authorization (37)
+   -> security/package/fresh-session live QA (36)
 ```
 
 ### Feature mapping
@@ -257,15 +258,18 @@ ChatGPT semantic controller
 | 77 | Browser-continuation threat/redaction controls | P0 | 36 | 29–35 |
 | 78 | Extension/package privacy integrity | P0 | 36 | 30–35 |
 | 79 | Live managed-browser regression matrix | P0 | 36 | 31–35 |
+| 80 | Telegram private-bot continuation notification/authorization | P0 | 37 | 29–35 |
+| 81 | Bounded focused continuation intents | P0 | 29, 32, 37 | 29, 32 |
+| 82 | Fresh-ChatGPT-session acceptance report handoff | P0 | 36 | 29–37 |
 
 ### Recommended sequence
 
-`29 → 30 → 31 → 32 → 33 → 34 → 35 → 36`
+`29 → 30 → 31 → 32 → 33 → 34 → 35 → 37 → 36`
 
 ### Extension design rules
 
 - Version 1 never auto-submits ChatGPT messages and never scrapes conversation/output text.
-- Every continuation dispatch requires the user's explicit **Continue task** action.
+- Every continuation dispatch requires a contemporaneous explicit user authorization from the managed-browser **Continue task** button or, when configured, the paired private Telegram bot. Telegram callbacks remain one-shot and cannot bypass browser/transport/task safety checks.
 - Browser authentication/security verification is always manual; implementation/live QA stops until the user authenticates and sends `continue`.
 - Use a dedicated browser profile and separate continuation credential; do not import a personal browser profile or expose MCP authority to the extension.
 - Browser state never decides semantic task completion; completed/canceled record revisions invalidate stale continuation authorization.
@@ -273,6 +277,8 @@ ChatGPT semantic controller
 - Stable conversation identity is required for binding; full private routes remain extension-local and route changes fail closed.
 - The continuation layer never auto-Retries ChatGPT, switches models, dismisses blocking/safety UI, or starts/restarts CodexPro/tunnels.
 - Actual long-running execution remains in Plans 22–28/existing durable primitives.
+- Telegram v1 uses outbound Bot API long polling with a dedicated private bot; no webhook/group/arbitrary-command surface is planned. Bot setup/token/pairing are manual user stop gates and secrets remain outside profiles/logs/packages.
+- Final acceptance includes a new ChatGPT session using installed CodexPro Full that produces a sanitized copyable test report for maintenance review.
 - Current service terms/policies relevant to browser automation/output extraction/restriction circumvention/authentication must be rechecked before implementation/live/release claims without extrapolating unrelated rules.
 
 Authoritative design: `docs/superpowers/specs/2026-09-08-task-aware-browser-continuation-design.md`.

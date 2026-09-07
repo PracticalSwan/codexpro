@@ -127,7 +127,7 @@ git commit -m "feat: add resumable analysis batches"
 
 ## Task-aware browser continuation integration
 
-`batch_*` continuation remains an MCP/data continuation primitive, not a browser turn primitive. Plans 29–36 may help the user start the next ChatGPT turn when another semantic batch step is needed, but resumed batch correctness remains governed by this plan's fingerprints/cursors.
+`batch_*` continuation remains an MCP/data continuation primitive, not a browser turn primitive. Plans 29–37 may help the user start the next ChatGPT turn when another semantic batch step is needed, but resumed batch correctness remains governed by this plan's fingerprints/cursors.
 
 ## Acceptance Criteria
 

@@ -52,6 +52,8 @@ interface ContinuationRecord {
   currentPhase?: string;
   completedEvidence: string[];
   remainingWork: string[];
+  continuationIntents: Array<{ id: string; templateKey: "resume_all_v1" | "focus_remaining_v1"; label: string; focusRef?: string; revision: number }>;
+  selectedContinuationIntentId?: string;
   continuationCount: number;
   outstandingNonce?: string;
   createdAt: string;
@@ -77,11 +79,11 @@ Expected: PASS.
 
 - [ ] **Step 1: Add failing operation tests**
 
-Assert `arm` creates one active task per workspace/session unless an explicit ID is supplied; checkpoint replaces bounded phase/evidence/work metadata; request creates a fresh nonce; complete clears outstanding continuation; cancel is terminal; and heartbeat changes only liveness fields.
+Assert `arm` creates one active task per workspace/session unless an explicit ID is supplied; checkpoint replaces bounded phase/evidence/work metadata and may register at most four bounded continuation intents; request creates a fresh nonce plus default `resume_all_v1` intent when none exists; selected intent must belong to the current revision; complete clears outstanding continuation/intent selection; cancel is terminal; and heartbeat changes only liveness fields.
 
 - [ ] **Step 2: Implement transition-checked operations**
 
-Every operation must load the current record, validate the expected state/revision and caller workspace/session, then persist one atomic update with `revision + 1`. `complete` requires `remainingWork` to be empty or an explicit verified-complete flag supplied by the semantic controller; browser callers never receive that authority. `completed`/`canceled` atomically clear outstanding nonce/readiness fields and reject all later non-status transitions. Do not persist a deadline value as the task timing authority; later readiness evaluation consumes the current runtime snapshot.
+Every operation must load the current record, validate the expected state/revision and caller workspace/session, then persist one atomic update with `revision + 1`. Continuation intents are server-side semantic references only: labels are short/sanitized, focus references may point only to already-recorded remaining work, and no intent stores an arbitrary ChatGPT prompt body. `complete` requires `remainingWork` to be empty or an explicit verified-complete flag supplied by the semantic controller; browser callers never receive that authority. `completed`/`canceled` atomically clear outstanding nonce/readiness fields and reject all later non-status transitions. Do not persist a deadline value as the task timing authority; later readiness evaluation consumes the current runtime snapshot.
 
 - [ ] **Step 3: Verify recovery/idempotency**
 
@@ -137,6 +139,7 @@ git commit -m "feat: add durable continuation lifecycle"
 - Continuation state survives MCP/session turnover and process restart.
 - Records are bounded, atomic, workspace/session-bound, and contain no hidden reasoning or browser credentials.
 - Duplicate checkpoint/request delivery is idempotent.
+- Default/focused continuation intents are bounded to the current revision/remaining work and provide a safe extension point for browser or Telegram authorization without arbitrary prompt injection.
 - Terminal completion/cancel plus record revision prevents stale browser/watchdog state from rearming or dispatching a task.
 - Continuation records never hard-code the 20-minute default or a saved next-run deadline as readiness authority.
 - Browser code cannot complete/cancel a task outside explicitly granted narrow operations.

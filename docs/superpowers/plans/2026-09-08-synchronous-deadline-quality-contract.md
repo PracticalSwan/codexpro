@@ -175,7 +175,7 @@ git commit -m "feat: add configurable synchronous call deadline"
 
 ## Task-aware browser continuation integration
 
-Plan 22 remains transport-only. It must not depend on browser continuation being available. When Plans 29–36 are later enabled, their watchdog must consume the **current running** `syncCallDeadlineMs` from runtime/config status, never `DEFAULT_SYNC_CALL_DEADLINE_MS` or the saved next-run profile. A runtime restart/config-generation change resets inferred timing. Browser continuation does not change deadline semantics or auto-submit a new ChatGPT turn.
+Plan 22 remains transport-only. It must not depend on browser continuation being available. When Plans 29–37 are later enabled, their watchdog must consume the **current running** `syncCallDeadlineMs` from runtime/config status, never `DEFAULT_SYNC_CALL_DEADLINE_MS` or the saved next-run profile. A runtime restart/config-generation change resets inferred timing. Browser continuation does not change deadline semantics or auto-submit a new ChatGPT turn.
 
 ## Acceptance Criteria
 

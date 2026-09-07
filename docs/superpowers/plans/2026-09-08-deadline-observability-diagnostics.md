@@ -117,7 +117,7 @@ git commit -m "feat: expose deadline resilience diagnostics"
 
 ## Task-aware browser continuation integration
 
-After Plans 29–36 exist, diagnostics may additionally report continuation feature/browser availability, user-action-required state, current runtime generation/transport availability, and current-runtime vs saved-next-run deadline mismatch. They must keep browser credentials, account identity, full conversation URLs, and ChatGPT output out of diagnostics and telemetry. If the runtime snapshot is absent, report `transport_unavailable/unknown` rather than fabricating the 20-minute default as an active deadline.
+After Plans 29–37 exist, diagnostics may additionally report continuation feature/browser availability, user-action-required state, current runtime generation/transport availability, and current-runtime vs saved-next-run deadline mismatch. They must keep browser credentials, account identity, full conversation URLs, and ChatGPT output out of diagnostics and telemetry. If the runtime snapshot is absent, report `transport_unavailable/unknown` rather than fabricating the 20-minute default as an active deadline.
 
 ## Acceptance Criteria
 

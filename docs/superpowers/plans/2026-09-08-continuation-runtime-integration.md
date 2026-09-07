@@ -16,7 +16,7 @@
 - Browser continuation never turns synchronous work into a lower-quality rushed result.
 - Local durable work should continue without unnecessary browser/model turns.
 - ChatGPT must explicitly complete/cancel the continuation task after verified semantic completion.
-- User-gated browser dispatch is the only browser-send path in version 1.
+- User-gated dispatch is the only send path in version 1: Plan 32 browser click or, when Plan 37 is enabled, a validated paired Telegram callback. Watchdogs/timers never create dispatch authorization.
 
 ---
 
@@ -84,7 +84,7 @@ Examples: finished long verification needing interpretation, Goal reaching `awai
 
 - [ ] **Step 1: Add failing instruction assertions**
 
-Require guidance to arm continuation only for substantial tasks likely to span calls when the feature is enabled; checkpoint after material progress; use `proc_*`/`job_*`/`goal_*`/`batch_*` for actual long work; request continuation before a truthful yield; complete only after acceptance criteria/verification; and call `continuation_cancel`/disarm when the user explicitly stops/cancels the overall task. A user Stop-generating/manual-turn browser event pauses inferred continuation until semantic reconciliation.
+Require guidance to arm continuation only for substantial tasks likely to span calls when the feature is enabled; checkpoint after material progress; register only bounded continuation intents that reference recorded remaining work; use `proc_*`/`job_*`/`goal_*`/`batch_*` for actual long work; request continuation before a truthful yield; complete only after acceptance criteria/verification; and call `continuation_cancel`/disarm when the user explicitly stops/cancels the overall task. A user Stop-generating/manual-turn browser event pauses inferred continuation until semantic reconciliation.
 
 - [ ] **Step 2: Encode no-rush/no-auto-send behavior**
 
@@ -92,7 +92,7 @@ Instructions must state that configured deadlines are continuation boundaries, n
 
 - [ ] **Step 3: Define recovery on next turn**
 
-On a user-dispatched continuation message, ChatGPT first calls `continuation_status`, checks terminal/revision state and current transport/runtime snapshot, recovers canonical remaining work/durable subsystem state, avoids redoing verified work, then resumes the same goal. If the task is already completed/canceled or transport is unavailable, it must not recreate continuation state merely because the fixed message arrived.
+On a user-dispatched continuation message, ChatGPT first calls `continuation_status`, checks terminal/revision state and current transport/runtime snapshot, recovers canonical remaining work/durable subsystem state plus any `selectedContinuationIntentId`, avoids redoing verified work, then resumes the same goal. A focused intent changes priority within recorded remaining work only; it never expands scope. If the task is already completed/canceled or transport is unavailable, it must not recreate continuation state merely because the fixed message arrived.
 
 ### Task 5: Integrate bounded evidence/diagnostics hooks
 
@@ -137,6 +137,6 @@ git commit -m "feat: integrate task-aware continuation routing"
 - ChatGPT makes material durable progress and does not rush to meet a tool deadline.
 - Background work suppresses unnecessary browser turns until semantic attention is needed.
 - A resumed turn recovers durable state before doing more work.
-- Completion/cancel remains explicit, terminal-state precedence invalidates stale browser authorization, and browser dispatch remains user-gated.
+- Completion/cancel remains explicit, terminal-state precedence invalidates stale browser/Telegram authorization, and every dispatch remains user-gated.
 - Continuation timing stays synchronized to the actual current runtime deadline/transport generation and cannot silently fall back to the 20-minute default or saved next-run settings.
 - Explicitly stopped/absent CodexPro transport suppresses continuation and is never automatically restarted by the continuation subsystem.

@@ -113,7 +113,7 @@ git commit -m "feat: add asynchronous verification jobs"
 
 ## Task-aware browser continuation integration
 
-Async verification should normally finish locally before a continuation turn is requested. Plans 29–36 may surface a user-ready continuation only when the terminal verification result requires model interpretation; they do not poll by repeatedly messaging ChatGPT.
+Async verification should normally finish locally before a continuation turn is requested. Plans 29–37 may surface a user-ready continuation only when the terminal verification result requires model interpretation; they do not poll by repeatedly messaging ChatGPT.
 
 ## Acceptance Criteria
 

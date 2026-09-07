@@ -125,7 +125,7 @@ git commit -m "feat: bound composite verification calls"
 
 ## Task-aware browser continuation integration
 
-A deadline-yielded verification remains incomplete exactly as defined here. Plans 29–36 may later notify the user that another model turn is useful, but they cannot reinterpret pending checks as success and cannot submit a continuation automatically.
+A deadline-yielded verification remains incomplete exactly as defined here. Plans 29–37 may later notify the user that another model turn is useful, but they cannot reinterpret pending checks as success and cannot submit a continuation automatically.
 
 ## Acceptance Criteria
 

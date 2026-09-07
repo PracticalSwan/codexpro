@@ -2,19 +2,19 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Implement Plans 29–36 as one coherent, human-gated continuation program after the deadline-resilience foundations are available.
+**Goal:** Implement Plans 29–37 as one coherent, human-gated continuation program after the deadline-resilience foundations are available, with Plan 36 retained as the final security/live/fresh-session acceptance gate.
 
-**Architecture:** Build durable semantic continuation state first, then the least-privilege browser bridge/extension, managed browser authentication/state, explicit conversation binding/user dispatch, conservative watchdog, settings/admin UX, runtime integration, and final security/live QA. Keep every subsystem independently reviewable and commit each milestone separately.
+**Architecture:** Build durable semantic continuation state first, then the least-privilege browser bridge/extension, managed browser authentication/state, explicit conversation binding/user dispatch, conservative watchdog, settings/admin UX, runtime integration, optional Telegram remote user authorization, and final security/live/fresh-session QA. Keep every subsystem independently reviewable and commit each milestone separately.
 
-**Tech Stack:** Existing CodexPro TypeScript/MCP/HTTP runtime, Manifest V3 extension, system Chrome/Edge, existing process/job/Goal/deadline infrastructure, smoke/stress/release harness.
+**Tech Stack:** Existing CodexPro TypeScript/MCP/HTTP runtime, Manifest V3 extension, system Chrome/Edge, Telegram Bot API over outbound HTTPS long polling, existing process/job/Goal/deadline infrastructure, smoke/stress/release harness.
 
 **Spec:** `docs/superpowers/specs/2026-09-08-task-aware-browser-continuation-design.md`
 
 ## Global Constraints
 
-- Plans 22–28 should be implemented/verified first unless a narrower dependency review proves a selected Plan 29–36 milestone is independent.
+- Plans 22–28 should be implemented/verified first unless a narrower dependency review proves a selected Plan 29–37 milestone is independent.
 - Version 1 never automatically submits ChatGPT messages or extracts conversation/output text.
-- Every continuation dispatch requires the user's **Continue task** click.
+- Every continuation dispatch requires a contemporaneous explicit user authorization: managed-browser **Continue task** or, when Plan 37 is enabled, an authenticated paired-Telegram inline-button click. No watchdog/timer may create that authorization.
 - ChatGPT login/2FA/CAPTCHA/passkey is always manual.
 - During implementation, reaching browser authentication is a mandatory STOP; resume only after the user authenticates and sends `continue`.
 - Dedicated browser profile only by default; no normal-browser profile import/attachment in version 1.
@@ -24,9 +24,9 @@
 
 ## Dependency Order
 
-`29 → 30 → 31 → 32 → 33 → 34 → 35 → 36`
+`29 → 30 → 31 → 32 → 33 → 34 → 35 → 37 → 36`
 
-Plan 35 assumes relevant Plans 22–28 are implemented because it integrates their runtime state. Plan 36 is the final security/live/package gate.
+Plan 35 assumes relevant Plans 22–28 are implemented because it integrates their runtime state. Plan 37 adds the optional Telegram authorization surface after the source-neutral dispatch contract exists. Plan 36 remains the final security/live/package/fresh-session gate and therefore depends on Plan 37 when Telegram is in the authorized implementation scope.
 ## Milestone 29 — Durable continuation lifecycle
 
 - [ ] Implement bounded atomic continuation records and legal state transitions.
@@ -83,12 +83,22 @@ Plan 35 assumes relevant Plans 22–28 are implemented because it integrates the
 - [ ] Add bounded activity/diagnostic state.
 - [ ] Run shared smoke/stress and make Plan 35 milestone commit.
 
+## Milestone 37 — Telegram remote continuation authorization
+
+- [ ] Add protected Bot API token storage/client with token-URL redaction.
+- [ ] Reach BotFather/token setup and **STOP: WAITING_FOR_TELEGRAM_BOT_TOKEN** when needed; user configures the token locally and sends `continue`.
+- [ ] Reach private-bot pairing and **STOP: WAITING_FOR_TELEGRAM_PAIR**; user presses Start/pairs and sends `continue`.
+- [ ] Add outbound long polling, exact private-user/chat authorization, opaque inline actions, focused continuation intents, replay/expiry protection, and browser safety revalidation.
+- [ ] Verify Telegram unavailable/blocked/webhook-conflict behavior falls back to browser authorization without auto-send.
+- [ ] Make Plan 37 milestone commit.
+
 ## Milestone 36 — Security/package/live QA
 
 - [ ] Update threat model and replace blanket browser-automation prohibition with narrow human-gated companion rules.
 - [ ] Prove redaction/privacy/package exclusions.
 - [ ] Recheck current OpenAI/service terms before release claims.
-- [ ] Perform one live disposable-chat success cycle in the configured browser; cover the broad deadline/runtime/tunnel/route/user-stop/platform-busy failure matrix with deterministic fixtures/fake clocks, re-entering mandatory auth STOP when needed.
+- [ ] Perform one browser-authorized and, when Plan 37 is configured, one Telegram-authorized disposable continuation cycle; cover the broad deadline/runtime/tunnel/route/user-stop/platform-busy/Telegram failure matrix with deterministic fixtures/fake clocks, re-entering mandatory setup STOP gates when needed.
+- [ ] Run the fresh-ChatGPT-session acceptance checklist and produce the sanitized report the user will copy back for maintenance review.
 - [ ] Run full cumulative gates and make Plan 36 milestone commit.
 ## Human-authentication stop protocol
 
@@ -104,6 +114,19 @@ At any implementation/live-verification step that encounters ChatGPT sign-in, pr
 
 This stop protocol overrides any batch-execution desire to proceed automatically.
 
+## Telegram setup stop protocol
+
+At any implementation/live-verification step that needs Telegram bot creation/token entry or initial private-chat pairing:
+
+1. If no valid bot token exists, report `WAITING_FOR_TELEGRAM_BOT_TOKEN` and stop.
+2. Guide the user to create/use a dedicated bot with `@BotFather` and save the token through CodexPro's masked local token command; never request the token in ChatGPT.
+3. The user sends `continue`; recover repository/runtime state and validate only sanitized `getMe` bot identity.
+4. Generate the short-lived private pairing deep link/code, report `WAITING_FOR_TELEGRAM_PAIR`, and stop.
+5. The user opens the bot, presses **Start**/completes pairing, then sends `continue`.
+6. Recover state and verify only paired yes/no plus sanitized bot health.
+
+These stops are human setup/security boundaries and override batch execution.
+
 ## Final Verification Gate
 
 Run focused smokes first, then:
@@ -117,13 +140,13 @@ npm run release:pack
 git diff --check
 ```
 
-Also run the Plan 36 privacy/package scan and the authorized live managed-browser checklist. Never claim macOS/Linux live browser support from Windows-only evidence.
+Also run the Plan 36 privacy/package scan, the authorized live managed-browser/Telegram checklist, and the fresh-ChatGPT-session report workflow. The user will copy the resulting sanitized report back for maintenance review. Never claim macOS/Linux live browser support from Windows-only evidence.
 
 ## Final Acceptance Criteria
 
 - Incomplete tasks retain durable semantic state across ChatGPT turns and CodexPro restarts without stale timing; restart/transport/browser generations reset inferred interruption baselines.
 - User can authenticate once in a dedicated durable browser profile and reauthenticate manually when required.
-- One explicitly bound conversation receives a continuation only after the user's explicit **Continue task** click.
+- One explicitly bound conversation receives a continuation only after a current explicit user authorization from the managed-browser button or paired Telegram inline action; focused Telegram actions can prioritize only recorded remaining work.
 - Watchdog/recovery cannot create autonomous browser-message loops, cannot auto-retry ChatGPT errors, and cannot continue while CodexPro transport is absent/stopped or after terminal completion/cancel.
 - Plans 22–28 continue to own actual long-running work and quality preservation.
 - Browser/session secrets and ChatGPT output never enter CodexPro durable task records, logs, Git, or packages.

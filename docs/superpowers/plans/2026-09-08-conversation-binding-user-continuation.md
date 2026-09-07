@@ -14,7 +14,7 @@
 
 - No implicit active-tab binding.
 - No conversation-text extraction or storage.
-- No automatic message submission; every dispatch requires a contemporaneous user click.
+- No automatic message submission; every dispatch requires a contemporaneous explicit user authorization. Plan 32 implements the managed-browser **Continue task** source; Plan 37 later adds an authenticated Telegram inline-button source using the same one-shot authorization contract.
 - Never click login, approval, safety, payment, publish, or other blocking controls.
 - Wrong/ambiguous route or DOM capability must fail closed.
 
@@ -77,8 +77,8 @@ The popup must show the armed task title/short ID and a **Bind this chat** butto
 - Modify: `scripts/chatgpt-browser-adapter-smoke.mjs`
 
 **Interfaces:**
-- Consumes one fresh continuation nonce and the fixed continuation template from the controller.
-- Produces `continuation_dispatched` event only after a user click and successful send-button activation.
+- Consumes one fresh continuation nonce, current task revision/selected intent, and the fixed continuation template from the controller.
+- Produces a source-neutral one-shot `ContinuationDispatchAuthorization` plus `continuation_dispatched` only after an allowed user authorization source and successful send-button activation. In Plan 32 the enabled source is `browser`; Plan 37 may add `telegram` without changing browser safety checks.
 
 - [ ] **Step 1: Add dispatch precondition tests**
 
@@ -94,7 +94,7 @@ Continue the current task from the latest CodexPro continuation state. Preserve 
 
 - [ ] **Step 3: User click is the authorization boundary**
 
-Only the popup/button click handler may call the content-script dispatch path. Background polling, watchdog timers, page events, and MCP calls may prepare readiness but cannot invoke message submission.
+Only an active one-shot `ContinuationDispatchAuthorization` may call the content-script dispatch path. Plan 32 creates it only from the popup/button click handler; background polling, watchdog timers, page events, and MCP calls may prepare readiness but cannot create it. Plan 37 may create the same authorization from a validated paired-Telegram callback, still requiring immediate server/browser revalidation and one-shot consumption.
 
 - [ ] **Step 4: Report dispatch outcome safely**
 
@@ -126,6 +126,6 @@ git commit -m "feat: add user-gated ChatGPT continuation dispatch"
 - No active-tab heuristic can bind or dispatch to another conversation.
 - Binding requires a stable canonical conversation identity; full private routes remain extension-local and stale/lost mappings require rebind.
 - Manual user turns/Stop actions and generic ChatGPT busy/error/retry states invalidate or suppress prepared continuation without any automatic retry.
-- Continuation cannot be submitted without the user's current **Continue task** click.
+- Plan 32 cannot submit without the user's current **Continue task** click; the source-neutral authorization contract may later accept Plan 37's paired Telegram click without enabling autonomous submission.
 - Only the fixed continuation template is eligible for dispatch.
 - Extension never extracts conversation/output text or clicks non-continuation controls.

@@ -1,7 +1,7 @@
 # Task-Aware Browser Continuation — Design
 
 **Status:** Planned; user-authorized planning only on 2026-09-08
-**Scope:** durable continuation task state, browser companion, manual ChatGPT authentication, durable browser profile state, conversation binding, interruption detection, user-gated continuation, settings, diagnostics, and integration with Plans 22–28
+**Scope:** durable continuation task state, browser companion, manual ChatGPT authentication, durable browser profile state, conversation binding, interruption detection, user-gated continuation, optional Telegram remote authorization, fresh-session acceptance reporting, settings, diagnostics, and integration with Plans 22–28
 
 ## Problem
 
@@ -13,7 +13,7 @@ The continuation subsystem must not treat a host-enforced window as something to
 
 - Version 1 never automatically submits a ChatGPT message.
 - The browser companion may detect coarse page state, bind a conversation, notify the user, focus the correct tab, and prepare a fixed continuation action.
-- The user must explicitly press **Continue task** before the extension inserts/submits the continuation message.
+- Every continuation submission requires a contemporaneous explicit user authorization: either **Continue task** in the managed browser or an authenticated one-shot Telegram inline-button callback from the paired private user. No timer/watchdog/page event may create that authorization.
 - The extension must not scrape, export, summarize, or persist ChatGPT conversation/output text.
 - It must not click login, CAPTCHA, 2FA/passkey, safety, approval, purchase, publish, or other consequential controls.
 - It must not bypass rate limits, tool windows, safety mitigations, or product restrictions.
@@ -45,7 +45,7 @@ CodexPro Continuation Manager
                                same ChatGPT conversation
 ```
 
-CodexPro remains the authoritative task-lifecycle store. The browser companion is an actuator and coarse state sensor only; it never decides semantically whether the engineering task is complete.
+CodexPro remains the authoritative task-lifecycle store. The browser companion is an actuator and coarse state sensor only; it never decides semantically whether the engineering task is complete. Telegram is an optional remote notification/authorization surface only; it never becomes a second task controller or arbitrary command channel.
 
 ## Durable continuation record
 
@@ -139,6 +139,16 @@ A manually submitted user message, a recognized user **Stop generating** action,
 
 Multiple tabs are permitted for viewing, but dispatch is allowed only from the exact active bound conversation at click time. Stale popup state must include the task `revision` and be rejected after completion/cancel/rebind or any newer lifecycle transition.
 
+## Continuation intents and Telegram remote authorization
+
+A continuation request may expose one default `resume_all` intent plus up to three bounded focused intents that reference work already recorded as remaining. Each intent has an opaque ID, versioned template key, sanitized short display label, optional opaque focus reference, and the task revision that created it. Focused intents such as **Maintenance** or **Verification** change only the first remaining item/category to address; they cannot add work outside the original task or carry arbitrary prompt text.
+
+Telegram is optional and uses a dedicated private bot over outbound Bot API long polling. The bot token is stored only in protected per-user secret storage. Setup validates the bot with `getMe`, refuses to compete with an existing webhook, and pairs one private Telegram user/chat using a short-lived one-time `/start` deep-link code. Telegram usernames/display names are not used as authorization identity.
+
+When continuation becomes ready, CodexPro may send one privacy-bounded Telegram notification for the current task revision/nonce. Inline `callback_data` contains only an opaque action token; all task/intent metadata remains server-side. The paired user's button click may authorize one current dispatch, but CodexPro and the managed browser must immediately re-check terminal revision, nonce, transport, auth, binding, stable-idle page state, user-pause state, and durable-work status. The resulting authorization expires quickly and is consumed once. Failed safety checks never auto-retry.
+
+Telegram messages do not include full paths, prompts, ChatGPT output, conversation URLs, credentials, or unrestricted remaining-work text. Version 1 supports no Telegram group/channel control, no webhook endpoint, no Mini App, and no arbitrary remote command/message facility. Browser **Continue task** remains the fallback if Telegram is disabled, blocked, offline, or unpaired.
+
 
 ## Unknown ChatGPT/platform states
 
@@ -168,7 +178,7 @@ Near the effective synchronous deadline, ChatGPT should checkpoint material prog
 
 ## Settings and defaults
 
-Browser continuation is opt-in and disabled by default. Planned saved settings include `continuationEnabled`, managed browser profile label, browser choice (`chrome` or `edge`), cooldown, maximum dispatches, unexpected-interruption grace, and whether notifications are enabled. Security-sensitive pairing credentials are never stored in workspace profiles.
+Browser continuation is opt-in and disabled by default. Planned saved settings include `continuationEnabled`, managed browser profile label, browser choice (`chrome` or `edge`), cooldown, maximum dispatches, unexpected-interruption grace, browser notifications, and optional `continuationTelegramEnabled`. Security-sensitive browser pairing credentials, Telegram bot token, Telegram paired user/chat IDs, and callback/action records are never stored in workspace profiles.
 
 The authenticated local admin page must show current continuation task state, paired-browser health, auth state, bound-chat status, current-runtime vs saved-next-run settings, and a kill/disarm control. It must not display ChatGPT cookies, account identity, conversation text, pairing secrets, or full private conversation URLs.
 
@@ -176,6 +186,7 @@ The authenticated local admin page must show current continuation task state, pa
 
 - Loopback bridge only; no tunnel exposure.
 - Separate least-privilege browser credential.
+- Telegram Bot API uses a distinct protected bot token and one paired private user/chat; callback payloads are opaque, short-lived, and one-shot.
 - Dedicated browser profile by default.
 - No credential automation or credential capture.
 - No conversation/output scraping.
@@ -201,13 +212,17 @@ The authenticated local admin page must show current continuation task state, pa
 | Auth expires | Invalidate readiness and require manual user authentication workflow. |
 | Long proc/job/Goal remains productive | Suppress new ChatGPT turn until model attention is needed. |
 | ChatGPT-side connector has been disabled but local runtime still appears ready | Companion cannot reliably verify that remote setting; disclose this limitation and keep the final continuation send user-gated. |
+| Telegram bot is blocked/offline/API unavailable | Mark Telegram unavailable, do not fail the task, and keep browser authorization available; no autonomous fallback send. |
+| Telegram callback arrives late/duplicated/forwarded | Validate exact paired user/chat, opaque action expiry, current task revision/nonce, and one-shot consumption; reject stale/replayed actions. |
+| Bot token changes to a different bot identity | Invalidate Telegram pairing/action state and require fresh user pairing. |
+| Telegram bot already has a webhook | Do not delete it automatically; refuse long polling and require a dedicated bot or explicit operator resolution. |
 
 These cases are covered primarily with deterministic fixtures/fake clocks. Live QA stays narrow: one normal continuation cycle plus only the critical fail-closed cases that can be exercised safely without disrupting unrelated user state.
 
 
 ## Verification strategy
 
-Implementation uses fake clocks and DOM fixtures for the broad state-machine/watchdog/route/transport matrix, plus real managed-browser verification only after the manual authentication stop gate. Live browser testing uses the user-selected/configured browser for one successful bind/continue cycle and a small set of non-disruptive fail-closed checks; alternate-browser coverage is static/fixture-based unless separately needed. Do not induce safety/capacity errors or stop an active user-owned tunnel merely to create a live test condition.
+Implementation uses fake clocks, DOM fixtures, and a fake Telegram Bot API transport for the broad state-machine/watchdog/route/transport/Telegram matrix. Real verification begins only after the manual browser-auth and Telegram setup stop gates. Live testing uses the configured managed browser for one browser-authorized continuation cycle and, when Telegram is enabled, one paired private-bot continuation cycle with one focused intent; alternate-browser and broad failure coverage remain static/fixture-based unless separately needed. Do not induce safety/capacity errors, Telegram flood limits, or stop an active user-owned tunnel merely to create a live test condition.
 
 The live test must not inspect or export historical conversation content. It may create one disposable test conversation and send only the fixed continuation message after an explicit user click.
 
@@ -222,11 +237,12 @@ The live test must not inspect or export historical conversation content. It may
 | 33 | Watchdog, interruption recovery, acknowledgement, and anti-loop controls |
 | 34 | CLI/settings/admin controls and operator UX |
 | 35 | Deadline/process/job/Goal integration and ChatGPT guidance |
-| 36 | Security, observability, packaging, and live regression verification |
+| 36 | Security, observability, packaging, fresh-session acceptance report, and final live regression verification |
+| 37 | Telegram Bot notification and remote one-shot continuation authorization |
 
 ## Non-goals
 
-- No automatic ChatGPT message submission in version 1.
+- No automatic ChatGPT message submission in version 1; every submission requires a current browser-button or paired-Telegram-button user authorization.
 - No browser credential/password manager implementation.
 - No use of the user's normal Chrome/Edge profile by default.
 - No conversation scraping, export, summarization, or hidden monitoring.
@@ -234,3 +250,4 @@ The live test must not inspect or export historical conversation content. It may
 - No automation of approval, safety, purchase, publication, deployment, or account-management controls.
 - No replacement for official ChatGPT Work/cloud-browser continuation features when those satisfy the user's workflow.
 - No attempt to defeat or extend a host-enforced tool/session window.
+- No Telegram groups/channels, webhooks, Mini Apps, arbitrary bot commands, or arbitrary remote ChatGPT prompts in version 1.

@@ -101,3 +101,11 @@
 ## D-025 — User interaction, terminal task state, and ambiguous ChatGPT UI fail closed
 **Decision:** `completed`/`canceled` task revisions invalidate outstanding continuation authorization. Manual user message submission or Stop-generating pauses inferred continuation until semantic reconciliation. Streaming, generic platform-busy/error/retry/safety/unknown states suppress continuation; the companion never auto-retries, switches models, or dismisses blocking controls.
 **Why:** Browser UI state cannot reliably determine semantic task intent or why ChatGPT is delayed, so terminal/user intent and uncertainty must take precedence over automation.
+
+## D-026 — Telegram continuation buttons are remote user authorization, not autonomy
+**Decision:** Optional Telegram continuation uses a dedicated private bot over outbound long polling. A validated inline-button callback from the exactly paired private user/chat may create one short-lived `ContinuationDispatchAuthorization` for the current task revision/nonce/intent; the managed browser must still re-check transport/auth/binding/page safety before one send. Bot token and paired identifiers stay in protected per-user state, not workspace profiles.
+**Why:** This gives the user a practical remote approval surface without restoring an autonomous continuation loop or exposing another public inbound/admin channel.
+
+## D-027 — Final continuation acceptance uses a fresh ChatGPT-session report handoff
+**Decision:** After implementation and package installation, final operator acceptance includes a new ChatGPT conversation with CodexPro Full available. That session exercises the installed runtime using disposable continuation state and emits a sanitized Markdown report that the user copies back to the maintenance conversation. The test session does not modify CodexPro source unless separately authorized.
+**Why:** A fresh session validates real connector/runtime behavior independently of the implementation conversation while keeping the evidence review human-controlled and reproducible.

@@ -115,6 +115,6 @@ If the user later authorizes Plans 22–28 as one batch, use one isolated cumula
 
 ## Optional follow-on: task-aware browser continuation
 
-This controller ends after Plan 28. If the user separately authorizes browser-continuation work, continue with `docs/superpowers/plans/2026-09-08-task-aware-browser-continuation-execution.md` (Plans 29–36).
+This controller ends after Plan 28. If the user separately authorizes browser-continuation work, continue with `docs/superpowers/plans/2026-09-08-task-aware-browser-continuation-execution.md` (Plans 29–37).
 
 Do not make Plans 22–28 depend on browser automation. The follow-on layer is opt-in, uses a dedicated manually authenticated browser profile, and requires explicit user action for every continuation dispatch.
