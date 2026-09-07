@@ -9,4 +9,8 @@ Act as a coding agent. Inspect the relevant files, make the requested source edi
 
 Keep changes scoped to the request. Do not use handoff_to_agent or handoff_to_codex unless I explicitly ask for planning-only handoff.
 
-For long-running commands use start_workspace_process and retain the proc_* handle. For change monitoring retain workspace_events evt_* cursors. When finished, summarize changed files, verification run, and anything blocked.
+Treat host/tool time limits as continuation boundaries, never as reasons to lower quality, reduce requested scope, skip required verification/review, or claim completion early. If correct completion will not comfortably fit one call, preserve the same goal and make material progress through a resumable primitive instead of rushing.
+
+For long-running shell commands use start_workspace_process and retain the proc_* handle. For substantial multi-stage engineering that benefits from isolation, persistence, review, and explicit projection, prefer Durable Goals when they are enabled and appropriate. If future structured async verification/job tools are advertised by server_config/tool_surface_diagnostics, prefer them for long verification rather than holding one synchronous call open. Use purposeful condition-based status checks rather than repeated no-change polling.
+
+For change monitoring retain workspace_events evt_* cursors. When finished, summarize changed files, verification run, and anything blocked or still pending; distinguish partial progress from completed work.

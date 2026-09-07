@@ -164,3 +164,53 @@ Authoritative specs/plans for this extension live under `docs/superpowers/specs/
 When the user explicitly authorizes implementing Plans 12–21 together, use `docs/superpowers/plans/2026-09-06-roadmap-12-21-execution.md` as the controller plan. It preserves the sequence above on one isolated cumulative integration worktree/branch while keeping every subsystem's spec, focused tests, review, verification, and milestone commit independent. Integration to `main`, push, and global reinstall occur only after final cumulative verification rather than after every milestone.
 
 Runtime ownership remains outside the roadmap implementation itself: a running CodexPro session must not be stopped without explicit user approval, and agents may never start or restart CodexPro. If a required global reinstall is blocked by the running process and stop approval is absent, the reinstall remains pending while source integration/push may complete when otherwise authorized.
+
+## 2026-09-08 deadline-resilience roadmap extension
+
+This extension addresses host-side tool-call windows without attempting to bypass them. The fixed CodexPro synchronous MCP deadline is **exactly 1,200,000 ms (20 minutes)**. It is a transport boundary only: user goals, requested scope, acceptance criteria, reasoning/review quality, and required verification must remain intact across continuation calls.
+
+### Extension architecture
+
+```text
+MCP dispatch -> fixed 20-minute DeadlineBudget
+        |              |
+        |              +--> cooperative sync/composite work
+        |
+        +--> execution routing
+              +--> proc_*  long shell/process work
+              +--> job_*   structured long verification/jobs
+              +--> goal_*  multi-stage isolated engineering
+              +--> batch_* resumable in-process analysis
+```
+
+### Feature mapping
+
+| # | Feature | Priority | Plan | Main dependency |
+|---:|---|---|---|---|
+| 53 | Exact 20-minute synchronous call budget | P0 | 22 | 03, 04 |
+| 54 | Quality/material-progress deadline invariant | P0 | 22, 26 | 22 |
+| 55 | Composite verification deadline propagation | P0 | 23 | 05, 22 |
+| 56 | Durable structured `job_*` core | P1 | 24 | 03, 04, 22 |
+| 57 | Persistent job progress/recovery/short polling | P1 | 24 | 24 |
+| 58 | Asynchronous verification jobs | P1 | 25 | 23, 24 |
+| 59 | Duration-aware execution routing | P0 | 26 | 22–25 |
+| 60 | Quality-preserving ChatGPT continuation guidance | P0 | 26 | 22–25 |
+| 61 | Resumable non-process `batch_*` continuation | P1 | 27 | 16, 22 |
+| 62 | Deadline/job/batch observability and risk diagnostics | P1 | 28 | 22–27 |
+
+### Recommended sequence
+
+`22 → 23 → 24 → 25 → 26 → 27 → 28`
+
+### Extension design rules
+
+- The 20-minute value is fixed; it is not a performance target and does not justify reducing requested work.
+- Near the deadline, stop starting new synchronous phases, persist a truthful continuation, and continue the same goal in later calls.
+- Reuse the existing `WorkspaceProcessManager` for long shell commands and Durable Goals for multi-stage isolated work.
+- Structured jobs are producer-registered and are not a second generic command runner.
+- Polling/status tools return promptly and use condition-based progress rather than long blocking waits.
+- Resumable batch cursors do no background work and invalidate safely when source/request fingerprints change.
+- Diagnostics report the internal contract and recovery evidence without implying control over the host platform's external limit.
+
+Authoritative design: `docs/superpowers/specs/2026-09-08-tool-deadline-resilience-design.md`.
+Controller plan: `docs/superpowers/plans/2026-09-08-deadline-resilience-execution.md`.

@@ -46,6 +46,13 @@ Implementation begins only when the user authorizes the exact plan scope. For si
 - Dependency/release work: add `npm audit --audit-level=high` and release packaging checks.
 - For single user-authorized CodexPro implementation or defect-fix work, after successful verification automatically update relevant docs/instructions, commit the intended change, integrate into `main`, push `origin/main`, and reinstall the global `codexpro-full` package when that install can be performed without violating the runtime-lifecycle rule below. For an explicitly authorized multi-plan batch, create verified milestone commits during the batch but perform integration, push, and global reinstall only once after the final cumulative gate. Releases/publication/deployment, force operations, and unrelated external mutations still require separate authorization; directly verify every external action actually performed.
 
+## Long-running tool design rule
+- Plans 22–28 define a future fixed synchronous MCP deadline of exactly `1,200,000` ms (20 minutes). This is a transport/blocking-call boundary only, never a task-quality deadline.
+- New or modified potentially-long tools must declare their execution class: synchronous, existing workspace process (`proc_*`), structured durable job (`job_*`), Durable Goal (`goal_*`), or resumable in-process batch (`batch_*`).
+- Never reduce requested scope, acceptance criteria, review depth, required verification, or safety checks to fit one call. If correct work will not comfortably fit, persist truthful progress and continue through the appropriate resumable primitive.
+- Composite synchronous operations must share one remaining deadline budget across phases; they may not reset the 20-minute budget for each child operation.
+- Status/polling calls should return promptly and use condition-based progress. Repeated polling with no state change is not material progress.
+
 ## Runtime lifecycle rule
 - Detect whether CodexPro is already running before any step that could require replacing the global installation, changing its tunnel/runtime state, or terminating processes.
 - If CodexPro is running, **do not stop it without explicit user approval for that specific stop**. Explain why stopping is required before requesting approval.
