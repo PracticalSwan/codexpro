@@ -37,13 +37,14 @@ try {
   assert.equal('pid' in noisy, false, 'public process record exposed an OS PID');
   assert.ok(noisy.operationId?.startsWith('op_'));
 
-  const outputDeadline = Date.now() + 2000;
-  let first = manager.readOutput(noisy.id, { maxBytes: 4096 });
-  while (first.nextCursor <= first.cursor && Date.now() < outputDeadline) {
+  const outputDeadline = Date.now() + 3000;
+  while (manager.status(noisy.id).observedOutputBytes <= 4096 && Date.now() < outputDeadline) {
     await new Promise((resolve) => setTimeout(resolve, 50));
-    first = manager.readOutput(noisy.id, { maxBytes: 4096 });
   }
-  assert.ok(first.nextCursor > first.cursor, 'workspace process did not produce output within 2 seconds');
+  const observed = manager.status(noisy.id).observedOutputBytes;
+  assert.ok(observed > 4096, 'workspace process did not produce more than one output page within 3 seconds');
+  const first = manager.readOutput(noisy.id, { maxBytes: 4096 });
+  assert.ok(first.nextCursor > first.cursor);
   assert.ok(Buffer.byteLength(first.stdout + first.stderr, 'utf8') <= 5000);
   assert.equal(first.truncated || first.hasMore, true);
   const second = manager.readOutput(noisy.id, { cursor: first.nextCursor, maxBytes: 4096 });
