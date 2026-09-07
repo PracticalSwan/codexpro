@@ -5,15 +5,33 @@
 
 ## Problem
 
-ChatGPT may terminate a plugin/tool invocation that remains open for roughly 25 minutes. CodexPro must therefore ensure that no ordinary synchronous MCP call intentionally depends on remaining open that long. The solution must preserve the user's full goal and quality bar rather than making the model rush to finish.
+ChatGPT or another MCP host may terminate a plugin/tool invocation after a finite client-specific window. The user has observed a roughly 25-minute ChatGPT window, but CodexPro must not assume that value is universal or stable. CodexPro therefore needs a user-configurable synchronous deadline that stays below the operator's observed/documented host window while preserving the user's full goal and quality bar rather than making the model rush to finish.
 
 ## Non-negotiable timing contract
 
-- The CodexPro synchronous MCP call deadline is **exactly 20 minutes = 1,200,000 ms**.
-- This is a **blocking-call/transport deadline**, not a task deadline, quality deadline, or goal deadline.
-- The 20-minute value is a product constant, not a profile knob and not user-raiseable beyond the external platform boundary.
-- A small internal handoff reserve may stop *starting new synchronous phases* before 20:00 so the handler can serialize a durable continuation response; this does not change the 20:00 deadline.
-- No test may wait 20 real minutes; deadline utilities must support an injected clock/budget for deterministic fast tests while production uses the fixed constant.
+- The default CodexPro synchronous MCP call deadline is **exactly 20 minutes = 1,200,000 ms**.
+- The effective deadline is a **blocking-call/transport deadline**, not a task deadline, quality deadline, or goal deadline.
+- Users may configure the effective deadline from **5 to 60 minutes** per saved workspace profile so it can stay below their own observed/documented ChatGPT or MCP-host closure window.
+- CodexPro does not auto-detect, probe, bypass, or extend the host's external limit. A value above the real host limit is a user misconfiguration and diagnostics/settings guidance must say so clearly.
+- A proportional internal handoff reserve stops *starting new synchronous phases* before the configured deadline so the handler can serialize a durable continuation response; this does not shorten the user's overall task.
+- No test may wait for real configured minutes; deadline utilities must support an injected clock/budget for deterministic fast tests while production uses the resolved effective value.
+
+## Configuration contract
+
+The internal/runtime field is `syncCallDeadlineMs`. The default is `1_200_000`; accepted persisted/runtime values are `300_000` through `3_600_000` ms (5–60 minutes).
+
+User-facing configuration is intentionally minutes-based:
+
+```text
+codexpro settings set --sync-call-deadline-minutes 20
+codexpro start --sync-call-deadline-minutes 20
+```
+
+The saved workspace profile stores `syncCallDeadlineMs`; `codexpro settings show` displays the effective saved value in minutes. The authenticated local profile editor exposes **Synchronous tool deadline (minutes)** in the Runtime policy section with the same 5–60 minute validation and explanatory text. Website/profile changes remain next-run settings and do not mutate the already-running CodexPro process.
+
+Runtime precedence is: explicit launch CLI value → `CODEXPRO_SYNC_CALL_DEADLINE_MS` → saved workspace profile → 20-minute default. The launcher must resolve the saved profile consistently and pass the effective value to the HTTP/MCP runtime; `src/config.ts` remains the runtime source of truth.
+
+The settings UI/CLI should recommend choosing a value with safety margin below the user's known host window. It must not claim all ChatGPT accounts have the same cutoff. At the 20-minute default, the existing 5-minute/15-minute routing thresholds remain unchanged; non-default deadlines derive equivalent thresholds proportionally from the effective value.
 
 ## Quality-preservation contract
 
@@ -32,7 +50,7 @@ Every call in a continued workflow should make **material, durable progress**: c
 ```text
 MCP tool dispatch
    |
-   +--> fixed DeadlineBudget(1_200_000 ms)
+   +--> DeadlineBudget(config.syncCallDeadlineMs; default 1_200_000 ms)
    |       |
    |       +--> cooperative synchronous work
    |       +--> remaining-budget propagation to child checks/processes
@@ -55,25 +73,26 @@ The design deepens existing seams. `src/server.ts` remains registration/orchestr
 
 ## Public behavior
 
-- Synchronous tools that can contain multiple long phases receive one shared 20-minute budget rather than a fresh timeout per phase.
+- Synchronous tools that can contain multiple long phases receive one shared effective configured budget rather than a fresh timeout per phase.
 - `run_checks` and `verify_changes` must stop scheduling new checks when the shared budget cannot safely accommodate another phase and return explicit partial/continuation metadata instead of silently dropping work.
 - Structured asynchronous verification gets explicit start tools that return `job_*` immediately; generic `job_start(command)` is intentionally rejected to avoid duplicating unrestricted Bash/process execution.
 - Job status/output/cancel/resume calls are short polling operations and never wait for job completion.
 - Expensive non-process scans may return an opaque resumable `batch_*` cursor so later calls continue from persisted state.
-- Diagnostics expose the fixed 1,200,000 ms contract, deadline yields, async routing, active durable jobs, and tools at elevated timeout risk.
+- Diagnostics expose the current effective deadline plus default/min/max values, deadline yields, async routing, active durable jobs, and tools at elevated timeout risk.
 
 ## Duration-aware routing guidance
 
-- Expected <= 5 minutes: synchronous is preferred when otherwise appropriate.
-- Expected 5–15 minutes: synchronous remains allowed, but structured async execution is preferred when variance is high.
-- Expected >= 15 minutes, unknown/high-variance heavy work, or work composed of several potentially long phases: route async before starting.
-- The 15-minute routing threshold is **not** the deadline. The hard synchronous deadline remains exactly 20 minutes.
+- Let `D` be the effective configured deadline. `sync_preferred = min(5 minutes, 25% of D)` and `async_preferred = 75% of D`.
+- Work between those cutoffs may remain synchronous when low variance; unknown/high-variance heavy work routes async before starting.
+- At the 20-minute default, these formulas preserve the original 5-minute and 15-minute thresholds.
+- Routing cutoffs are **not** deadlines; the effective deadline remains the configured `D`.
 
 ## Recommended-solution mapping
 
 | Recommendation | Plan |
 |---|---|
-| Exact 20-minute synchronous MCP deadline | 22 |
+| Configurable synchronous MCP deadline (20-minute default) | 22 |
+| CLI/local website profile deadline setting | 22 |
 | Quality preservation and material-progress invariant | 22, 26 |
 | Shared deadline propagation through `run_checks` / `verify_changes` | 23 |
 | Durable structured job core with persistence/recovery | 24 |
@@ -98,7 +117,7 @@ The design deepens existing seams. `src/server.ts` remains registration/orchestr
 
 Each subsystem requires a focused smoke with fake/short budgets, then `npm run build`. Shared MCP registration or instruction changes also require `npm run smoke`. Process/job concurrency or shutdown semantics require `npm run stress`. Dependency changes are not expected; if introduced, add audit and release-package checks.
 
-The final cumulative implementation gate must demonstrate: a synthetic composite operation that would exceed 20 minutes yields/resumes without losing required work; a long verification runs through `job_*` while status calls remain short; short work remains synchronous; Goal/process routing preserves full acceptance criteria; and no test or implementation claims an external ChatGPT limit was bypassed.
+The final cumulative implementation gate must demonstrate: synthetic composite operations that exceed both the default and a shorter configured deadline yield/resume without losing required work; a long verification runs through `job_*` while status calls remain short; short work remains synchronous; Goal/process routing preserves full acceptance criteria; and no test or implementation claims an external ChatGPT limit was bypassed.
 
 ## Non-goals
 

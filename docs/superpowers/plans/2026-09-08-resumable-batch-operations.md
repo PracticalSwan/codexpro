@@ -127,7 +127,7 @@ git commit -m "feat: add resumable analysis batches"
 
 ## Acceptance Criteria
 
-- Large non-process work can yield before the 20-minute boundary and resume by opaque `batch_*` ID.
+- Large non-process work can yield before the effective configured synchronous boundary and resume by opaque `batch_*` ID.
 - No background work runs between batch continuation calls.
 - Resumed completed results preserve the same quality/bounds as uninterrupted execution.
 - Stale source/input fingerprints invalidate continuation safely.

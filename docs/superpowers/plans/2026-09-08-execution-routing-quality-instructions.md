@@ -12,10 +12,10 @@
 
 ## Global Constraints
 
-- Exact synchronous deadline remains 20 minutes; routing thresholds below are advisory safety thresholds.
-- <=5 min: synchronous preferred when appropriate.
-- 5–15 min: synchronous allowed, async preferred for high variance.
-- >=15 min or unknown/heavy: use a managed process or structured job before starting.
+- Default synchronous deadline is 20 minutes; the effective deadline comes from `config.syncCallDeadlineMs`. Routing thresholds are advisory and derive from that effective value.
+- `sync_preferred` cutoff = `min(5 minutes, 25% of effective deadline)`.
+- `async_preferred` cutoff = `75% of effective deadline`; work between the preferred and async cutoffs may remain synchronous when low variance.
+- Unknown/high-variance heavy work should route async regardless of nominal estimate. At the 20-minute default these formulas preserve the original 5-minute/15-minute thresholds.
 - Multi-stage engineering with dependencies/review/projection: prefer Durable Goals when enabled and justified.
 - Never reduce scope, test coverage, review depth, safety checks, or acceptance criteria to fit one call.
 - Every continued call must materially advance durable state or verified evidence; do not busy-wait.
@@ -33,7 +33,7 @@
 
 - [ ] **Step 1: Add failing instruction assertions**
 
-Assert the generated instructions contain the exact `20 minutes` contract, state that it is a blocking-call deadline only, prohibit quality reduction, and direct long shell work to `start_workspace_process`, long structured verification to async job tools, and substantial multi-stage work to Durable Goals.
+Assert the generated instructions contain the effective configured deadline from `server_config`, identify 20 minutes as the default, state that it is a blocking-call deadline only, prohibit quality reduction, and direct long shell work to `start_workspace_process`, long structured verification to async job tools, and substantial multi-stage work to Durable Goals.
 
 Run: `node scripts/execution-routing-smoke.mjs`
 Expected: FAIL before instruction changes.
@@ -43,7 +43,7 @@ Expected: FAIL before instruction changes.
 The instruction must say, in substance:
 
 ```text
-Treat the 20-minute limit as a synchronous tool-call boundary, never a task-quality target.
+Treat the configured synchronous tool-call deadline (20 minutes by default) as a transport boundary, never a task-quality target.
 Do not rush, omit required work, or claim completion to fit it.
 If correct completion will not comfortably fit one call, preserve the full goal and switch to a resumable primitive.
 Use start_workspace_process for long shell commands, start_checks/start_verification for long verification, and Durable Goals for substantial multi-stage work with isolation/review needs.
@@ -65,11 +65,11 @@ When continuing across calls, the agent should complete one coherent phase, pers
 
 - [ ] **Step 1: Test boundary cases**
 
-Use explicit metadata, not AI prediction: expected 4 min -> `sync_preferred`; 10 min low variance -> `sync_allowed`; 16 min -> `async_preferred`; unknown high-variance command/check -> `async_preferred`; a dependency DAG/review-projection workflow -> `durable_goal_candidate`.
+Use explicit metadata, not AI prediction. At the 20-minute default: expected 4 min -> `sync_preferred`; 10 min low variance -> `sync_allowed`; 16 min -> `async_preferred`. Add a non-default 12-minute case proving the relative cutoffs change to 3/9 minutes. Unknown high-variance work remains `async_preferred`; a dependency DAG/review-projection workflow remains `durable_goal_candidate`.
 
 - [ ] **Step 2: Implement deterministic classification only**
 
-The helper may use explicit estimates, selected-check timeout/count, known operation category, and high-variance flags. It must not inspect prompts or invent a duration from source code. Keep thresholds centralized as `5 min`, `15 min`, and exact sync deadline `20 min`.
+The helper may use explicit estimates, selected-check timeout/count, known operation category, and high-variance flags. It must not inspect prompts or invent a duration from source code. Centralize threshold derivation from the effective deadline; do not separately hard-code 5/15 except as default-value regression expectations.
 
 - [ ] **Step 3: Surface hints additively**
 
@@ -94,7 +94,7 @@ Document examples for model training/rendering (`proc_*`), long test suites (`jo
 
 - [ ] **Step 3: Add developer implementation guidance**
 
-`DEVELOPMENT_WORKFLOW.md` should require new potentially-long tools to declare whether they are synchronous, process-backed, job-backed, or Goal-backed and how they honor the 20-minute transport deadline without weakening acceptance criteria.
+`DEVELOPMENT_WORKFLOW.md` should require new potentially-long tools to declare whether they are synchronous, process-backed, job-backed, or Goal-backed and how they honor the effective configured transport deadline without weakening acceptance criteria.
 
 ### Task 4: Verify instruction quality and commit
 
@@ -123,8 +123,8 @@ git commit -m "feat: route long work without reducing quality"
 
 ## Acceptance Criteria
 
-- ChatGPT is explicitly told that 20 minutes is a tool-call boundary, not a quality target.
+- ChatGPT is explicitly told that the configured deadline (20 minutes by default) is a tool-call boundary, not a quality target.
 - Guidance prohibits skipping scope/review/tests to fit the deadline.
 - Long shell, long verification, and multi-stage engineering route to the correct existing/new durable primitive.
-- Routing thresholds are deterministic and separate from the exact 20-minute hard deadline.
+- Routing thresholds are deterministic and derived from, but separate from, the effective configured deadline; the default remains 20 minutes.
 - Continued calls are instructed to make material persisted progress rather than busy-wait.

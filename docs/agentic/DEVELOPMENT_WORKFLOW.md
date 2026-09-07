@@ -19,7 +19,7 @@ This is the execution contract for future CodexPro development. It keeps work sp
 Planning work may create or refine `docs/agentic/**`, `docs/superpowers/specs/**`, and `docs/superpowers/plans/**`. It must not modify runtime source, dependencies, generated build output, profiles, tunnels, or external services.
 
 ## Implementation gate
-Implementation begins only when the user authorizes the exact plan scope. For single-plan work, read that plan and its referenced spec in full. For explicitly authorized Plans 12–21 batch execution, follow `docs/superpowers/plans/2026-09-06-roadmap-12-21-execution.md` on one dedicated integration worktree/branch, then read each subsystem spec/plan immediately before its milestone. Batch execution is continuous, but subsystem acceptance criteria, focused tests, review, and milestone commits remain distinct; never collapse the batch into one undifferentiated implementation.
+Implementation begins only when the user authorizes the exact plan scope. For single-plan work, read that plan and its referenced spec in full. For explicitly authorized Plans 12–21 batch execution, follow `docs/superpowers/plans/2026-09-06-roadmap-12-21-execution.md`. For explicitly authorized Plans 22–28 batch execution, follow `docs/superpowers/plans/2026-09-08-deadline-resilience-execution.md`. Use one dedicated cumulative integration worktree/branch for the authorized batch, then read each subsystem spec/plan immediately before its milestone. Batch execution is continuous, but subsystem acceptance criteria, focused tests, review, and milestone commits remain distinct; never collapse the batch into one undifferentiated implementation.
 
 ## Codex CLI prohibition
 - Do not use Codex CLI for CodexPro implementation, debugging, testing, review, delegation, or repository mutation. This includes `codex`, `codex exec`, `codex review`, `codex apply`, and all other Codex CLI subcommands.
@@ -47,10 +47,10 @@ Implementation begins only when the user authorizes the exact plan scope. For si
 - For single user-authorized CodexPro implementation or defect-fix work, after successful verification automatically update relevant docs/instructions, commit the intended change, integrate into `main`, push `origin/main`, and reinstall the global `codexpro-full` package when that install can be performed without violating the runtime-lifecycle rule below. For an explicitly authorized multi-plan batch, create verified milestone commits during the batch but perform integration, push, and global reinstall only once after the final cumulative gate. Releases/publication/deployment, force operations, and unrelated external mutations still require separate authorization; directly verify every external action actually performed.
 
 ## Long-running tool design rule
-- Plans 22–28 define a future fixed synchronous MCP deadline of exactly `1,200,000` ms (20 minutes). This is a transport/blocking-call boundary only, never a task-quality deadline.
+- Plans 22–28 define a future synchronous MCP deadline with a 20-minute (`1,200,000` ms) default and validated 5–60 minute per-profile setting. The effective value is a transport/blocking-call boundary only, never a task-quality deadline.
 - New or modified potentially-long tools must declare their execution class: synchronous, existing workspace process (`proc_*`), structured durable job (`job_*`), Durable Goal (`goal_*`), or resumable in-process batch (`batch_*`).
 - Never reduce requested scope, acceptance criteria, review depth, required verification, or safety checks to fit one call. If correct work will not comfortably fit, persist truthful progress and continue through the appropriate resumable primitive.
-- Composite synchronous operations must share one remaining deadline budget across phases; they may not reset the 20-minute budget for each child operation.
+- Composite synchronous operations must share one remaining effective deadline budget across phases; they may not reset the configured budget for each child operation.
 - Status/polling calls should return promptly and use condition-based progress. Repeated polling with no state change is not material progress.
 
 ## Runtime lifecycle rule

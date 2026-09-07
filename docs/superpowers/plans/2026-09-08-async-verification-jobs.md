@@ -74,7 +74,7 @@ The start tool creates/persists the job, launches the registered worker, and ret
 
 - [ ] **Step 1: Add deterministic routing-hint cases**
 
-Examples: multiple checks with configured per-check timeout that can exceed 15 minutes in aggregate, known stress/integration scripts, or unknown-duration selections return `recommended_execution="async"` and the matching async tool name.
+Examples: multiple checks whose aggregate configured timeout reaches the effective async-routing cutoff (75% of `syncCallDeadlineMs`), known stress/integration scripts, or unknown-duration selections return `recommended_execution="async"` and the matching async tool name.
 
 - [ ] **Step 2: Keep routing advisory unless `execution=auto` is explicitly introduced**
 

@@ -167,12 +167,15 @@ Runtime ownership remains outside the roadmap implementation itself: a running C
 
 ## 2026-09-08 deadline-resilience roadmap extension
 
-This extension addresses host-side tool-call windows without attempting to bypass them. The fixed CodexPro synchronous MCP deadline is **exactly 1,200,000 ms (20 minutes)**. It is a transport boundary only: user goals, requested scope, acceptance criteria, reasoning/review quality, and required verification must remain intact across continuation calls.
+This extension addresses host-side tool-call windows without attempting to bypass them. The CodexPro synchronous MCP deadline defaults to **exactly 1,200,000 ms (20 minutes)** and is planned as a validated **5–60 minute per-workspace profile setting** exposed through CLI and the authenticated local website. The effective value is a transport boundary only: user goals, requested scope, acceptance criteria, reasoning/review quality, and required verification must remain intact across continuation calls.
 
 ### Extension architecture
 
 ```text
-MCP dispatch -> fixed 20-minute DeadlineBudget
+settings CLI / authenticated local profile editor
+        |  saved syncCallDeadlineMs (next launch)
+        v
+MCP dispatch -> DeadlineBudget(effective runtime value; default 20 min)
         |              |
         |              +--> cooperative sync/composite work
         |
@@ -187,7 +190,8 @@ MCP dispatch -> fixed 20-minute DeadlineBudget
 
 | # | Feature | Priority | Plan | Main dependency |
 |---:|---|---|---|---|
-| 53 | Exact 20-minute synchronous call budget | P0 | 22 | 03, 04 |
+| 53 | Configurable synchronous call budget (20-minute default) | P0 | 22 | 03, 04 |
+| 63 | CLI/local-admin deadline profile setting | P0 | 22 | 53 |
 | 54 | Quality/material-progress deadline invariant | P0 | 22, 26 | 22 |
 | 55 | Composite verification deadline propagation | P0 | 23 | 05, 22 |
 | 56 | Durable structured `job_*` core | P1 | 24 | 03, 04, 22 |
@@ -204,8 +208,8 @@ MCP dispatch -> fixed 20-minute DeadlineBudget
 
 ### Extension design rules
 
-- The 20-minute value is fixed; it is not a performance target and does not justify reducing requested work.
-- Near the deadline, stop starting new synchronous phases, persist a truthful continuation, and continue the same goal in later calls.
+- The 20-minute value is the default, not a universal assumption. Users may choose 5–60 minutes to stay below their own host closure window; no configured value is a performance target or justification for reducing requested work.
+- Near the effective configured deadline, stop starting new synchronous phases, persist a truthful continuation, and continue the same goal in later calls.
 - Reuse the existing `WorkspaceProcessManager` for long shell commands and Durable Goals for multi-stage isolated work.
 - Structured jobs are producer-registered and are not a second generic command runner.
 - Polling/status tools return promptly and use condition-based progress rather than long blocking waits.

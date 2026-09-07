@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ensure `run_checks` and `verify_changes` share one exact 20-minute call budget across all selected checks and return resumable partial state instead of accumulating per-check timeouts past the tool window.
+**Goal:** Ensure `run_checks` and `verify_changes` share one effective configured synchronous call budget across all selected checks and return resumable partial state instead of accumulating per-check timeouts past the user's selected transport window.
 
 **Architecture:** Propagate the current `DeadlineBudget` into `checksOps.ts`. Before each check, compute an effective child timeout from the remaining call budget; when the deadline prevents completing the current/next check, terminate only that owned child process and return explicit incomplete/remaining-check metadata. Do not mark unexecuted checks as passed or silently discard them.
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- One MCP invocation gets one 1,200,000 ms budget, not 1,200,000 ms per selected check.
+- One MCP invocation gets one `config.syncCallDeadlineMs` budget (20 minutes by default), not a fresh full budget per selected check.
 - A deadline yield is not a verification failure and is not verification success.
 - Required checks remain pending until actually completed.
 - Check subprocesses must be terminated through existing owned-process termination semantics before the tool returns.
@@ -125,7 +125,7 @@ git commit -m "feat: bound composite verification calls"
 
 ## Acceptance Criteria
 
-- Two 15-minute checks can no longer create one ~30-minute synchronous MCP call.
+- At the default 20-minute setting, two 15-minute checks can no longer create one ~30-minute synchronous MCP call; at any configured value, child checks share that one effective call budget.
 - Completed check evidence is retained; incomplete required checks remain explicitly pending.
 - Deadline-limited subprocesses are stopped before return.
 - Partial verification is represented as incomplete, never as a pass.

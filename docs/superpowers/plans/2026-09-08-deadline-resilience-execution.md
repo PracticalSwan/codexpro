@@ -4,7 +4,7 @@
 
 **Goal:** Implement Plans 22–28 as one coherent deadline-resilience program while preserving each subsystem's tests, review boundary, and milestone commit.
 
-**Architecture:** Establish the exact 20-minute synchronous deadline first, then make composite verification cooperative, add durable structured jobs and async verification, teach ChatGPT execution routing, add resumable in-process batches, and finish with unified diagnostics. Use one isolated cumulative worktree/branch if the user later authorizes batch implementation.
+**Architecture:** Establish the configurable synchronous deadline first (20-minute default, 5–60 minute profile range), then make composite verification cooperative, add durable structured jobs and async verification, teach ChatGPT execution routing from the effective value, add resumable in-process batches, and finish with unified diagnostics. Use one isolated cumulative worktree/branch if the user later authorizes batch implementation.
 
 **Tech Stack:** Existing CodexPro TypeScript/MCP runtime, Node workers, Git worktrees, current smoke/stress harness.
 
@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **Exact synchronous call deadline: 1,200,000 ms (20 minutes).**
+- **Default synchronous call deadline: 1,200,000 ms (20 minutes); effective configured range: 300,000–3,600,000 ms (5–60 minutes).**
 - Deadline is transport-only; the user's goal, scope, acceptance criteria, reasoning quality, review, and required verification remain unchanged.
 - If correct work cannot fit one call, preserve state and continue; never rush or falsely claim completion.
 - No generic arbitrary-command `job_start`; keep long shell ownership in `proc_*` and multi-stage engineering in `goal_*`.
@@ -26,10 +26,11 @@
 
 Plan 23 and Plan 24 are architecturally independent after Plan 22, but the sequence above reduces integration ambiguity. Plan 25 requires Plan 24. Plan 26 should describe only capabilities already implemented by 22–25. Plan 27 uses the deadline context from 22 but not the job core. Plan 28 integrates evidence from all earlier plans.
 
-## Milestone 22 — Exact deadline and quality invariant
+## Milestone 22 — Configurable deadline, settings surfaces, and quality invariant
 
-- [ ] Implement `src/deadline.ts` with the fixed production constant and fake-clock tests.
-- [ ] Wrap MCP dispatch in cooperative deadline context.
+- [ ] Implement `src/deadline.ts` with 20-minute default, 5–60 minute bounds, proportional reserve, and fake-clock tests.
+- [ ] Add `syncCallDeadlineMs` to runtime/profile status and expose validated `--sync-call-deadline-minutes` through launcher/settings plus the authenticated website profile editor.
+- [ ] Wrap MCP dispatch in cooperative deadline context using the effective runtime value.
 - [ ] Verify focused deadline smoke, MCP compatibility smoke, and build.
 - [ ] Review for unsafe generic cancellation or any path that could return while an unmanaged mutation continues.
 - [ ] Make the Plan 22 milestone commit.
@@ -38,7 +39,7 @@ Plan 23 and Plan 24 are architecturally independent after Plan 22, but the seque
 
 - [ ] Give `run_checks` / `verify_changes` one shared remaining budget.
 - [ ] Add explicit incomplete/deadline-yielded/remaining-check metadata.
-- [ ] Prove a synthetic multi-check call cannot accumulate independent timeouts past 20 minutes.
+- [ ] Prove a synthetic multi-check call cannot accumulate independent timeouts past the effective configured deadline, including default and shorter custom-budget cases.
 - [ ] Verify focused checks/repair smokes, full smoke, and milestone commit.
 
 ## Milestone 24 — Durable structured jobs
@@ -58,7 +59,7 @@ Plan 23 and Plan 24 are architecturally independent after Plan 22, but the seque
 ## Milestone 26 — Execution routing without quality loss
 
 - [ ] Add deterministic execution hints and server guidance for sync / `proc_*` / `job_*` / `goal_*`.
-- [ ] State explicitly that 20 minutes is never a quality/completeness target.
+- [ ] State explicitly that the configured deadline (20 minutes by default) is never a quality/completeness target.
 - [ ] Require material persisted progress across continued calls and condition-based polling.
 - [ ] Update ChatGPT/operator/developer instructions only to advertise capabilities already present.
 - [ ] Verify routing/instruction smoke, full smoke, and milestone commit.
@@ -73,8 +74,8 @@ Plan 23 and Plan 24 are architecturally independent after Plan 22, but the seque
 ## Milestone 28 — Observability and diagnostics
 
 - [ ] Add bounded/redacted deadline/job/batch lifecycle telemetry.
-- [ ] Expose exact `sync_call_deadline_ms=1200000` and continuation capability state through existing diagnostics.
-- [ ] Add timeout-risk inventory and non-configurable operator status display.
+- [ ] Expose current effective/default/min/max deadline values and continuation capability state through existing diagnostics.
+- [ ] Add timeout-risk inventory and current-runtime versus saved-next-run deadline display; reuse Plan 22 for editing rather than creating a second settings control.
 - [ ] Verify diagnostics/full smoke and stress if shared concurrency instrumentation changed.
 - [ ] Make the final subsystem milestone commit.
 
@@ -98,7 +99,7 @@ npm run release:pack
 git diff --check
 ```
 
-Also run each new focused smoke individually first. Do not simulate correctness only at the 20-minute constant: use injected short budgets to prove yield/resume deterministically, then one realistic end-to-end async workflow to prove the MCP calls themselves stay short while local work continues.
+Also run each new focused smoke individually first. Do not simulate correctness only at the 20-minute default: use injected short budgets and at least one non-default configured budget to prove yield/resume deterministically, then one realistic end-to-end async workflow to prove the MCP calls themselves stay short while local work continues.
 
 ## Integration / Release Boundary
 
@@ -106,7 +107,7 @@ If the user later authorizes Plans 22–28 as one batch, use one isolated cumula
 
 ## Final Acceptance Criteria
 
-- No synchronous CodexPro MCP operation intentionally requires more than exactly 20 minutes of open-call time.
+- No synchronous CodexPro MCP operation intentionally requires more open-call time than the effective configured deadline; the default remains exactly 20 minutes.
 - Long work continues via `proc_*`, `job_*`, `goal_*`, or `batch_*` without reducing the user's original quality bar.
 - A deadline yield preserves completed evidence and exact remaining work.
 - ChatGPT guidance tells the agent to continue the same goal across calls, not compress it into a lower-quality answer.

@@ -73,10 +73,10 @@
 **Decision:** Agents may not stop a running CodexPro runtime without explicit user approval for that stop and may never start or restart CodexPro. If stopping is approved, stop only the required CodexPro-owned process tree and leave it stopped. If global reinstall requires an unapproved stop, defer the reinstall instead of disrupting the live runtime.
 **Why:** A running CodexPro instance is an active user-owned control channel. Automatically terminating or recreating it can sever the session, alter tunnel state, and create side effects outside the source-code change being implemented.
 
-## D-019 — The 20-minute deadline is a transport boundary, not a quality target
-**Decision:** Future synchronous MCP deadline handling uses an exact fixed budget of `1,200,000` ms (20 minutes). The deadline never lowers the user's requested scope, acceptance criteria, reasoning/review depth, required tests, or safety checks. Work that cannot finish correctly inside one call must yield to a truthful durable continuation.
-**Why:** Optimizing the model to finish before a host cutoff would trade correctness for latency. CodexPro should instead preserve the complete goal across calls.
-**Revisit only if:** the host platform exposes a stronger verified continuation/task primitive; even then, the quality-preservation invariant remains.
+## D-019 — The configured synchronous deadline is a transport boundary, not a quality target
+**Decision:** Future synchronous MCP deadline handling defaults to `1,200,000` ms (20 minutes) but is user-configurable per saved workspace profile from 5–60 minutes through CLI and the authenticated local profile editor. The deadline never lowers the user's requested scope, acceptance criteria, reasoning/review depth, required tests, or safety checks. Work that cannot finish correctly inside one call must yield to a truthful durable continuation.
+**Why:** Host/tool closure windows may differ or change, so the operator needs a safety-margin setting; optimizing the model to finish before any chosen cutoff would still trade correctness for latency. CodexPro should preserve the complete goal across calls.
+**Revisit only if:** the host platform exposes a reliable negotiated deadline/continuation primitive; even then, the quality-preservation invariant remains.
 
 ## D-020 — Long work uses distinct existing/durable execution roles
 **Decision:** Long shell commands remain owned by `proc_*`; structured long operations may use a bounded persistent `job_*` substrate; expensive in-process scans may use `batch_*` cursors; multi-stage isolated engineering remains owned by Durable Goals. A future job substrate must not become another generic command runner or workflow DSL.

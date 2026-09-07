@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Diagnostics report the internal fixed deadline as exactly `1_200_000` ms.
+- Diagnostics report the current effective `sync_call_deadline_ms` and its minutes equivalent; 1,200,000 ms is the default, not a universal fixed runtime value.
 - Do not claim CodexPro controls or bypasses ChatGPT's external limit.
 - Telemetry stores tool/job identifiers, durations, states, and bounded reasons—not prompts, source content, raw command output, tokens, or secrets.
 - A deadline yield is a distinct state from failure and success.
@@ -54,8 +54,11 @@ Use existing request/completion telemetry points and job/batch state transitions
 Assert diagnostics report:
 
 ```text
-sync_call_deadline_ms = 1200000
-sync_call_deadline_minutes = 20
+sync_call_deadline_ms = <current effective value>
+sync_call_deadline_minutes = <current effective minutes>
+sync_call_deadline_default_ms = 1200000
+sync_call_deadline_min_ms = 300000
+sync_call_deadline_max_ms = 3600000
 managed_processes = available/unavailable
 structured_jobs = available/unavailable
 resumable_batches = available/unavailable
@@ -68,19 +71,19 @@ Also expose recent aggregate counts for deadline yields/async routes without lis
 
 Report known high-risk synchronous surfaces such as composite verification when async alternatives are available. Risk entries should name the tool and recommended primitive, not guess how long a specific user task will take.
 
-### Task 3: Surface bounded progress in the local operator view
+### Task 3: Surface bounded progress and effective deadline in the local operator view
 
 **Files:**
-- Modify: `src/http.ts` only if the current authenticated status page already owns diagnostics rendering
-- Modify: `scripts/settings-smoke.mjs` or `scripts/diagnostics-smoke.mjs` as appropriate
+- Modify: `src/http.ts` only for diagnostics/current-vs-saved rendering; the editable profile control is implemented in Plan 22
+- Modify: `scripts/http-smoke.mjs` or `scripts/diagnostics-smoke.mjs` as appropriate
 
 - [ ] **Step 1: Add non-secret status summaries**
 
-Show the fixed 20-minute synchronous contract, number of active structured jobs, and whether a recent operation yielded to continuation. Do not display job command text, source paths beyond existing sanitized conventions, or auth values.
+Show the currently running synchronous deadline, the saved next-run deadline when different, number of active structured jobs, and whether a recent operation yielded to continuation. Do not display job command text, source paths beyond existing sanitized conventions, or auth values.
 
-- [ ] **Step 2: Keep next-run settings separate**
+- [ ] **Step 2: Keep current runtime and saved next-run settings separate**
 
-The deadline is not a user-editable setting. Do not add a control that can raise/lower `1_200_000` ms.
+Reuse the Plan 22 editable profile field; do not introduce a second diagnostics-only editor. Clearly distinguish `current effective` from `saved for next launch`, because changing the profile does not mutate the running runtime.
 
 ### Task 4: Verify and commit
 
@@ -114,8 +117,8 @@ git commit -m "feat: expose deadline resilience diagnostics"
 
 ## Acceptance Criteria
 
-- Diagnostics show the exact fixed 20-minute synchronous deadline.
+- Diagnostics show the current effective deadline, the 20-minute default, and the supported 5–60 minute range.
 - Deadline yield/async/job/batch states are observable without exposing sensitive content.
 - Operators can identify known timeout-risk surfaces and the recommended durable primitive.
-- The authenticated local page cannot configure the deadline.
+- The authenticated local page reuses Plan 22's validated profile control and distinguishes saved next-run value from current runtime value.
 - Diagnostics never imply the external ChatGPT tool window was bypassed.
