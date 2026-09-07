@@ -15,7 +15,7 @@
 - Explicit `continuation_request` is preferred over inference.
 - Inference must be conservative and fail closed on missing/ambiguous state.
 - Active local durable work suppresses continuation until model attention is actually needed.
-- Browser watchdog never submits messages; user click remains mandatory.
+- Continuation/watchdog behavior exists only when `continuationEnabled=true`. When disabled, no continuation inference, browser notification, or Telegram notification is started. The watchdog never submits messages; explicit user authorization remains mandatory.
 - No rapid polling/busy loops; state transitions and notifications are bounded/idempotent.
 
 ---
@@ -48,7 +48,7 @@ Only one outstanding nonce is allowed. Dispatch increments `continuationCount` o
 - Modify: `scripts/continuation-watchdog-smoke.mjs`
 
 **Interfaces:**
-- Consumes `RuntimeContinuationSnapshot { runtimeGenerationId, syncCallDeadlineMs, transportState, observedAt }`, grace setting, browser/page observation generation + coarse state, last server-received user interaction, and owned durable-work status. It must never fall back to `DEFAULT_SYNC_CALL_DEADLINE_MS` or a saved next-run profile value while a current runtime snapshot exists.
+- Consumes `RuntimeContinuationSnapshot { runtimeGenerationId, syncCallDeadlineMode, syncCallDeadlineMs, transportState, observedAt }`, grace setting, browser/page observation generation + coarse state, last server-received user interaction, and owned durable-work status. It must never fall back to the default/saved profile while a current runtime snapshot exists.
 
 - [ ] **Step 1: Add explicit-request readiness tests**
 
@@ -56,7 +56,7 @@ An armed incomplete task with explicit `continuation_request`, current transport
 
 - [ ] **Step 2: Add inferred-interruption tests**
 
-Without explicit request, require stale MCP heartbeat beyond the **current runtime** `syncCallDeadlineMs + unexpectedInterruptionGraceMs`, current transport `ready`, page stably idle (not streaming/busy/error/blocked/unknown), task incomplete, valid binding/current revision, and no active proc/job/Goal requiring patience. Missing one condition keeps the task non-ready. Add 20-minute-default and non-default 5/12/60-minute fixtures so a hidden hard-coded 20-minute assumption fails tests.
+Without explicit request, require current runtime mode `bounded`, then stale MCP heartbeat beyond `syncCallDeadlineMs + unexpectedInterruptionGraceMs`, transport `ready`, stable-idle page, task incomplete, valid binding/current revision, no manual-turn pause, and no productive proc/job/Goal. **Unlimited/observe disables timeout-inferred readiness entirely** because no finite CodexPro cutoff exists; only explicit semantic `continuation_request` may create readiness there. Add 20-minute-default, 5/12/60-minute, and observe-mode fixtures.
 
 - [ ] **Step 3: Integrate durable-work awareness**
 
@@ -68,7 +68,7 @@ When `runtimeGenerationId` changes, transport goes unavailable→ready, browser/
 
 - [ ] **Step 5: Treat manual user/platform activity as a durable blocker**
 
-A manual user message submission or recognized Stop-generating click clears ready nonce/notification and transitions to `paused_by_user`/needs-reconciliation. Generic ChatGPT busy/error/retry/unknown states suppress readiness indefinitely; watchdog never clicks Retry or changes models. Only a later semantic checkpoint/request or explicit operator re-arm can resume inference after user pause.
+A manual user message submission or recognized Stop-generating click clears ready nonce plus browser/Telegram notification/action tokens and transitions to `paused_by_user` with `manualTurnPending`. Generic ChatGPT busy/error/retry/unknown states suppress readiness indefinitely. Only `continuation_reconcile` from a later semantic controller turn may resolve the manual pause as resume/redirect/supersede/cancel; an ordinary heartbeat alone cannot clear it.
 ### Task 3: Add anti-loop, cooldown, and notification rules
 
 **Files:**
@@ -88,9 +88,9 @@ Prove duplicate evaluations produce one notification, dispatch cannot recur insi
 
 When continuation becomes ready, set an extension badge and issue one browser notification keyed to task revision + nonce. Clicking the notification focuses the bound chat/popup; it does not submit the message. Completion/cancel, route invalidation, user pause, auth loss, or transport loss immediately clears the badge/notification when the companion next receives authoritative state.
 
-- [ ] **Step 3: Suppress when user is active**
+- [ ] **Step 3: Suppress when user is active or has sent a manual turn**
 
-Recent composer interaction or manually focused blocking state suppresses readiness/notification until a fresh safe observation is received.
+Recent composer interaction suppresses readiness. A completed manual submit/Stop event is stronger: it invalidates the current nonce/actions and keeps the task paused until semantic reconciliation, even after the page becomes idle again. Add race tests where the user sends a manual prompt while a browser popup or Telegram button is already visible; stale actions must fail by revision/nonce.
 
 ### Task 4: Add fail-closed disconnect/auth recovery
 
@@ -131,7 +131,7 @@ git commit -m "feat: add continuation watchdog and recovery"
 ## Acceptance Criteria
 
 - Explicit continuation requests become ready quickly when safe.
-- Unexpected interruption inference requires the **current runtime-configured** deadline + grace and all safety predicates; saved/default deadline values are never fallback timing authority.
+- Unexpected interruption inference requires the **current bounded runtime** deadline + grace and all safety predicates; saved/default values are never fallback timing authority. Unlimited/observe never substitutes the 20-minute reference into inference; timeout inference stays disabled until bounded mode returns.
 - Runtime/tunnel loss, restart, browser reconnect after a long gap, sleep/clock jumps, manual user turns/Stop actions, and platform busy/error/unknown states reset or suppress inference rather than producing stale readiness.
 - Completed/canceled terminal revisions clear prepared authorization and stale browser controls cannot revive them.
 - Active proc/job/Goal work, user activity, auth problems, streaming, or ambiguous UI suppress readiness.

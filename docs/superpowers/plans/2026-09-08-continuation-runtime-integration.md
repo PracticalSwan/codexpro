@@ -4,7 +4,7 @@
 
 **Goal:** Integrate task-aware continuation with the configurable deadline, composite verification, durable jobs, processes, batches, Durable Goals, and ChatGPT instructions without duplicating those execution systems.
 
-**Architecture:** Continuation remains a conversation-resume layer. Existing execution primitives own actual long work; continuation state observes their durable status plus a launcher/runtime snapshot (`runtimeGenerationId`, current effective deadline, transport readiness), and ChatGPT uses semantic lifecycle tools to checkpoint/request/complete only when another model turn is genuinely required. Saved next-run settings never substitute for current runtime truth.
+**Architecture:** Continuation remains a conversation-resume layer. Existing execution primitives own actual long work; continuation state observes their durable status plus a launcher/runtime snapshot (`runtimeGenerationId`, current deadline mode/value, transport readiness), and ChatGPT uses semantic lifecycle tools to checkpoint/request/complete only when another model turn is genuinely required. Saved next-run settings never substitute for current runtime truth.
 
 **Tech Stack:** Existing Plans 22–28 modules, continuation modules from Plans 29–34, server instructions, activity/evidence ledger.
 
@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Plans 22–28 remain authoritative for deadline/process/job/batch/Goal execution.
-- Browser continuation never turns synchronous work into a lower-quality rushed result.
+- Tool-time awareness exists regardless of continuation settings. Continuation logic is inert unless `continuationEnabled=true` and never turns synchronous work into a lower-quality rushed result.
 - Local durable work should continue without unnecessary browser/model turns.
 - ChatGPT must explicitly complete/cancel the continuation task after verified semantic completion.
 - User-gated dispatch is the only send path in version 1: Plan 32 browser click or, when Plan 37 is enabled, a validated paired Telegram callback. Watchdogs/timers never create dispatch authorization.
@@ -29,7 +29,7 @@
 - Modify: `scripts/continuation-watchdog-smoke.mjs`
 
 **Interfaces:**
-- Every MCP dispatch associated with an armed session refreshes continuation heartbeat after normal auth/policy validation and before tool execution. Generate one opaque random `runtimeGenerationId` per launcher start and persist it only in the sanitized runtime-status record alongside current `syncCallDeadlineMs` and `transportState=ready` after the selected tunnel/local transport is actually ready. Cleanup, user quit, or tunnel child exit removes/invalidates that snapshot rather than leaving stale `ready` state.
+- Every MCP dispatch associated with an armed session refreshes continuation heartbeat after normal auth/policy validation and before tool execution. Generate one opaque random `runtimeGenerationId` per launcher start and persist it only in the sanitized runtime-status record alongside current `syncCallDeadlineMode`, `syncCallDeadlineMs`, and `transportState=ready` after the selected tunnel/local transport is actually ready. Cleanup, user quit, or tunnel child exit removes/invalidates that snapshot rather than leaving stale `ready` state.
 - [ ] **Step 1: Add session-association tests**
 
 Prove unrelated MCP sessions/workspaces cannot refresh another task, and a resumed continuation turn can re-associate only through the task ID plus validated workspace/session state. Prove restart creates a new runtime generation, current runtime status carries the configured non-default deadline, transport exit/removal cannot remain `ready`, and a stale pre-restart heartbeat is not reused for inferred interruption.
@@ -51,7 +51,7 @@ Heartbeat indicates activity only; it may not mutate current phase, remaining wo
 
 - [ ] **Step 1: Add default/custom-deadline cases**
 
-With fake 20-minute, 12-minute, and boundary 5/60-minute budgets, verify continuation readiness consumes the **current runtime snapshot value** and configured grace without altering the underlying verification/check result. Add a saved-profile-20/current-runtime-12 case and the inverse so any code reading the profile/default instead of current runtime fails.
+With fake bounded 20-minute, 12-minute, and boundary 5/60-minute budgets, verify continuation readiness consumes the **current runtime snapshot mode/value** and configured grace without altering the underlying verification/check result. Add saved-profile/current-runtime mismatch cases plus observe mode proving timeout inference is disabled rather than silently using the 20-minute reference.
 
 - [ ] **Step 2: Preserve incomplete verification semantics**
 
@@ -84,7 +84,7 @@ Examples: finished long verification needing interpretation, Goal reaching `awai
 
 - [ ] **Step 1: Add failing instruction assertions**
 
-Require guidance to arm continuation only for substantial tasks likely to span calls when the feature is enabled; checkpoint after material progress; register only bounded continuation intents that reference recorded remaining work; use `proc_*`/`job_*`/`goal_*`/`batch_*` for actual long work; request continuation before a truthful yield; complete only after acceptance criteria/verification; and call `continuation_cancel`/disarm when the user explicitly stops/cancels the overall task. A user Stop-generating/manual-turn browser event pauses inferred continuation until semantic reconciliation.
+Require guidance to arm continuation only when `continuationEnabled=true` and a substantial task is likely to span calls; never prompt for browser/Telegram setup when disabled. Checkpoint after material progress; register only bounded continuation intents that reference recorded remaining work; use `proc_*`/`job_*`/`goal_*`/`batch_*` for actual long work; request continuation before a truthful yield; complete only after acceptance criteria/verification; and call `continuation_cancel`/disarm when the user explicitly stops/cancels the overall task. A user Stop-generating/manual-turn browser event pauses inferred continuation until semantic reconciliation.
 
 - [ ] **Step 2: Encode no-rush/no-auto-send behavior**
 
@@ -93,6 +93,10 @@ Instructions must state that configured deadlines are continuation boundaries, n
 - [ ] **Step 3: Define recovery on next turn**
 
 On a user-dispatched continuation message, ChatGPT first calls `continuation_status`, checks terminal/revision state and current transport/runtime snapshot, recovers canonical remaining work/durable subsystem state plus any `selectedContinuationIntentId`, avoids redoing verified work, then resumes the same goal. A focused intent changes priority within recorded remaining work only; it never expands scope. If the task is already completed/canceled or transport is unavailable, it must not recreate continuation state merely because the fixed message arrived.
+
+- [ ] **Step 4: Define manual-prompt reconciliation**
+
+When `continuation_status` reports `manualTurnPending`, the host model uses the current user prompt already visible to ChatGPT—not browser scraping—to choose exactly one `continuation_reconcile` disposition. Simple continuation -> `resume`; changed priorities/requirements inside the same goal -> `redirect` with updated bounded checkpoint metadata; materially new task -> `supersede` old state and separately arm the new task only if continuation is enabled/warranted; explicit stop/cancel -> `cancel`; ambiguous relation -> leave paused. A manual `continue` therefore works naturally without clicking a continuation button.
 
 ### Task 5: Integrate bounded evidence/diagnostics hooks
 
@@ -107,7 +111,7 @@ Record arm/checkpoint/request/ready/dispatched/ack/completed/canceled/auth-requi
 
 - [ ] **Step 2: Expose capability state**
 
-Diagnostics report continuation feature enabled/disabled, paired browser available, auth enum, active task count, user-action-required state, current runtime generation/deadline, and transport availability. Do not expose private chat identifiers. Saved next-run deadline is separately labeled and never presented as the watchdog timing value for the current process.
+Diagnostics report continuation feature enabled/disabled, paired browser available, auth enum, active task count, user-action-required state, current runtime generation/deadline mode/value, and transport availability. Do not expose private chat identifiers. Saved next-run deadline is separately labeled and never presented as the watchdog timing value for the current process.
 ### Task 6: Verify and commit the milestone
 
 - [ ] **Step 1: Run focused integration gates**
@@ -138,5 +142,7 @@ git commit -m "feat: integrate task-aware continuation routing"
 - Background work suppresses unnecessary browser turns until semantic attention is needed.
 - A resumed turn recovers durable state before doing more work.
 - Completion/cancel remains explicit, terminal-state precedence invalidates stale browser/Telegram authorization, and every dispatch remains user-gated.
-- Continuation timing stays synchronized to the actual current runtime deadline/transport generation and cannot silently fall back to the 20-minute default or saved next-run settings.
+- Continuation timing stays synchronized to the actual current runtime deadline mode/value/transport generation and cannot silently fall back to the 20-minute reference or saved next-run settings; observe mode disables timeout inference rather than substituting a finite value.
 - Explicitly stopped/absent CodexPro transport suppresses continuation and is never automatically restarted by the continuation subsystem.
+- Manual prompts supersede stale automation until semantic resume/redirect/supersede/cancel reconciliation; no prompt content is stored in continuation/browser state.
+- With continuation disabled, server instructions still use deadline/process/job/Goal/batch awareness but never arm tasks, launch browser setup, or request Telegram setup.

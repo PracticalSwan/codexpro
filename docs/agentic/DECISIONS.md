@@ -74,7 +74,7 @@
 **Why:** A running CodexPro instance is an active user-owned control channel. Automatically terminating or recreating it can sever the session, alter tunnel state, and create side effects outside the source-code change being implemented.
 
 ## D-019 — The configured synchronous deadline is a transport boundary, not a quality target
-**Decision:** Future synchronous MCP deadline handling defaults to `1,200,000` ms (20 minutes) but is user-configurable per saved workspace profile from 5–60 minutes through CLI and the authenticated local profile editor. The deadline never lowers the user's requested scope, acceptance criteria, reasoning/review depth, required tests, or safety checks. Work that cannot finish correctly inside one call must yield to a truthful durable continuation.
+**Decision:** Tool-time awareness is enabled by default. Normal synchronous handling is bounded at `1,200,000` ms (20 minutes), configurable from 5–60 minutes; explicit Unlimited/observe mode exists only for temporary harmless host-window discovery and does not turn normal work into unbounded synchronous execution. No timing mode lowers scope, acceptance criteria, reasoning/review depth, required tests, or safety checks. Work that cannot finish correctly inside one call must yield to a truthful durable continuation.
 **Why:** Host/tool closure windows may differ or change, so the operator needs a safety-margin setting; optimizing the model to finish before any chosen cutoff would still trade correctness for latency. CodexPro should preserve the complete goal across calls.
 **Revisit only if:** the host platform exposes a reliable negotiated deadline/continuation primitive; even then, the quality-preservation invariant remains.
 
@@ -83,7 +83,7 @@
 **Why:** Separating execution roles keeps ownership, cancellation, persistence, policy, and recovery understandable while solving the tool-window problem without duplicating proven process/Goal machinery.
 
 ## D-021 — Browser continuation is human-gated, not a restriction bypass
-**Decision:** A future browser continuation companion may maintain task-aware readiness, bind/focus one ChatGPT conversation, and prepare a fixed continuation action, but version 1 may submit a message only after the user explicitly presses **Continue task**. It may not scrape ChatGPT output, auto-submit, click approvals/login/safety controls, or attempt to bypass host tool/session restrictions.
+**Decision:** A future continuation companion may maintain task-aware readiness and bind/focus one ChatGPT conversation, but continuation is optional/default-off and version 1 may submit only after a contemporaneous explicit user authorization from the browser **Continue task** button or the exactly paired Telegram inline action. It may not scrape ChatGPT output, auto-submit, click approvals/login/safety controls, or attempt to bypass host tool/session restrictions.
 **Why:** Conversation resumption must preserve user control and product/security boundaries rather than converting a transport limit into an autonomous browser loop.
 
 ## D-022 — ChatGPT authentication state belongs to a dedicated browser profile
@@ -109,3 +109,11 @@
 ## D-027 — Final continuation acceptance uses a fresh ChatGPT-session report handoff
 **Decision:** After implementation and package installation, final operator acceptance includes a new ChatGPT conversation with CodexPro Full available. That session exercises the installed runtime using disposable continuation state and emits a sanitized Markdown report that the user copies back to the maintenance conversation. The test session does not modify CodexPro source unless separately authorized.
 **Why:** A fresh session validates real connector/runtime behavior independently of the implementation conversation while keeping the evidence review human-controlled and reproducible.
+
+## D-028 — Tool-time awareness is baseline; conversation continuation is opt-in
+**Decision:** Deadline/tool-time awareness and durable long-work routing are baseline behavior enabled independently of continuation. Browser continuation defaults off; Telegram defaults off and is unavailable until continuation is enabled. Operators may opt into either later without changing the baseline execution model.
+**Why:** Users benefit from avoiding host-window failures even if they do not want browser automation, persistent browser login, or Telegram setup.
+
+## D-029 — Manual user turns outrank prepared continuation
+**Decision:** An ordinary user message or Stop-generating action in the bound chat invalidates prepared browser/Telegram authorization without reading message text. The continuation task pauses until the host model reconciles the current user prompt as resume, redirect within the same task, supersede with a new task, or cancel; ambiguity remains paused.
+**Why:** A user's new prompt can intentionally continue, redirect, or replace prior work. Treating it as either automatic cancellation or automatic continuation would violate user intent and can create duplicate turns.

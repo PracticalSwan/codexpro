@@ -40,9 +40,9 @@ Expected: FAIL because the adapter does not exist.
 
 Prefer stable route patterns, semantic element roles, accessible labels, and composer/send capability checks. Canonicalize benign URL decoration but require a stable opaque conversation identity before binding. Do not depend on generated CSS class names. Centralize all ChatGPT-specific DOM assumptions in this one adapter so UI breakage fails closed rather than spreading across the extension. Generic busy/error/retry states suppress dispatch; the adapter never clicks Retry, switches models, or dismisses safety/approval UI.
 
-- [ ] **Step 3: Add recent-user-input suppression**
+- [ ] **Step 3: Add recent-user-input and manual-submit suppression**
 
-Track only a local timestamp for user input/focus activity in the composer. Do not record typed text. Report recent interaction to the controller so continuation readiness cannot race the user.
+Track only local timestamps/events for composer activity. A send triggered without the extension's currently consumed `ContinuationDispatchAuthorization` is a manual user turn: notify the controller with reason `manual_message`, clear cached readiness/actions, and let the user's message submit normally. Do not intercept, delay, copy, hash, or record the typed text. A recognized Stop-generating click similarly reports `stop_generating`.
 
 ### Task 2: Implement explicit conversation binding
 
@@ -82,7 +82,7 @@ The popup must show the armed task title/short ID and a **Bind this chat** butto
 
 - [ ] **Step 1: Add dispatch precondition tests**
 
-Reject dispatch when task is not continuation-ready, task revision is stale, nonce is stale/missing, wrong chat is active, signed out, response is streaming, platform state is not stable idle, composer/send control is unavailable, blocking interaction exists, user typed/submitted manually recently, user pressed Stop generating, transport is unavailable, or a dispatch is already awaiting acknowledgement. The user-click handler must fetch/consume the latest server revision+nonce immediately before DOM submission; stale popup state cannot authorize a send after completion/cancel/rebind.
+Reject dispatch when task is not continuation-ready, task revision is stale, nonce is stale/missing, wrong chat is active, signed out, response is streaming, platform state is not stable idle, composer/send control is unavailable, blocking interaction exists, `manualTurnPending`/user pause exists, transport is unavailable, or a dispatch is already awaiting acknowledgement. The user-click handler must fetch/consume the latest server revision+nonce immediately before DOM submission; stale popup state cannot authorize a send after completion/cancel/rebind.
 
 - [ ] **Step 2: Implement the fixed message only**
 
@@ -98,7 +98,7 @@ Only an active one-shot `ContinuationDispatchAuthorization` may call the content
 
 - [ ] **Step 4: Report dispatch outcome safely**
 
-On success, emit nonce + task revision + server-received timestamp + route fingerprint only. On failure, return bounded reason codes such as `stale_revision`, `wrong_chat`, `streaming`, `platform_busy`, `platform_error`, `composer_unavailable`, `transport_unavailable`, or `blocking_interaction`; never return DOM/message contents. Manual user message submission or a recognized Stop-generating click emits only an interaction event/timestamp, clears prepared readiness through the controller, and never captures what the user typed.
+On success, emit nonce + task revision + server-received timestamp + route fingerprint only. On failure, return bounded reason codes such as `stale_revision`, `manual_turn_pending`, `wrong_chat`, `streaming`, `platform_busy`, `platform_error`, `composer_unavailable`, `transport_unavailable`, or `blocking_interaction`; never return DOM/message contents. Manual user message submission or a recognized Stop-generating click emits only an interaction event/timestamp, clears prepared readiness through the controller, and never captures what the user typed.
 ### Task 4: Verify and commit the milestone
 
 - [ ] **Step 1: Run deterministic gates**
@@ -126,6 +126,7 @@ git commit -m "feat: add user-gated ChatGPT continuation dispatch"
 - No active-tab heuristic can bind or dispatch to another conversation.
 - Binding requires a stable canonical conversation identity; full private routes remain extension-local and stale/lost mappings require rebind.
 - Manual user turns/Stop actions and generic ChatGPT busy/error/retry states invalidate or suppress prepared continuation without any automatic retry.
+- A manual user prompt always wins the race against prepared browser/Telegram authorization; the extension records only the occurrence, and semantic resume/redirect/new-task decisions are deferred to `continuation_reconcile`.
 - Plan 32 cannot submit without the user's current **Continue task** click; the source-neutral authorization contract may later accept Plan 37's paired Telegram click without enabling autonomous submission.
 - Only the fixed continuation template is eligible for dispatch.
 - Extension never extracts conversation/output text or clicks non-continuation controls.

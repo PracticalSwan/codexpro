@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Default synchronous deadline is 20 minutes; the effective deadline comes from `config.syncCallDeadlineMs`. Routing thresholds are advisory and derive from that effective value.
+- Tool-time awareness is enabled by default. Normal mode is bounded 20 minutes; bounded routing thresholds derive from the current `config.syncCallDeadlineMs`. Unlimited/observe mode has no CodexPro cutoff but retains conservative routing thresholds from the finite reference deadline (20 minutes by default) rather than treating all work as synchronously safe.
 - `sync_preferred` cutoff = `min(5 minutes, 25% of effective deadline)`.
 - `async_preferred` cutoff = `75% of effective deadline`; work between the preferred and async cutoffs may remain synchronous when low variance.
 - Unknown/high-variance heavy work should route async regardless of nominal estimate. At the 20-minute default these formulas preserve the original 5-minute/15-minute thresholds.
@@ -33,7 +33,7 @@
 
 - [ ] **Step 1: Add failing instruction assertions**
 
-Assert the generated instructions contain the effective configured deadline from `server_config`, identify 20 minutes as the default, state that it is a blocking-call deadline only, prohibit quality reduction, and direct long shell work to `start_workspace_process`, long structured verification to async job tools, and substantial multi-stage work to Durable Goals.
+Assert the generated instructions contain the current deadline mode/value from `server_config`, identify bounded 20 minutes as the normal default, state that bounded deadlines are blocking-call boundaries only, explain that observe mode is discovery-only and still routes long work durably, prohibit quality reduction, and direct long shell work to `start_workspace_process`, long structured verification to async job tools, and substantial multi-stage work to Durable Goals.
 
 Run: `node scripts/execution-routing-smoke.mjs`
 Expected: FAIL before instruction changes.
@@ -43,7 +43,7 @@ Expected: FAIL before instruction changes.
 The instruction must say, in substance:
 
 ```text
-Treat the configured synchronous tool-call deadline (20 minutes by default) as a transport boundary, never a task-quality target.
+Treat bounded synchronous tool-call time (20 minutes by default) as a transport boundary, never a task-quality target. If the user explicitly selected Unlimited/observe mode for host-window discovery, keep elapsed-time awareness and conservative long-work routing; do not interpret unlimited as permission to keep ordinary mutating calls open indefinitely.
 Do not rush, omit required work, or claim completion to fit it.
 If correct completion will not comfortably fit one call, preserve the full goal and switch to a resumable primitive.
 Use start_workspace_process for long shell commands, start_checks/start_verification for long verification, and Durable Goals for substantial multi-stage work with isolation/review needs.

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Plans 22–28 should be implemented/verified first unless a narrower dependency review proves a selected Plan 29–37 milestone is independent.
+- Plans 22–28 tool-time awareness should be implemented/verified first and remains enabled independently of continuation. Plans 29–37 continuation is optional and defaults disabled unless the operator explicitly enables it.
 - Version 1 never automatically submits ChatGPT messages or extracts conversation/output text.
 - Every continuation dispatch requires a contemporaneous explicit user authorization: managed-browser **Continue task** or, when Plan 37 is enabled, an authenticated paired-Telegram inline-button click. No watchdog/timer may create that authorization.
 - ChatGPT login/2FA/CAPTCHA/passkey is always manual.
@@ -21,6 +21,7 @@
 - No Codex CLI usage.
 - Preserve running CodexPro lifecycle: do not stop without explicit stop approval and never start/restart CodexPro automatically.
 - Publication/release remains separately authorized.
+- Product defaults remain `continuationEnabled=false` and `continuationTelegramEnabled=false`. **Current operator acceptance preference:** during this user's future authorized local implementation/setup, save both as enabled for their local profile after the features exist; this planning pass does not mutate runtime/profile state.
 
 ## Dependency Order
 
@@ -57,7 +58,7 @@ Plan 35 assumes relevant Plans 22–28 are implemented because it integrates the
 - [ ] Add isolated ChatGPT DOM capability adapter.
 - [ ] Require user **Bind this chat** action.
 - [ ] Require user **Continue task** action for every dispatch.
-- [ ] Prove stable-route binding, changed/new chat invalidation, stale popup revision, manual user message/Stop, and streaming/platform-busy/error/unknown states fail closed with no automatic Retry.
+- [ ] Prove stable-route binding, changed/new chat invalidation, stale popup revision, and manual user-message/Stop races fail closed: a manual send stales browser/Telegram actions without capturing text. Streaming/platform-busy/error/unknown states also fail closed with no automatic Retry.
 - [ ] Make Plan 32 milestone commit.
 ## Milestone 33 — Watchdog/recovery
 
@@ -79,7 +80,7 @@ Plan 35 assumes relevant Plans 22–28 are implemented because it integrates the
 
 - [ ] Integrate heartbeat with MCP dispatch plus launcher runtime snapshot (`runtimeGenerationId`, current effective deadline, transport readiness); never use saved/default deadline as current watchdog timing.
 - [ ] Integrate canonical proc/job/batch/Goal status without duplicating stores.
-- [ ] Teach ChatGPT to arm/checkpoint/request/recover/complete continuation without rushing.
+- [ ] Teach ChatGPT to keep tool-time awareness regardless of continuation setting; when continuation is enabled, arm/checkpoint/request/recover/complete without rushing and reconcile manual prompts as resume/redirect/supersede/cancel.
 - [ ] Add bounded activity/diagnostic state.
 - [ ] Run shared smoke/stress and make Plan 35 milestone commit.
 
@@ -125,7 +126,7 @@ At any implementation/live-verification step that needs Telegram bot creation/to
 5. The user opens the bot, presses **Start**/completes pairing, then sends `continue`.
 6. Recover state and verify only paired yes/no plus sanitized bot health.
 
-These stops are human setup/security boundaries and override batch execution.
+These stops are human setup/security boundaries and override batch execution. If continuation is disabled, skip the entire browser-auth and Telegram setup sequence; no setup stop is required merely for tool-time awareness.
 
 ## Final Verification Gate
 
@@ -151,3 +152,5 @@ Also run the Plan 36 privacy/package scan, the authorized live managed-browser/T
 - Plans 22–28 continue to own actual long-running work and quality preservation.
 - Browser/session secrets and ChatGPT output never enter CodexPro durable task records, logs, Git, or packages.
 - The implementation does not claim to bypass or extend ChatGPT/tool restrictions.
+- Product defaults leave continuation/Telegram off while tool-time awareness remains on; this operator's future local profile is explicitly configured on only during authorized implementation/setup.
+- Ignoring a ready continuation action and sending a manual prompt cannot create a duplicate continuation: stale actions are invalidated and the next semantic turn reconciles resume/redirect/supersede/cancel.

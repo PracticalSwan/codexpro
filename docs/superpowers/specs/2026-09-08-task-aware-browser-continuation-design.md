@@ -5,7 +5,7 @@
 
 ## Problem
 
-Long CodexPro-assisted work may span more than one ChatGPT tool-call window. Plans 22–28 preserve local work across that boundary, but they do not initiate the next ChatGPT turn. The user wants the current task to remain aware of incomplete work and make continuation easy without reducing quality.
+Long CodexPro-assisted work may span more than one ChatGPT tool-call window. Plans 22–28 preserve local work across that boundary and tool-time awareness is available by default, but they do not initiate the next ChatGPT turn. Browser/Telegram continuation is a separate **optional** feature: product default is disabled, and enabling it must never be required for deadline awareness or durable local execution.
 
 The continuation subsystem must not treat a host-enforced window as something to bypass. It must preserve the complete task, make interruption state durable, notify/focus the correct signed-in conversation, and require an explicit user action before another ChatGPT message is submitted.
 
@@ -124,7 +124,7 @@ The extension must verify the bound route, signed-in state, non-streaming state,
 
 ## Runtime deadline and transport synchronization
 
-Continuation timing is derived from a **current runtime snapshot**, never from the 20-minute default and never from a saved next-run profile value. The snapshot includes the effective `syncCallDeadlineMs`, a per-launch `runtimeGenerationId`, and local transport availability. Saving a new deadline while CodexPro is already running does not change that running deadline; the admin/CLI must show both values clearly.
+Continuation timing is derived from a **current runtime snapshot**, never from the 20-minute reference and never from a saved next-run profile value. The snapshot includes `syncCallDeadlineMode`, finite reference/current `syncCallDeadlineMs`, a per-launch `runtimeGenerationId`, and local transport availability. Bounded mode uses current deadline + grace; Unlimited/observe has no finite cutoff, so timeout-inferred continuation is disabled and only explicit semantic continuation requests may become ready. Saving a new deadline while CodexPro is already running does not change that running deadline; the admin/CLI must show both values clearly.
 
 On CodexPro restart, transport loss/recovery, browser bridge reconnect after a long gap, or other observation-generation change, inferred-interruption timing starts from a fresh local baseline. This prevents a shorter new deadline, machine sleep, clock adjustment, or a long disconnected period from instantly producing a stale continuation opportunity. Explicit semantic `continuation_request` may survive restart, but dispatch still requires current transport/browser/page safety plus the user's click.
 
@@ -135,9 +135,22 @@ If the current CodexPro runtime/tunnel is absent or not ready, continuation ente
 
 The full bound conversation route stays extension-local; CodexPro stores only an opaque fingerprint. Binding is allowed only after ChatGPT has assigned a stable conversation identity. Query strings, locale prefixes, and other benign URL decoration are canonicalized; a genuinely different conversation identity invalidates eligibility and requires explicit rebind.
 
-A manually submitted user message, a recognized user **Stop generating** action, or an explicit continuation Disarm/Cancel invalidates any ready nonce/notification. A manual message or Stop action is treated as `paused_by_user`/needs-reconciliation, not as semantic task completion. Inferred continuation remains suppressed until a later validated CodexPro checkpoint/request establishes that the task is still active.
+A manually submitted user message, a recognized user **Stop generating** action, or an explicit continuation Disarm/Cancel invalidates any ready nonce plus browser/Telegram notification/action token. A manual message or Stop action is treated as `paused_by_user` with a bounded `manualTurnPending` reason, not as semantic task completion. The extension records only that a manual turn occurred; it never captures the prompt text. Inferred continuation remains suppressed until the semantic controller reconciles that turn.
 
 Multiple tabs are permitted for viewing, but dispatch is allowed only from the exact active bound conversation at click time. Stale popup state must include the task `revision` and be rejected after completion/cancel/rebind or any newer lifecycle transition.
+
+## Manual-turn semantic reconciliation
+
+A manual prompt in the bound conversation always takes precedence over prepared automation. The managed-browser adapter distinguishes an authorized CodexPro dispatch from an ordinary user submit using its one-shot dispatch authorization; any other submit atomically invalidates ready state before/alongside the user send and marks the continuation task `paused_by_user` / `manualTurnPending`. Telegram actions for the old revision become stale immediately.
+
+On the next CodexPro interaction, ChatGPT can see the current user prompt directly and resolves its relationship to the active continuation task without browser text scraping:
+
+- `resume`: the prompt is simply continuing the same task; clear the pause and preserve remaining work.
+- `redirect`: the prompt changes priority/requirements inside the same original task; checkpoint revised phase/remaining work, bump revision, and invalidate old intents/actions.
+- `supersede`: the prompt starts a materially new task; terminally cancel the old continuation state with reason `superseded_by_user`, then arm a new continuation task only if continuation is enabled and the new work actually warrants it.
+- `cancel`: the user explicitly stops/cancels the task; terminally cancel and disarm.
+
+If the relationship is ambiguous, keep the old task paused and do not notify or dispatch. If the user sends a manual `continue`, that is simply the `resume` path; no automation button is required. A manual turn from an unmanaged browser/device may not be observed until the next CodexPro interaction, so stale remote actions remain short-lived and server revision/nonce/page checks still fail closed where evidence exists.
 
 ## Continuation intents and Telegram remote authorization
 
@@ -178,7 +191,7 @@ Near the effective synchronous deadline, ChatGPT should checkpoint material prog
 
 ## Settings and defaults
 
-Browser continuation is opt-in and disabled by default. Planned saved settings include `continuationEnabled`, managed browser profile label, browser choice (`chrome` or `edge`), cooldown, maximum dispatches, unexpected-interruption grace, browser notifications, and optional `continuationTelegramEnabled`. Security-sensitive browser pairing credentials, Telegram bot token, Telegram paired user/chat IDs, and callback/action records are never stored in workspace profiles.
+Tool-time awareness from Plans 22–28 is independent and enabled by default. **Continuation is opt-in and disabled by default**: when `continuationEnabled=false`, no browser companion/auth/pairing/watchdog notification or Telegram setup/worker is required, while bounded/observe deadline awareness and durable `proc_*`/`job_*`/`goal_*`/`batch_*` execution continue normally. Planned saved settings include `continuationEnabled`, managed browser profile label, browser choice (`chrome` or `edge`), cooldown, maximum dispatches, unexpected-interruption grace, browser notifications, and optional `continuationTelegramEnabled`. Telegram setup is reachable only when continuation itself is enabled; `continuationTelegramEnabled` defaults false. Security-sensitive browser pairing credentials, Telegram bot token, Telegram paired user/chat IDs, and callback/action records are never stored in workspace profiles.
 
 The authenticated local admin page must show current continuation task state, paired-browser health, auth state, bound-chat status, current-runtime vs saved-next-run settings, and a kill/disarm control. It must not display ChatGPT cookies, account identity, conversation text, pairing secrets, or full private conversation URLs.
 
@@ -199,12 +212,16 @@ The authenticated local admin page must show current continuation task state, pa
 
 | Situation | Required behavior |
 |---|---|
-| Saved deadline differs from current runtime | Watchdog uses current runtime value only; UI shows both. |
+| Saved deadline differs from current runtime | Watchdog uses current runtime mode/value only; UI shows both. |
+| Runtime is Unlimited/observe | Continue elapsed-time awareness, but disable timeout-inferred continuation; explicit continuation requests remain user-gated. |
 | Runtime restarts with a new deadline | New `runtimeGenerationId`; inferred timer baseline resets. |
 | CodexPro/tunnel is deliberately closed or crashes | No continuation readiness/dispatch; show waiting for transport; never auto-start/reconnect. |
 | Machine sleeps/wakes or clocks jump | Browser/runtime observation gap resets inferred baseline; browser timestamps are not trusted as authority. |
 | Task completes or is canceled while popup is open | Terminal revision invalidates nonce/button/notification before dispatch. |
 | User manually submits a message or presses Stop generating | Clear readiness and pause inference until semantic reconciliation. |
+| Manual prompt means simple continuation | Semantic controller reconciles `resume`; no automated button is required and stale actions remain invalidated. |
+| Manual prompt redirects the existing task | Reconcile `redirect`, update bounded remaining work/intents, bump revision, and keep one task. |
+| Manual prompt starts a new task | Reconcile `supersede`; terminally cancel old automation and arm new continuation only if enabled/warranted. |
 | ChatGPT is streaming, delayed, showing retry/error/safety/approval UI, or markup is unknown | Fail closed; no Retry/model-switch/approval action. |
 | New chat has not yet acquired a stable conversation identity | Bind disabled until a stable route exists. |
 | Conversation route changes to another chat | Binding becomes ineligible; explicit rebind required. |
@@ -243,6 +260,7 @@ The live test must not inspect or export historical conversation content. It may
 ## Non-goals
 
 - No automatic ChatGPT message submission in version 1; every submission requires a current browser-button or paired-Telegram-button user authorization.
+- No requirement that users enable continuation at all; tool-time awareness and durable local execution must remain useful with continuation disabled.
 - No browser credential/password manager implementation.
 - No use of the user's normal Chrome/Edge profile by default.
 - No conversation scraping, export, summarization, or hidden monitoring.

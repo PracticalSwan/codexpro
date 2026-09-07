@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Planning design is opt-in and browser continuation is disabled by default.
+- Continuation is opt-in and disabled by default; its disabled state must not disable Plans 22–28 tool-time awareness/durable execution.
 - Records contain bounded task/evidence metadata only; never chain-of-thought, raw prompts, conversation output, secrets, or browser cookies.
 - Completion is semantic-controller-only; browser state can never mark a task complete.
 - Version 1 continuation dispatch always requires explicit user action.
@@ -54,6 +54,8 @@ interface ContinuationRecord {
   remainingWork: string[];
   continuationIntents: Array<{ id: string; templateKey: "resume_all_v1" | "focus_remaining_v1"; label: string; focusRef?: string; revision: number }>;
   selectedContinuationIntentId?: string;
+  manualTurnPending?: { reason: "manual_message" | "stop_generating"; observedAt: string; observedRevision: number };
+  cancelReason?: "user_canceled" | "superseded_by_user";
   continuationCount: number;
   outstandingNonce?: string;
   createdAt: string;
@@ -75,15 +77,15 @@ Expected: PASS.
 - Modify: `scripts/continuation-state-smoke.mjs`
 
 **Interfaces:**
-- Produces `armContinuation`, `checkpointContinuation`, `requestContinuation`, `completeContinuation`, `cancelContinuation`, `continuationStatus`, and `heartbeatContinuation`.
+- Produces `armContinuation`, `checkpointContinuation`, `requestContinuation`, `completeContinuation`, `cancelContinuation`, `reconcileContinuationManualTurn`, `continuationStatus`, and `heartbeatContinuation`.
 
 - [ ] **Step 1: Add failing operation tests**
 
-Assert `arm` creates one active task per workspace/session unless an explicit ID is supplied; checkpoint replaces bounded phase/evidence/work metadata and may register at most four bounded continuation intents; request creates a fresh nonce plus default `resume_all_v1` intent when none exists; selected intent must belong to the current revision; complete clears outstanding continuation/intent selection; cancel is terminal; and heartbeat changes only liveness fields.
+Assert `arm` fails with `continuation_disabled` when the feature is off; otherwise it creates one active task per workspace/session unless an explicit ID is supplied. Checkpoint replaces bounded phase/evidence/work metadata and may register at most four bounded intents; request creates a fresh nonce; manual user interaction atomically clears nonce/intent selection and records `manualTurnPending` without text; complete clears continuation state; cancel is terminal; and heartbeat changes only liveness fields.
 
 - [ ] **Step 2: Implement transition-checked operations**
 
-Every operation must load the current record, validate the expected state/revision and caller workspace/session, then persist one atomic update with `revision + 1`. Continuation intents are server-side semantic references only: labels are short/sanitized, focus references may point only to already-recorded remaining work, and no intent stores an arbitrary ChatGPT prompt body. `complete` requires `remainingWork` to be empty or an explicit verified-complete flag supplied by the semantic controller; browser callers never receive that authority. `completed`/`canceled` atomically clear outstanding nonce/readiness fields and reject all later non-status transitions. Do not persist a deadline value as the task timing authority; later readiness evaluation consumes the current runtime snapshot.
+Every operation must load the current record, validate the expected state/revision and caller workspace/session, then persist one atomic update with `revision + 1`. Continuation intents are server-side semantic references only: labels are short/sanitized, focus references may point only to already-recorded remaining work, and no intent stores an arbitrary ChatGPT prompt body. `reconcileContinuationManualTurn` accepts only `resume | redirect | supersede | cancel`: resume clears the pause and preserves remaining work; redirect requires bounded replacement phase/remaining-work/intents and invalidates old authorization; supersede terminally cancels with `superseded_by_user` and never auto-arms a replacement; cancel terminally cancels with `user_canceled`. The operation never receives/stores the user's raw prompt. `complete` requires `remainingWork` to be empty or an explicit verified-complete flag supplied by the semantic controller. `completed`/`canceled` atomically clear outstanding nonce/readiness/intent/manual-turn fields and reject later non-status transitions. Do not persist a deadline value as task timing authority.
 
 - [ ] **Step 3: Verify recovery/idempotency**
 
@@ -96,11 +98,11 @@ Repeat the same checkpoint/request IDs and prove duplicate delivery cannot creat
 - Modify: `scripts/continuation-state-smoke.mjs`
 
 **Interfaces:**
-- Adds `continuation_arm`, `continuation_checkpoint`, `continuation_request`, `continuation_status`, `continuation_complete`, and `continuation_cancel`.
+- Adds `continuation_arm`, `continuation_checkpoint`, `continuation_request`, `continuation_status`, `continuation_reconcile`, `continuation_complete`, and `continuation_cancel`.
 
 - [ ] **Step 1: Add MCP registration assertions**
 
-Verify tool schemas enforce workspace/session binding, bounded arrays/strings, and do not expose browser pairing secrets or full stored files.
+Verify tool schemas enforce workspace/session binding, bounded arrays/strings, feature-enabled state, and do not expose browser pairing secrets or full stored files. `continuation_reconcile` exposes only the four disposition enums plus bounded replacement metadata needed for redirect; it accepts no raw prompt/transcript field.
 
 - [ ] **Step 2: Wire registration to `ops.ts`**
 
@@ -144,3 +146,5 @@ git commit -m "feat: add durable continuation lifecycle"
 - Continuation records never hard-code the 20-minute default or a saved next-run deadline as readiness authority.
 - Browser code cannot complete/cancel a task outside explicitly granted narrow operations.
 - MCP tools expose truthful incomplete/completed state without claiming browser automation exists yet.
+- Manual user turns can be reconciled as resume/redirect/supersede/cancel without browser prompt scraping; unresolved turns keep automation paused.
+- With continuation disabled, lifecycle tools fail truthfully as unavailable while tool-time awareness/durable execution remain unaffected.

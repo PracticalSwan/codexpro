@@ -47,16 +47,18 @@ Implementation begins only when the user authorizes the exact plan scope. For si
 - For single user-authorized CodexPro implementation or defect-fix work, after successful verification automatically update relevant docs/instructions, commit the intended change, integrate into `main`, push `origin/main`, and reinstall the global `codexpro-full` package when that install can be performed without violating the runtime-lifecycle rule below. For an explicitly authorized multi-plan batch, create verified milestone commits during the batch but perform integration, push, and global reinstall only once after the final cumulative gate. Releases/publication/deployment, force operations, and unrelated external mutations still require separate authorization; directly verify every external action actually performed.
 
 ## Long-running tool design rule
-- Plans 22–28 define a future synchronous MCP deadline with a 20-minute (`1,200,000` ms) default and validated 5–60 minute per-profile setting. The effective value is a transport/blocking-call boundary only, never a task-quality deadline.
+- Plans 22–28 implement tool-time awareness by default. Normal mode is bounded at 20 minutes (`1,200,000` ms), finite range 5–60 minutes; explicit Unlimited/observe is temporary discovery mode and retains elapsed diagnostics/conservative routing without a cooperative cutoff.
 - New or modified potentially-long tools must declare their execution class: synchronous, existing workspace process (`proc_*`), structured durable job (`job_*`), Durable Goal (`goal_*`), or resumable in-process batch (`batch_*`).
 - Never reduce requested scope, acceptance criteria, review depth, required verification, or safety checks to fit one call. If correct work will not comfortably fit, persist truthful progress and continue through the appropriate resumable primitive.
 - Composite synchronous operations must share one remaining effective deadline budget across phases; they may not reset the configured budget for each child operation.
 - Status/polling calls should return promptly and use condition-based progress. Repeated polling with no state change is not material progress.
+- For first-time host-window discovery, guide the user to a disposable new chat, temporarily select Unlimited/observe, run only the mutation-free `tool_time_probe`, note the ChatGPT-side closure time, then restore a bounded value with safety margin. Never measure by leaving real project mutations open-ended.
 
 ## Browser continuation fail-closed rule
-- Plans 29–37 must derive interruption timing from current runtime status (`runtimeGenerationId`, effective `syncCallDeadlineMs`, transport readiness), never from the 20-minute default or saved next-run profile.
+- Plans 29–37 continuation is optional/default-off. When enabled, it derives interruption timing from current runtime status (`runtimeGenerationId`, deadline mode/value, transport readiness), never from saved/default settings; Unlimited/observe disables timeout inference entirely.
 - Runtime/tunnel loss, restart, browser reconnect after a long gap, manual user message/Stop action, task completion/cancel, auth loss, wrong/stale chat route, streaming, or generic platform busy/error/retry/unknown UI suppress continuation; no auto-Retry/model switch/tunnel restart is allowed.
 - Terminal task revision and user intent take precedence over stale browser popup/notification state.
+- If the user ignores a ready continuation and sends a prompt, the manual turn atomically stales browser/Telegram actions without capturing text. On the next CodexPro interaction the model reconciles it as resume, redirect, supersede-new-task, or cancel; ambiguity remains paused.
 
 ## Browser authentication stop rule
 - For Plans 29–37 implementation or live browser verification, any ChatGPT/provider sign-in, CAPTCHA, passkey, 2FA, email confirmation, or similar security verification is a mandatory human boundary.
@@ -76,8 +78,9 @@ Stop and report instead of forcing progress when the exact workspace is uncertai
 
 ### Telegram continuation setup boundary
 
-For future Plan 37 implementation, Telegram is optional and uses a dedicated private bot plus outbound long polling. If bot creation/token configuration is required, STOP and report `WAITING_FOR_TELEGRAM_BOT_TOKEN`; instruct the user to use `@BotFather` and CodexPro's masked local token-save command, never chat. Resume only after the user sends `continue`. Then generate the one-time private-bot pairing link/code, STOP as `WAITING_FOR_TELEGRAM_PAIR`, and resume only after the user presses Start/completes pairing and sends `continue`.
+For future Plan 37 implementation, Telegram is optional/default-off and is not requested or started unless task continuation is already enabled and Telegram is explicitly enabled. It uses a dedicated private bot plus outbound long polling. If bot creation/token configuration is required, STOP and report `WAITING_FOR_TELEGRAM_BOT_TOKEN`; instruct the user to use `@BotFather` and CodexPro's masked local token-save command, never chat. Resume only after the user sends `continue`. Then generate the one-time private-bot pairing link/code, STOP as `WAITING_FOR_TELEGRAM_PAIR`, and resume only after the user presses Start/completes pairing and sends `continue`.
 
 A Telegram callback is a one-shot user authorization source, not a watchdog action. It cannot bypass current task revision/nonce, terminal state, transport, browser authentication/binding/page safety, manual-user pause, or active durable-work suppression. Telegram failure falls back to the browser authorization surface without automatic submission.
 
 Final acceptance after Plans 29–37 uses a new ChatGPT conversation with installed CodexPro Full to run the documented disposable acceptance matrix and emit a sanitized Markdown report. The user copies that report back for maintenance review; the test session does not mutate CodexPro source unless separately authorized.
+Product defaults remain continuation=false and Telegram=false; during this user's later authorized local setup, save both true for their own profile as explicitly requested, without changing package defaults.

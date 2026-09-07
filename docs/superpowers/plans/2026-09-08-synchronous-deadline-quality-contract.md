@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give every synchronous CodexPro MCP call one bounded, user-configurable wall-clock budget with a 20-minute default, while ensuring the budget can never pressure ChatGPT to reduce task quality.
+**Goal:** Enable tool-time awareness by default with a safe 20-minute bounded budget, while also providing an explicit Unlimited/observe-only discovery mode so users can measure their own ChatGPT tool window without ever turning that window into a task-quality target.
 
-**Architecture:** Add a focused deadline context module whose default is `1_200_000` ms but whose production duration comes from validated runtime config. Persist the setting per workspace profile, expose it through `codexpro settings` and the authenticated local profile editor, and propagate the resolved value into MCP dispatch. Do not use unsafe `Promise.race` cancellation that could leave mutations running after a response; later plans make long subsystems cooperatively yield or route async.
+**Architecture:** Add a focused deadline context module whose normal default is bounded `1_200_000` ms and whose production mode/value come from validated runtime config; explicit observe mode keeps elapsed awareness without a cooperative cutoff. Persist the setting per workspace profile, expose it through `codexpro settings` and the authenticated local profile editor, and propagate the resolved value into MCP dispatch. Do not use unsafe `Promise.race` cancellation that could leave mutations running after a response; later plans make long subsystems cooperatively yield or route async.
 
 **Tech Stack:** TypeScript, Node.js `AsyncLocalStorage`, existing profile/settings launcher, authenticated Express admin page, MCP registration wrapper, and smoke-test style.
 
@@ -12,9 +12,9 @@
 
 ## Global Constraints
 
-- Default synchronous deadline is exactly `1_200_000` ms (20:00).
-- Supported configured range is 5–60 minutes (`300_000`–`3_600_000` ms).
-- The effective deadline applies to one MCP invocation, never to the user's overall task or Goal.
+- Tool-time awareness is enabled by default. Normal mode is `bounded` with exactly `1_200_000` ms (20:00).
+- Bounded values are 5–60 minutes (`300_000`–`3_600_000` ms); explicit `unlimited` selects `observe` mode and disables only CodexPro's cooperative cutoff, not diagnostics or conservative routing guidance.
+- In bounded mode, the effective deadline applies to one MCP invocation, never to the user's overall task or Goal; observe mode has no CodexPro cooperative cutoff.
 - No handler may lower acceptance criteria, skip required verification/review, or claim completion because time is low.
 - CodexPro does not detect or extend ChatGPT's external closure window; users choose a safe value below their known host limit.
 - Saved website/profile changes apply on the next CodexPro launch and must not mutate an already-running process.
@@ -30,11 +30,11 @@
 - Create: `scripts/deadline-smoke.mjs`
 
 **Interfaces:**
-- Produces: `DEFAULT_SYNC_CALL_DEADLINE_MS`, `MIN_SYNC_CALL_DEADLINE_MS`, `MAX_SYNC_CALL_DEADLINE_MS`, `normalizeSyncCallDeadlineMs()`, `withSyncCallDeadline()`, `currentSyncCallDeadline()`, and `DeadlineBudget`.
+- Produces: `DEFAULT_SYNC_CALL_DEADLINE_MS`, `MIN_SYNC_CALL_DEADLINE_MS`, `MAX_SYNC_CALL_DEADLINE_MS`, `SyncCallDeadlineMode`, `normalizeSyncCallDeadlineConfig()`, `withSyncCallDeadline()`, `currentSyncCallDeadline()`, and `DeadlineBudget`.
 
 - [ ] **Step 1: Write the deadline smoke first**
 
-Assert defaults/bounds are exactly 20/5/60 minutes, invalid values fail closed, an injected fake clock reports decreasing `remainingMs`, and nested async work sees the same context through `AsyncLocalStorage`.
+Assert default mode/value are exactly `bounded`/20 minutes, finite bounds are 5/60 minutes, `unlimited` normalizes only to `observe`, invalid values fail closed, an injected fake clock reports decreasing `remainingMs` in bounded mode, observe mode reports elapsed time without deadline-yielding, and nested async work sees the same context through `AsyncLocalStorage`.
 
 Run: `node scripts/deadline-smoke.mjs`
 Expected: FAIL because `src/deadline.ts` does not exist.
@@ -47,7 +47,8 @@ Use a shape equivalent to:
 export const DEFAULT_SYNC_CALL_DEADLINE_MS = 1_200_000;
 export const MIN_SYNC_CALL_DEADLINE_MS = 300_000;
 export const MAX_SYNC_CALL_DEADLINE_MS = 3_600_000;
-export function normalizeSyncCallDeadlineMs(value: unknown): number;
+export type SyncCallDeadlineMode = "bounded" | "observe";
+export function normalizeSyncCallDeadlineConfig(value: unknown): { mode: SyncCallDeadlineMode; deadlineMs: number };
 ```
 ```ts
 export class DeadlineBudget {
@@ -76,17 +77,17 @@ Expected: PASS without real-time waiting.
 - Modify: `scripts/deadline-smoke.mjs`
 
 **Interfaces:**
-- Adds `CodexProConfig.syncCallDeadlineMs: number`.
-- Consumes `CODEXPRO_SYNC_CALL_DEADLINE_MS` with 20-minute fallback and 5–60 minute bounds.
+- Adds `CodexProConfig.syncCallDeadlineMode: "bounded" | "observe"` and `syncCallDeadlineMs: number`.
+- Consumes `CODEXPRO_SYNC_CALL_DEADLINE_MODE` plus `CODEXPRO_SYNC_CALL_DEADLINE_MS`, with `bounded`/20-minute fallback and 5–60 minute finite bounds.
 - Exposes the effective runtime value through `server_config` so ChatGPT can reason from the actual current budget rather than assuming 20 minutes.
 
 - [ ] **Step 1: Add config-boundary tests**
 
-Assert missing config resolves to `1_200_000`, valid min/default/max values load exactly, and values outside `300_000..3_600_000` fail or clamp only according to one documented validator (prefer explicit rejection for CLI/admin/profile writes and bounded parsing for raw environment input).
+Assert missing config resolves to `{ mode: "bounded", deadlineMs: 1_200_000 }`, valid min/default/max bounded values load exactly, explicit `unlimited`/`observe` loads observe mode while preserving the finite reference deadline, and invalid values fail only through one documented validator. Environment/profile/CLI precedence must never silently turn an invalid finite value into observe mode.
 
 - [ ] **Step 2: Wire config into MCP dispatch**
 
-Wrap the existing validated/tagged handler with `withSyncCallDeadline(config.syncCallDeadlineMs, ...)`. Separate tool calls receive independent start timestamps but the same configured total unless the runtime itself is restarted with new settings.
+Wrap the existing validated/tagged handler with `withSyncCallDeadline(config.syncCallDeadlineMode, config.syncCallDeadlineMs, ...)`. Bounded calls receive independent start timestamps; observe-mode calls retain elapsed-time context but do not cooperatively yield on that deadline. Existing tool-specific/policy timeouts remain authoritative in both modes.
 
 - [ ] **Step 3: Verify runtime config behavior**
 
@@ -103,18 +104,18 @@ Expected: PASS.
 - Modify: `scripts/settings-smoke.mjs`
 
 **Interfaces:**
-- Adds `WorkspaceProfile.syncCallDeadlineMs?: number` and `RuntimeConnection.syncCallDeadlineMs?: number`.
-- Adds user-facing `--sync-call-deadline-minutes <5-60>` for `start`, `setup`, and `settings set`.
+- Adds `WorkspaceProfile.syncCallDeadlineMode?: "bounded" | "observe"`, `syncCallDeadlineMs?: number`, and matching sanitized runtime-status fields.
+- Adds user-facing `--sync-call-deadline-minutes <5-60|unlimited>` for `start`, `setup`, and `settings set`.
 - `settings show` displays `Sync deadline` in minutes.
-- Launcher precedence: explicit CLI minutes → `CODEXPRO_SYNC_CALL_DEADLINE_MS` → saved `syncCallDeadlineMs` → 20-minute default.
+- Launcher precedence: explicit CLI mode/value → environment mode/value → saved mode/value → `bounded` 20-minute default. `unlimited` maps to `mode=observe`; it is never serialized as an arbitrarily huge millisecond value.
 
 - [ ] **Step 1: Extend profile/settings persistence tests**
 
-Save 12 minutes, verify the profile stores `720000`, `settings show` prints `12 min`, `settings use` copies the field, unrelated later `settings set` calls preserve it, and deleting/resetting the profile returns to the default.
+Save 12 minutes and verify `mode=bounded` + `720000`; save `unlimited` and verify `mode=observe` without corrupting the finite reference value; `settings show` prints either `12 min` or `Unlimited (observe only)`; `settings use` copies both non-secret fields; unrelated settings preserve them; reset returns to bounded 20 minutes.
 
 - [ ] **Step 2: Add strict CLI validation and help**
 
-Reject non-integer, `<5`, and `>60` minute values with actionable errors. Help text must say: default 20 minutes; choose a value below the observed/documented ChatGPT or MCP-host closure window; this setting does not change the external limit.
+Accept only integer `5..60` or the literal `unlimited`. Reject all other values. Help text must say: tool-time awareness is on by default; normal default is 20 minutes; ChatGPT does not publish one universal per-user MCP tool window; use `unlimited` only temporarily with the harmless probe to discover the host cutoff, then restore a bounded value below it; this setting cannot change the external limit.
 
 - [ ] **Step 3: Propagate the effective value to the child runtime**
 
@@ -128,20 +129,20 @@ The launcher must set `CODEXPRO_SYNC_CALL_DEADLINE_MS` for the spawned HTTP/MCP 
 - Modify: `scripts/http-smoke.mjs`
 
 **Interfaces:**
-- Adds admin form/API field `syncCallDeadlineMinutes` (integer 5–60) while profile storage remains `syncCallDeadlineMs`.
-- Adds a **Synchronous tool deadline (minutes)** control under **Runtime policy**.
+- Adds admin form/API fields for `syncCallDeadlineMode` and `syncCallDeadlineMinutes` (integer 5–60 when bounded); profile storage remains mode + milliseconds.
+- Adds a **Synchronous tool deadline** control under **Runtime policy** with finite 5–60 values plus **Unlimited (observe only)**.
 - GET/profile responses distinguish the saved next-run value from the currently running effective value.
 
 - [ ] **Step 1: Add failing admin/UI assertions**
 
-Assert the HTML includes the field, default 20, `min="5"`, `max="60"`, and explanatory text. POST 12 minutes must store `720000`; 4/61/non-integer values must return structured 400 responses.
+Assert the HTML defaults to bounded 20, finite input enforces 5–60, and an explicit Unlimited/observe option is present with warning copy. POST 12 stores bounded/720000; Unlimited stores observe mode; 4/61/non-integer finite values return structured 400 responses.
 - [ ] **Step 2: Implement one shared validation path**
 
 Convert website minutes to internal milliseconds through the same bounds/constants used by runtime/CLI code. Do not create a different website-only range or hidden multiplier.
 
 - [ ] **Step 3: Explain next-run semantics clearly**
 
-The local page must say that saving changes the next launch only and does not change the running MCP server. It should recommend safety margin below the user's host cutoff and avoid claiming all ChatGPT users have the same timeout.
+The local page must say that saving changes the next launch only and does not change the running MCP server. It should recommend safety margin below the user's host cutoff, avoid claiming all ChatGPT users have the same timeout, and warn that Unlimited/observe is for temporary harmless measurement rather than ordinary mutating work.
 
 - [ ] **Step 4: Verify authenticated settings behavior**
 
@@ -158,7 +159,7 @@ Expected: PASS with no token/profile-secret leakage.
 
 - [ ] **Step 1: Record the configuration invariant**
 
-Document 20 minutes as the default rather than a universal constant. State that any configured value remains transport-only and cannot reduce task scope, review depth, verification, or safety gates.
+Document bounded 20 minutes as the normal default rather than a universal host constant. Tool-time awareness remains active by default in both bounded and observe modes. State that finite deadlines and observe mode cannot reduce task scope, review depth, verification, or safety gates.
 
 - [ ] **Step 2: Run the shared behavior gate**
 
@@ -179,12 +180,13 @@ Plan 22 remains transport-only. It must not depend on browser continuation being
 
 ## Acceptance Criteria
 
-- Default effective deadline is exactly 1,200,000 ms (20 minutes).
-- Saved/launchable deadline is configurable from 5–60 minutes through CLI and authenticated local website using one validation contract.
-- Profile storage uses `syncCallDeadlineMs`; user-facing settings use minutes.
+- Default tool-time mode is bounded with exactly 1,200,000 ms (20 minutes); awareness does not depend on continuation being enabled.
+- Saved/launchable configuration accepts bounded 5–60 minutes or explicit Unlimited/observe through CLI and authenticated local website using one validation contract.
+- Profile/runtime storage carries `syncCallDeadlineMode` plus `syncCallDeadlineMs`; user-facing settings use minutes or the literal Unlimited/observe option.
 - `server_config` and runtime status expose the current effective value without claiming knowledge of ChatGPT's external cutoff; downstream continuation consumers can distinguish that current value from saved next-run settings.
 - Saved website changes apply only after restart/next launch; the current runtime is not mutated.
 - A deadline context is available to every MCP handler without unsafe generic forced cancellation.
 - Fake-clock tests prove remaining-budget and handoff behavior without long sleeps.
 - Existing short tools retain behavior and result shapes.
 - Documentation explicitly forbids deadline-driven quality reduction for every configured value.
+- Unlimited/observe mode is clearly labeled as temporary host-window discovery, retains elapsed-time diagnostics/conservative routing, and never silently changes the user's saved finite safety margin.

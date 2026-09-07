@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Browser continuation defaults off.
+- Continuation defaults off globally. Tool-time awareness remains on independently. Telegram defaults off and is not configured/started unless continuation itself is enabled.
 - Profile settings are non-secret and apply next launch unless explicitly documented as live continuation-state controls.
 - Pairing credentials, cookies, account identity, and full conversation URLs never enter workspace profiles.
 - Disarm/cancel is always available and takes effect immediately on current continuation state.
@@ -28,10 +28,10 @@
 - Modify: `scripts/settings-smoke.mjs`
 
 **Interfaces:**
-- Adds `continuationEnabled`, `continuationBrowser`, `continuationProfile`, `continuationCooldownMs`, `continuationMaxDispatches`, `continuationUnexpectedGraceMs`, and `continuationNotificationsEnabled`.
+- Adds `continuationEnabled`, `continuationBrowser`, `continuationProfile`, `continuationCooldownMs`, `continuationMaxDispatches`, `continuationUnexpectedGraceMs`, `continuationNotificationsEnabled`, and preserves Plan 37's `continuationTelegramEnabled` when present.
 - [ ] **Step 1: Add failing profile/default tests**
 
-Assert defaults: continuation off, browser `chrome`, profile `default`, cooldown 60,000 ms, max dispatches 20, unexpected-interruption grace 120,000 ms, notifications on. Validate bounded profile label and supported browser choices.
+Assert defaults: continuation off, Telegram off, browser `chrome`, profile `default`, cooldown 60,000 ms, max dispatches 20, unexpected-interruption grace 120,000 ms, notifications on. With continuation off, browser auth/pair/watchdog and Telegram setup/worker report disabled/not-required rather than prompting setup. Tool-time settings remain available. Validate bounded profile label and supported browser choices.
 
 Run: `node scripts/settings-smoke.mjs`
 Expected: FAIL until fields are implemented.
@@ -52,7 +52,7 @@ Changing deadline/tunnel/bash/profile settings must preserve continuation fields
 - Modify: `scripts/browser-profile-smoke.mjs`
 
 **Interfaces:**
-- Adds `codexpro continuation status`, `arm-status`, `disarm`, `browser status|open|auth|pair`, and profile flags for non-secret defaults.
+- Adds `codexpro continuation status`, `arm-status`, `disarm`, `browser status|open|auth|pair`, plus `codexpro settings set --continuation enabled|disabled` for the next-run profile default. Browser setup requiring continuation fails clearly while disabled; Plan 37 Telegram setup does the same.
 
 - [ ] **Step 1: Add help/parse tests**
 
@@ -80,7 +80,7 @@ Show task state/revision, task short ID/title, current phase, remaining-work cou
 
 - [ ] **Step 1: Add HTML/API contract assertions**
 
-Require enable toggle, browser/profile selectors, cooldown/max/grace/notification fields, paired/auth/bound live status, active task revision/summary, current-runtime vs saved-next-run deadline, transport availability, and immediate Disarm/Revoke browser controls. No auto-send or auto-reconnect-tunnel option is present.
+Require a clearly labeled **Enable task continuation** toggle defaulting off, browser/profile selectors and tuning fields shown/enabled only when relevant, paired/auth/bound live status, active task revision/summary, current-runtime vs saved-next-run tool-time mode/deadline, transport availability, and immediate Disarm/Revoke browser controls. Telegram controls are hidden/disabled with `Requires task continuation` while continuation is off. No auto-send or auto-reconnect-tunnel option is present.
 
 - [ ] **Step 2: Separate saved defaults from current state**
 
@@ -115,3 +115,4 @@ git commit -m "feat: add continuation controls and settings"
 - Immediate disarm/revoke controls are available without stopping CodexPro.
 - No secret browser/auth/conversation data is exposed through profiles, CLI, or admin page.
 - Version 1 exposes no automatic-send setting.
+- Continuation can remain disabled permanently without disabling default tool-time awareness or durable long-work primitives; Telegram setup is skipped entirely in that state.

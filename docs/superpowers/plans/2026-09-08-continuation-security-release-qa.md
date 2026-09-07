@@ -84,7 +84,7 @@ Using a disposable ChatGPT conversation: arm task, user binds chat, create expli
 
 - [ ] **Step 3: Verify failure paths**
 
-Use deterministic fixtures/fake clocks for the broad matrix: non-default current deadline vs saved profile mismatch, runtime generation change, transport absent/stopped, sleep/reconnect gap, completed/canceled terminal revision, stale popup, wrong/new/changed chat route, multiple tabs, active streaming, manual user message/Stop, generic platform busy/error/retry/unknown state, recent user typing, signed-out/auth-required state, stale/replayed nonce, max attempts, extension disconnect/reconnect, CodexPro bridge unavailable, active proc/job/Goal suppression, Telegram wrong user/chat, stale/replayed callback, bot blocked/API unavailable, webhook conflict, duplicate/backlogged updates, and Telegram disabled. No case may auto-submit, auto-retry, auto-start a tunnel, or silently substitute another authorization channel. Do not try to induce safety/capacity errors or Telegram flood limits in live services just to test them.
+Use deterministic fixtures/fake clocks for the broad matrix: bounded vs Unlimited/observe tool-time mode, non-default current deadline vs saved profile mismatch, runtime generation change, transport absent/stopped, sleep/reconnect gap, continuation globally disabled, completed/canceled terminal revision, stale popup, wrong/new/changed chat route, multiple tabs, active streaming, manual user prompt later reconciled as resume/redirect/supersede/cancel, Stop-generating, generic platform busy/error/retry/unknown state, recent user typing, signed-out/auth-required state, stale/replayed nonce, max attempts, extension disconnect/reconnect, CodexPro bridge unavailable, active proc/job/Goal suppression, Telegram wrong user/chat, stale/replayed callback, bot blocked/API unavailable, webhook conflict, duplicate/backlogged updates, and Telegram disabled. No case may auto-submit, auto-retry, auto-start a tunnel, or silently substitute another authorization channel. Do not try to induce safety/capacity errors or Telegram flood limits in live services just to test them.
 
 - [ ] **Step 4: Cross-browser scope**
 
@@ -101,7 +101,7 @@ Live-check only the user-selected/configured managed browser for the end-to-end 
 
 - [ ] **Step 1: Document exact operator workflow**
 
-Document opt-in enablement, dedicated browser profile, manual sign-in, browser pairing, conversation binding, browser/Telegram user authorization, Telegram BotFather/token/pairing setup, focused continuation intents, disarm/revoke, session expiry, fresh-session report handoff, privacy boundaries, and the fact that the feature does not extend or bypass ChatGPT tool windows.
+Document default-on tool-time awareness, bounded 20-minute normal mode, temporary Unlimited/observe discovery using only the harmless probe, and how users determine their own ChatGPT cutoff before choosing a safety-margin deadline. Separately document continuation as default-off opt-in, dedicated browser profile/manual sign-in/binding, manual-turn reconciliation, browser/Telegram authorization, Telegram setup only when continuation is enabled, focused intents, disarm/revoke, session expiry, report handoff, privacy boundaries, and non-bypass behavior.
 
 - [ ] **Step 2: Run cumulative verification**
 
@@ -135,7 +135,7 @@ After implementation/package installation is complete, the operator starts a **n
 
 - [ ] **Step 2: Require the core report scenarios**
 
-The fresh session records: installed package/version and source commit if available; current runtime generation and current-vs-saved deadline; browser/Telegram capability status without secrets; arm/checkpoint/request/status recovery; browser continuation; Telegram default continuation; one focused Telegram intent; non-default deadline synchronization; completion stale-button rejection; cancel/disarm behavior; and Telegram unavailable fallback to browser. Deliberately stopping a tunnel/runtime or inducing platform safety/capacity errors is optional and must not be done merely for the report.
+The fresh session records: installed package/version and source commit if available; tool-time awareness enabled by default; current deadline mode/generation and current-vs-saved value; continuation/Telegram disabled-by-default contract plus this operator's enabled local state when configured; arm/checkpoint/request/status recovery; browser continuation; Telegram default continuation; one focused Telegram intent; non-default deadline synchronization; completion stale-button rejection; cancel/disarm behavior; Telegram unavailable fallback to browser; and manual-prompt reconciliation. Unlimited host-window measurement is documented but need not be repeated in every acceptance run once the operator has already established a cutoff. Deliberately stopping a tunnel/runtime or inducing platform safety/capacity errors is optional and must not be done merely for the report.
 
 - [ ] **Step 3: Emit one copyable Markdown report**
 

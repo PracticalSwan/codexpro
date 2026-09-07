@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Telegram is optional and disabled by default; browser **Continue task** remains a fallback authorization surface.
+- Telegram is optional and disabled by default. It is not initialized, paired, polled, or requested unless `continuationEnabled=true` **and** `continuationTelegramEnabled=true`; browser **Continue task** remains a fallback authorization surface when continuation is enabled.
 - Version 1 supports one paired private Telegram user/chat per CodexPro installation; groups/channels are ignored.
 - The Telegram button click is a contemporaneous human authorization, not autonomous continuation. It authorizes at most one current task revision/nonce/intent.
 - No callback may bypass current transport, browser auth, bound-chat, page-idle, terminal-state, user-pause, or durable-work safety predicates.
@@ -69,7 +69,7 @@ Assert only a private-chat update from the user who presents the live pairing co
 
 - [ ] **Step 2: Add the BotFather/token hard stop**
 
-If no valid token exists during implementation/setup, report `WAITING_FOR_TELEGRAM_BOT_TOKEN` and **STOP**. Guide the user to create a dedicated bot with `@BotFather`, then run the masked local `codexpro continuation telegram token save` command themselves. Never ask them to paste the token into ChatGPT. Resume only after the user sends `continue`.
+Only after continuation and Telegram have both been explicitly enabled: if no valid token exists during implementation/setup, report `WAITING_FOR_TELEGRAM_BOT_TOKEN` and **STOP**. Guide the user to create a dedicated bot with `@BotFather`, then run the masked local `codexpro continuation telegram token save` command themselves. Never ask them to paste the token into ChatGPT. Resume only after the user sends `continue`.
 
 - [ ] **Step 3: Add the `/start` pairing hard stop**
 
@@ -124,7 +124,7 @@ Default Telegram message shows only a short task ID, coarse current phase/status
 
 - [ ] **Step 3: Add action-token lifecycle**
 
-Action tokens are random, server-side, bound to exact paired user/chat + task revision + continuation nonce + intent, and expire after a short notification window. Completion/cancel/rebind/new revision invalidates all tokens. Best-effort edit/removal of stale Telegram keyboards improves UX, but server rejection remains authoritative if Telegram message editing fails.
+Action tokens are random, server-side, bound to exact paired user/chat + task revision + continuation nonce + intent, and expire after a short notification window. Completion/cancel/rebind/new revision **or any manual user-message/Stop event** invalidates all tokens. Best-effort edit/removal of stale Telegram keyboards improves UX, but server rejection remains authoritative if Telegram message editing fails.
 
 ### Task 5: Treat Telegram callback as one-shot remote user authorization
 
@@ -147,7 +147,7 @@ For every legitimate or rejected inline callback, call `answerCallbackQuery` pro
 
 - [ ] **Step 2: Validate the remote authorization at every layer**
 
-Require the exact paired Telegram user ID/private chat ID, valid opaque action token, current task revision, current continuation nonce, non-terminal task, current transport ready, browser paired/signed-in/bound, and no user-pause or productive durable work. A stale callback, copied button, forwarded bot message, or replayed update cannot authorize anything.
+Require the exact paired Telegram user ID/private chat ID, valid opaque action token, current task revision, current continuation nonce, non-terminal task, current transport ready, browser paired/signed-in/bound, no `manualTurnPending`/user pause, and no productive durable work. A stale callback, copied button, forwarded bot message, or replayed update cannot authorize anything.
 
 - [ ] **Step 3: Keep authorization contemporaneous and one-shot**
 
@@ -173,7 +173,7 @@ The browser always submits a versioned fixed product message. For a focused Tele
 
 - [ ] **Step 1: Define non-secret settings**
 
-Add only `continuationTelegramEnabled` and notification preferences needed for UX. Do not store bot token, Telegram user/chat IDs, bot API URLs, callback tokens, or pending action records in workspace profiles. Settings changes must preserve deadline/browser continuation fields and vice versa.
+Add only `continuationTelegramEnabled` and notification preferences needed for UX. `continuationTelegramEnabled` defaults false and cannot become operational while `continuationEnabled=false`; CLI/admin explain the dependency instead of starting setup. Do not store bot token, Telegram user/chat IDs, bot API URLs, callback tokens, or pending action records in workspace profiles. Settings changes must preserve deadline/browser continuation fields and vice versa.
 
 - [ ] **Step 2: Add truthful status/doctor output**
 
@@ -230,3 +230,4 @@ git commit -m "feat: add Telegram continuation authorization"
 - Telegram failures never cause autonomous fallback submission or restart CodexPro/tunnels.
 - Bot token and private Telegram state remain outside profiles, logs, Git, packages, MCP output, and user-copyable QA reports.
 - Browser **Continue task** remains available when Telegram is disabled/unavailable.
+- No BotFather/token/pairing step is requested while continuation is disabled; manual user prompts immediately stale any pending Telegram actions until semantic reconciliation.

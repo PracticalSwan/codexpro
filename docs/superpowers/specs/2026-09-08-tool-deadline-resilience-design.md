@@ -9,21 +9,23 @@ ChatGPT or another MCP host may terminate a plugin/tool invocation after a finit
 
 ## Non-negotiable timing contract
 
-- The default CodexPro synchronous MCP call deadline is **exactly 20 minutes = 1,200,000 ms**.
+- Tool-time awareness is **enabled by default** and is independent of browser/Telegram continuation. The normal default is a bounded **20 minutes = 1,200,000 ms**.
 - The effective deadline is a **blocking-call/transport deadline**, not a task deadline, quality deadline, or goal deadline.
-- Users may configure the effective deadline from **5 to 60 minutes** per saved workspace profile so it can stay below their own observed/documented ChatGPT or MCP-host closure window.
-- CodexPro does not auto-detect, probe, bypass, or extend the host's external limit. A value above the real host limit is a user misconfiguration and diagnostics/settings guidance must say so clearly.
+- Normal bounded mode accepts **5 to 60 minutes** per saved workspace profile so it can stay below the operator's observed/documented ChatGPT or MCP-host closure window.
+- A separately explicit **Unlimited / observe-only** mode disables CodexPro's cooperative synchronous cutoff while continuing elapsed-time diagnostics. It is intended only for temporary host-window discovery with a harmless diagnostic probe, not as the recommended production setting for mutating work.
+- CodexPro does not claim to know, bypass, or extend the host's external limit. Current OpenAI ChatGPT MCP documentation does not publish one universal per-user tool-call window; operators therefore measure their own environment and then restore a bounded value with safety margin.
 - A proportional internal handoff reserve stops *starting new synchronous phases* before the configured deadline so the handler can serialize a durable continuation response; this does not shorten the user's overall task.
 - No test may wait for real configured minutes; deadline utilities must support an injected clock/budget for deterministic fast tests while production uses the resolved effective value.
 
 ## Configuration contract
 
-The internal/runtime field is `syncCallDeadlineMs`. The default is `1_200_000`; accepted persisted/runtime values are `300_000` through `3_600_000` ms (5–60 minutes).
+The runtime contract uses `syncCallDeadlineMode: "bounded" | "observe"` plus `syncCallDeadlineMs`. Default mode is `bounded` with `syncCallDeadlineMs = 1_200_000`; bounded values are `300_000` through `3_600_000` ms (5–60 minutes). In `observe` mode, `syncCallDeadlineMs` remains the last/default finite reference value for routing/display but does not enforce a cooperative cutoff.
 
 User-facing configuration is intentionally minutes-based:
 
 ```text
 codexpro settings set --sync-call-deadline-minutes 20
+codexpro settings set --sync-call-deadline-minutes unlimited
 codexpro start --sync-call-deadline-minutes 20
 ```
 
@@ -31,7 +33,7 @@ The saved workspace profile stores `syncCallDeadlineMs`; `codexpro settings show
 
 Runtime precedence is: explicit launch CLI value → `CODEXPRO_SYNC_CALL_DEADLINE_MS` → saved workspace profile → 20-minute default. The launcher must resolve the saved profile consistently and pass the effective value to the HTTP/MCP runtime; `src/config.ts` remains the runtime source of truth.
 
-The settings UI/CLI should recommend choosing a value with safety margin below the user's known host window. It must not claim all ChatGPT accounts have the same cutoff. At the 20-minute default, the existing 5-minute/15-minute routing thresholds remain unchanged; non-default deadlines derive equivalent thresholds proportionally from the effective value.
+The settings UI/CLI must explain that ChatGPT accounts/clients may have different or changing tool windows. Discovery guidance starts with a disposable new chat/workspace, temporarily selects **Unlimited / observe-only**, runs only the harmless `tool_time_probe`, notes when ChatGPT closes the tool invocation, then restores a bounded deadline below that observed window (20 minutes remains the normal default). Unlimited mode must show a prominent warning not to use it as the normal setting for long mutations. At the 20-minute bounded default, the existing 5-minute/15-minute routing thresholds remain unchanged; non-default bounded deadlines derive equivalent thresholds proportionally from the effective value. Observe mode keeps conservative routing guidance using the finite reference deadline instead of treating normal work as infinitely synchronous.
 
 ## Quality-preservation contract
 
@@ -82,7 +84,7 @@ The design deepens existing seams. `src/server.ts` remains registration/orchestr
 
 ## Duration-aware routing guidance
 
-- Let `D` be the effective configured deadline. `sync_preferred = min(5 minutes, 25% of D)` and `async_preferred = 75% of D`.
+- In bounded mode let `D` be the effective configured deadline. `sync_preferred = min(5 minutes, 25% of D)` and `async_preferred = 75% of D`. In Unlimited/observe mode, derive routing from the stored finite reference `D` (20 minutes by default) so discovery mode does not classify arbitrary long work as synchronously preferred.
 - Work between those cutoffs may remain synchronous when low variance; unknown/high-variance heavy work routes async before starting.
 - At the 20-minute default, these formulas preserve the original 5-minute and 15-minute thresholds.
 - Routing cutoffs are **not** deadlines; the effective deadline remains the configured `D`.
@@ -103,6 +105,7 @@ The design deepens existing seams. `src/server.ts` remains registration/orchestr
 | Prefer Durable Goals for substantial multi-stage work | 26 |
 | Resumable non-process batch/cursor operations | 27 |
 | Deadline-risk diagnostics/telemetry | 28 |
+| Harmless per-user host-window discovery probe / Unlimited observe mode | 22, 28 |
 
 ## Safety and compatibility
 
@@ -114,6 +117,9 @@ The design deepens existing seams. `src/server.ts` remains registration/orchestr
 - The design does not rely on MCP Tasks support; if Tasks later becomes available, it may adapt to the same canonical `proc_*`, `job_*`, and `goal_*` state.
 
 ## Verification strategy
+
+Host-window discovery is verified separately from normal deadline behavior. Plan 28 adds a read-only `tool_time_probe` that performs no workspace I/O, child-process launch, Git mutation, network action, or browser automation. In Unlimited/observe mode it may remain pending until its operator-selected harmless probe duration or client disconnect. If the transport exposes a trustworthy abort signal, diagnostics may record observed elapsed time; otherwise the UI instructs the user to note the ChatGPT-side closure time manually. This measurement is advisory and never silently rewrites the saved deadline.
+
 
 Each subsystem requires a focused smoke with fake/short budgets, then `npm run build`. Shared MCP registration or instruction changes also require `npm run smoke`. Process/job concurrency or shutdown semantics require `npm run stress`. Dependency changes are not expected; if introduced, add audit and release-package checks.
 

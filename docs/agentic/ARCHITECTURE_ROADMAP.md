@@ -167,7 +167,7 @@ Runtime ownership remains outside the roadmap implementation itself: a running C
 
 ## 2026-09-08 deadline-resilience roadmap extension
 
-This extension addresses host-side tool-call windows without attempting to bypass them. The CodexPro synchronous MCP deadline defaults to **exactly 1,200,000 ms (20 minutes)** and is planned as a validated **5–60 minute per-workspace profile setting** exposed through CLI and the authenticated local website. The effective value is a transport boundary only: user goals, requested scope, acceptance criteria, reasoning/review quality, and required verification must remain intact across continuation calls.
+This extension addresses host-side tool-call windows without attempting to bypass them. Tool-time awareness is planned **on by default**: normal bounded mode is exactly 1,200,000 ms (20 minutes), finite values are 5–60 minutes, and explicit Unlimited/observe exists only for temporary harmless host-window discovery. The effective value is a transport boundary only: user goals, requested scope, acceptance criteria, reasoning/review quality, and required verification must remain intact across continuation calls.
 
 ### Extension architecture
 
@@ -201,6 +201,7 @@ MCP dispatch -> DeadlineBudget(effective runtime value; default 20 min)
 | 60 | Quality-preserving ChatGPT continuation guidance | P0 | 26 | 22–25 |
 | 61 | Resumable non-process `batch_*` continuation | P1 | 27 | 16, 22 |
 | 62 | Deadline/job/batch observability and risk diagnostics | P1 | 28 | 22–27 |
+| 83 | Per-user host-window discovery / Unlimited observe mode | P1 | 22, 28 | 22 |
 
 ### Recommended sequence
 
@@ -208,7 +209,7 @@ MCP dispatch -> DeadlineBudget(effective runtime value; default 20 min)
 
 ### Extension design rules
 
-- The 20-minute value is the default, not a universal assumption. Users may choose 5–60 minutes to stay below their own host closure window; no configured value is a performance target or justification for reducing requested work.
+- Bounded 20 minutes is the normal default, not a universal host assumption. Users may choose 5–60 minutes; first-time users may temporarily use Unlimited/observe with the harmless probe to discover their own ChatGPT cutoff, then restore a finite safety-margin value. Tool-time awareness does not depend on continuation.
 - Near the effective configured deadline, stop starting new synchronous phases, persist a truthful continuation, and continue the same goal in later calls.
 - Reuse the existing `WorkspaceProcessManager` for long shell commands and Durable Goals for multi-stage isolated work.
 - Structured jobs are producer-registered and are not a second generic command runner.
@@ -221,7 +222,7 @@ Controller plan: `docs/superpowers/plans/2026-09-08-deadline-resilience-executio
 
 ## 2026-09-08 task-aware browser-continuation roadmap extension
 
-This extension adds a human-gated conversation-resume layer after the deadline-resilience foundations. It does not bypass the host tool window: actual long work remains in `proc_*`, `job_*`, `batch_*`, and Durable Goals; the browser companion only preserves task awareness, signals when another model turn is useful, and lets the user explicitly continue the one bound chat.
+This extension adds an **optional, default-off** human-gated conversation-resume layer after the default-on deadline-resilience foundations. It does not bypass the host tool window: actual long work remains in `proc_*`, `job_*`, `batch_*`, and Durable Goals; the browser companion only preserves task awareness, signals when another model turn is useful, and lets the user explicitly continue the one bound chat.
 
 ### Extension architecture
 
@@ -261,6 +262,8 @@ ChatGPT semantic controller
 | 80 | Telegram private-bot continuation notification/authorization | P0 | 37 | 29–35 |
 | 81 | Bounded focused continuation intents | P0 | 29, 32, 37 | 29, 32 |
 | 82 | Fresh-ChatGPT-session acceptance report handoff | P0 | 36 | 29–37 |
+| 84 | Manual-user-turn semantic reconciliation | P0 | 29, 32, 33, 35 | 29, 32 |
+| 85 | Continuation opt-in/default-off dependency gating | P0 | 34, 35, 37 | 22, 29 |
 
 ### Recommended sequence
 
@@ -269,16 +272,20 @@ ChatGPT semantic controller
 ### Extension design rules
 
 - Version 1 never auto-submits ChatGPT messages and never scrapes conversation/output text.
+- Continuation is disabled by default and is never required for tool-time awareness; Telegram setup is skipped unless continuation and Telegram are both explicitly enabled.
 - Every continuation dispatch requires a contemporaneous explicit user authorization from the managed-browser **Continue task** button or, when configured, the paired private Telegram bot. Telegram callbacks remain one-shot and cannot bypass browser/transport/task safety checks.
 - Browser authentication/security verification is always manual; implementation/live QA stops until the user authenticates and sends `continue`.
 - Use a dedicated browser profile and separate continuation credential; do not import a personal browser profile or expose MCP authority to the extension.
 - Browser state never decides semantic task completion; completed/canceled record revisions invalidate stale continuation authorization.
 - Watchdog timing uses the current runtime deadline/generation/transport snapshot only; saved/default deadlines, stopped tunnels, restart/sleep/reconnect gaps, manual user turns/Stop actions, and generic platform busy/error/retry/unknown UI cannot manufacture readiness.
+- Unlimited/observe mode has no finite watchdog cutoff, so timeout-inferred continuation is disabled until bounded mode is restored.
+- If the user manually prompts instead of pressing a ready continuation action, stale browser/Telegram actions are invalidated and the next semantic turn reconciles resume/redirect/supersede/cancel without browser prompt capture.
 - Stable conversation identity is required for binding; full private routes remain extension-local and route changes fail closed.
 - The continuation layer never auto-Retries ChatGPT, switches models, dismisses blocking/safety UI, or starts/restarts CodexPro/tunnels.
 - Actual long-running execution remains in Plans 22–28/existing durable primitives.
 - Telegram v1 uses outbound Bot API long polling with a dedicated private bot; no webhook/group/arbitrary-command surface is planned. Bot setup/token/pairing are manual user stop gates and secrets remain outside profiles/logs/packages.
 - Final acceptance includes a new ChatGPT session using installed CodexPro Full that produces a sanitized copyable test report for maintenance review.
+- Current operator acceptance: during future authorized local setup, enable continuation + Telegram for this user's profile while leaving package defaults disabled.
 - Current service terms/policies relevant to browser automation/output extraction/restriction circumvention/authentication must be rechecked before implementation/live/release claims without extrapolating unrelated rules.
 
 Authoritative design: `docs/superpowers/specs/2026-09-08-task-aware-browser-continuation-design.md`.

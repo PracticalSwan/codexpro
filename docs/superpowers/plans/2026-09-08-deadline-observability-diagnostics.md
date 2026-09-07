@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Diagnostics report the current effective `sync_call_deadline_ms` and its minutes equivalent; 1,200,000 ms is the default, not a universal fixed runtime value.
+- Diagnostics report `sync_call_deadline_mode` plus the current finite reference/deadline milliseconds; bounded 1,200,000 ms is the default, not a universal host limit. Observe mode reports elapsed awareness without pretending an enforced CodexPro deadline exists.
 - Do not claim CodexPro controls or bypasses ChatGPT's external limit.
 - Telemetry stores tool/job identifiers, durations, states, and bounded reasons—not prompts, source content, raw command output, tokens, or secrets.
 - A deadline yield is a distinct state from failure and success.
@@ -54,8 +54,9 @@ Use existing request/completion telemetry points and job/batch state transitions
 Assert diagnostics report:
 
 ```text
-sync_call_deadline_ms = <current effective value>
-sync_call_deadline_minutes = <current effective minutes>
+sync_call_deadline_mode = bounded | observe
+sync_call_deadline_ms = <finite reference/current bounded value>
+sync_call_deadline_minutes = <finite reference/current bounded minutes>
 sync_call_deadline_default_ms = 1200000
 sync_call_deadline_min_ms = 300000
 sync_call_deadline_max_ms = 3600000
@@ -71,7 +72,25 @@ Also expose recent aggregate counts for deadline yields/async routes without lis
 
 Report known high-risk synchronous surfaces such as composite verification when async alternatives are available. Risk entries should name the tool and recommended primitive, not guess how long a specific user task will take.
 
-### Task 3: Surface bounded progress and effective deadline in the local operator view
+### Task 3: Add harmless host-window discovery probe
+
+**Files:**
+- Modify: `src/diagnosticsOps.ts`
+- Modify: `src/server.ts`
+- Create: `scripts/tool-time-probe-smoke.mjs`
+
+**Interfaces:**
+- Adds read-only `tool_time_probe(max_minutes?)` for explicit operator discovery. It performs no workspace/file/Git/process/browser/network mutation and is useful only when the current runtime deadline mode is `observe`.
+
+- [ ] **Step 1: Add probe safety/abort tests**
+
+Use fake clocks/abort signals to prove the probe does nothing except wait/measure, caps its own operator-selected diagnostic duration, records sanitized elapsed/abort metadata only when transport cancellation is observable, and never changes the saved deadline automatically.
+
+- [ ] **Step 2: Add discovery guidance**
+
+CLI/admin/help workflow: use a disposable new ChatGPT chat, temporarily set the next launch to `Unlimited (observe only)`, manually launch that runtime, invoke only `tool_time_probe`, note when ChatGPT closes the tool call, then restore a bounded deadline below the observed window. If no reliable server-side abort is observable, tell the user to record the UI-observed time manually rather than fabricating a measurement.
+
+### Task 4: Surface bounded progress and effective deadline in the local operator view
 
 **Files:**
 - Modify: `src/http.ts` only for diagnostics/current-vs-saved rendering; the editable profile control is implemented in Plan 22
@@ -85,7 +104,7 @@ Show the currently running synchronous deadline, the saved next-run deadline whe
 
 Reuse the Plan 22 editable profile field; do not introduce a second diagnostics-only editor. Clearly distinguish `current effective` from `saved for next launch`, because changing the profile does not mutate the running runtime.
 
-### Task 4: Verify and commit
+### Task 5: Verify and commit
 
 **Files:**
 - Modify: `README.md`
@@ -95,6 +114,7 @@ Reuse the Plan 22 editable profile field; do not introduce a second diagnostics-
 - [ ] **Step 1: Run diagnostic gates**
 
 Run: `node scripts/deadline-diagnostics-smoke.mjs`
+Run: `node scripts/tool-time-probe-smoke.mjs`
 Run: `node scripts/diagnostics-smoke.mjs`
 Run: `npm run build`
 Run: `npm run smoke`
@@ -111,7 +131,7 @@ Run: `git diff --check`
 Expected: PASS.
 
 ```bash
-git add src/telemetry.ts src/diagnosticsOps.ts src/server.ts src/http.ts scripts/deadline-diagnostics-smoke.mjs scripts/diagnostics-smoke.mjs scripts/settings-smoke.mjs README.md FEATURES.md docs/agentic/PROJECT_MEMORY.md
+git add src/telemetry.ts src/diagnosticsOps.ts src/server.ts src/http.ts scripts/deadline-diagnostics-smoke.mjs scripts/tool-time-probe-smoke.mjs scripts/diagnostics-smoke.mjs scripts/settings-smoke.mjs README.md FEATURES.md docs/agentic/PROJECT_MEMORY.md
 git commit -m "feat: expose deadline resilience diagnostics"
 ```
 
@@ -121,8 +141,9 @@ After Plans 29–37 exist, diagnostics may additionally report continuation feat
 
 ## Acceptance Criteria
 
-- Diagnostics show the current effective deadline, the 20-minute default, and the supported 5–60 minute range.
+- Diagnostics show the current deadline mode, finite reference/current bounded value, the 20-minute bounded default, and supported 5–60 minute range; observe mode is explicit rather than represented as a giant timeout.
 - Deadline yield/async/job/batch states are observable without exposing sensitive content.
 - Operators can identify known timeout-risk surfaces and the recommended durable primitive.
 - The authenticated local page reuses Plan 22's validated profile control and distinguishes saved next-run value from current runtime value.
 - Diagnostics never imply the external ChatGPT tool window was bypassed.
+- A dedicated harmless probe plus Unlimited/observe mode gives users a documented way to discover their own host cutoff without making ordinary project mutations the experiment.
