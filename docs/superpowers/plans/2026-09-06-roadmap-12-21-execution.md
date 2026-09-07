@@ -2,7 +2,7 @@
 
 > **For agentic workers:** This is the execution controller for an explicitly authorized all-plans run. Each linked subsystem spec and plan remains authoritative for its own implementation, acceptance contracts, tests, and non-goals.
 
-**Execution status:** Planned only on 2026-09-06. Creating or committing this document does **not** authorize runtime implementation of Plans 12–21.
+**Execution status:** Authorized and executed through the currently satisfiable capability gates on 2026-09-07. Plans 12-17 and 20 are verified; Plan 18 Stage 1 is verified with interactive approvals still fail-closed; Plan 19 is blocked by the current Tasks-extension/client-support gate; Plan 21 Stage A is Windows-live-verified with Linux-host validation pending and Goal Docker support intentionally host-only. The final cumulative build/smoke/stress/audit/release-pack/diff gate passed before integration.
 
 **Goal:** Implement Plans 12–21 in one continuous future run while preserving subsystem isolation, dependency order, safety gates, evidence, and recoverability.
 
