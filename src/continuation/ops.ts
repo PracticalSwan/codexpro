@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { ContinuationStore, type ContinuationBinding } from "./store.js";
 import {
   TERMINAL_CONTINUATION_STATES,
@@ -9,7 +9,8 @@ import {
   type ContinuationDisposition,
   type ContinuationIntent,
   type ContinuationRecord,
-  type ContinuationTemplateKey
+  type ContinuationTemplateKey,
+  type ContinuationDispatchSource
 } from "./types.js";
 
 export interface ContinuationIntentDraft {
@@ -51,14 +52,72 @@ function reversionIntents(record: ContinuationRecord, revision: number): Continu
 function clearAuthorization(record: ContinuationRecord): void {
   delete record.outstandingNonce;
   delete record.selectedContinuationIntentId;
+  delete record.dispatchAuthorization;
 }
 
 function clearTerminalState(record: ContinuationRecord): void {
   clearAuthorization(record);
   delete record.manualTurnPending;
   record.continuationIntents = [];
+  delete record.conversationFingerprint;
 }
 
+
+export const FIXED_CONTINUATION_MESSAGE = "Continue the current task from the latest CodexPro continuation state. Preserve the original goal and acceptance criteria. Do not repeat work already recorded as completed and verified.";
+const DISPATCH_AUTH_TTL_MS = 60_000;
+function routeFingerprint(value: unknown): string {
+  const text = String(value ?? "").toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(text)) throw new Error("invalid_conversation_fingerprint");
+  return text;
+}
+function tokenHash(value: string): string { return createHash("sha256").update(value).digest("hex"); }
+
+export async function bindContinuationConversation(input: { enabled: boolean; store: ContinuationStore; binding: ContinuationBinding; continuationId: string; expectedRevision: number; conversationFingerprint: string; }): Promise<ContinuationRecord> {
+  requireEnabled(input.enabled);
+  const fingerprint = routeFingerprint(input.conversationFingerprint);
+  const current = await input.store.requireForBinding(input.continuationId, input.binding);
+  if (current.revision !== input.expectedRevision) throw new Error(`stale_continuation_revision: expected ${input.expectedRevision}, current ${current.revision}.`);
+  if (current.conversationFingerprint === fingerprint) return current;
+  if (current.manualTurnPending) throw new Error("manual_turn_pending: reconcile the user turn before binding a conversation.");
+  if (!["armed", "working", "continuation_requested"].includes(current.state)) throw new Error(`Continuation cannot bind from state ${current.state}.`);
+  return input.store.update(input.continuationId, input.binding, { expectedRevision: input.expectedRevision }, (record) => {
+    record.conversationFingerprint = fingerprint;
+    delete record.dispatchAuthorization;
+    return record;
+  });
+}
+
+export async function authorizeContinuationDispatch(input: { enabled: boolean; store: ContinuationStore; binding: ContinuationBinding; continuationId: string; expectedRevision: number; conversationFingerprint: string; source: ContinuationDispatchSource; now?: number; }): Promise<{ record: ContinuationRecord; token: string; message: string }> {
+  requireEnabled(input.enabled);
+  const fingerprint = routeFingerprint(input.conversationFingerprint);
+  const current = await input.store.requireForBinding(input.continuationId, input.binding);
+  if (current.state !== "continuation_ready") throw new Error(`continuation_not_ready: ${current.state}`);
+  if (current.manualTurnPending) throw new Error("manual_turn_pending");
+  if (!current.outstandingNonce || !current.selectedContinuationIntentId) throw new Error("stale_continuation_nonce");
+  if (current.conversationFingerprint !== fingerprint) throw new Error("wrong_chat");
+  const token = randomBytes(32).toString("hex"); const now = input.now ?? Date.now();
+  const record = await input.store.update(input.continuationId, input.binding, { expectedRevision: input.expectedRevision }, (draft) => {
+    draft.state = "awaiting_user_send";
+    draft.dispatchAuthorization = { tokenHash: tokenHash(token), source: input.source, authorizedAt: new Date(now).toISOString(), expiresAt: new Date(now + DISPATCH_AUTH_TTL_MS).toISOString(), routeFingerprint: fingerprint };
+    return draft;
+  });
+  return { record, token, message: FIXED_CONTINUATION_MESSAGE };
+}
+
+export async function completeContinuationDispatch(input: { store: ContinuationStore; binding: ContinuationBinding; continuationId: string; expectedRevision: number; conversationFingerprint: string; token: string; now?: number; }): Promise<ContinuationRecord> {
+  const fingerprint = routeFingerprint(input.conversationFingerprint); const current = await input.store.requireForBinding(input.continuationId, input.binding); const auth = current.dispatchAuthorization;
+  if (current.state !== "awaiting_user_send" || !auth) throw new Error("dispatch_authorization_missing");
+  if (auth.routeFingerprint !== fingerprint || current.conversationFingerprint !== fingerprint) throw new Error("wrong_chat");
+  if (auth.tokenHash !== tokenHash(String(input.token ?? ""))) throw new Error("dispatch_authorization_invalid");
+  if ((input.now ?? Date.now()) > Date.parse(auth.expiresAt)) throw new Error("dispatch_authorization_expired");
+  return input.store.update(input.continuationId, input.binding, { expectedRevision: input.expectedRevision }, (record) => { record.state = "dispatched"; record.lastDispatchAt = new Date(input.now ?? Date.now()).toISOString(); clearAuthorization(record); return record; });
+}
+
+export async function releaseContinuationDispatch(input: { store: ContinuationStore; binding: ContinuationBinding; continuationId: string; expectedRevision: number; token: string; }): Promise<ContinuationRecord> {
+  const current = await input.store.requireForBinding(input.continuationId, input.binding); const auth = current.dispatchAuthorization;
+  if (current.state !== "awaiting_user_send" || !auth || auth.tokenHash !== tokenHash(String(input.token ?? ""))) throw new Error("dispatch_authorization_invalid");
+  return input.store.update(input.continuationId, input.binding, { expectedRevision: input.expectedRevision }, (record) => { record.state = "continuation_ready"; delete record.dispatchAuthorization; return record; });
+}
 export async function armContinuation(input: {
   enabled: boolean;
   store: ContinuationStore;

@@ -8,14 +8,20 @@ function request(message) {
   }));
 }
 function render(state) {
-  setText($('status'), state.available ? 'Paired and available' : state.paired ? 'Paired; bridge unavailable' : 'Not paired');
+  const bound = Boolean(state.currentChatBound);
+  setText($('status'), state.available ? `Paired and available${bound ? ' · current chat bound' : ''}` : state.paired ? 'Paired; bridge unavailable' : 'Not paired');
   if (state.bridgeUrl) $('bridge').value = state.bridgeUrl;
   if (state.profileLabel) $('profile').value = state.profileLabel;
   $('task').hidden = !state.task;
-  if (state.task) setText($('taskSummary'), `${state.task.id} · ${state.task.state} · rev ${state.task.revision}`);
-  const signedIn = state.pageState?.auth_state === 'signed_in';
-  $('bind').disabled = !state.available || !state.task || !signedIn;
-  $('continue').disabled = !state.available || !state.task || !signedIn;
+  if (state.task) {
+    const shortId = String(state.task.id || '').slice(-8);
+    setText($('taskSummary'), `${state.task.title || 'Continuation task'} · ${shortId} · ${state.task.state} · rev ${state.task.revision}`);
+  }
+  const page = state.pageState || {};
+  const bindable = state.available && state.task && page.auth_state === 'signed_in' && page.conversation_route_stable;
+  const safe = page.auth_state === 'signed_in' && page.composer_ready && !page.streaming && page.platform_state === 'idle' && !page.blocking_interaction && !page.recent_user_input;
+  $('bind').disabled = !bindable;
+  $('continue').disabled = !state.available || !state.task || state.task.state !== 'continuation_ready' || !bound || !safe || state.task.manual_turn_pending || state.task.dispatch_authorization_pending;
 }
 async function refresh() {
   try { render(await request({ type: 'codexpro_get_state' })); setText($('error'), ''); }

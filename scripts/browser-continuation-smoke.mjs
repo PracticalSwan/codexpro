@@ -52,7 +52,18 @@ try {
   const bridgePair = await store.createPairing('bridge');
   const taskStatus = { task: { id: 'continuation_demo', revision: 4, state: 'working', title: 'Demo task' } };
   const events = [];
-  const app = createBrowserBridgeApp({ store, statusProvider: async () => taskStatus, onEvent: async (event) => { events.push(event); } });
+  const bridgeCalls = [];
+  const fp = 'a'.repeat(64);
+  const authToken = 'b'.repeat(64);
+  const fixedMessage = 'Continue the current task from the latest CodexPro continuation state. Preserve the original goal and acceptance criteria. Do not repeat work already recorded as completed and verified.';
+  const app = createBrowserBridgeApp({
+    store, statusProvider: async () => taskStatus, onEvent: async (event) => { events.push(event); },
+    bindConversation: async (input) => { bridgeCalls.push({ kind: 'bind', input }); return { task: { ...taskStatus.task, revision: 5, conversation_bound: true } }; },
+    authorizeDispatch: async (input) => { bridgeCalls.push({ kind: 'authorize', input }); return { authorization_token: authToken, task_id: input.taskId, revision: 5, conversation_fingerprint: input.conversationFingerprint, message: fixedMessage }; },
+    completeDispatch: async (input) => { bridgeCalls.push({ kind: 'complete', input }); return { task: { ...taskStatus.task, revision: 6, state: 'dispatched' } }; },
+    releaseDispatch: async (input) => { bridgeCalls.push({ kind: 'release', input }); return { task: { ...taskStatus.task, revision: 6, state: 'continuation_ready' } }; },
+    manualInteraction: async (input) => { bridgeCalls.push({ kind: 'manual', input }); return { task: { ...taskStatus.task, revision: 6, state: 'paused_by_user', manual_turn_pending: true } }; }
+  });
   const server = app.listen(0, '127.0.0.1');
   await new Promise((resolve) => server.once('listening', resolve));
   const address = server.address();
@@ -87,18 +98,36 @@ try {
   assert.equal(pageState.status, 204);
   assert.equal(events.at(-1)?.type, 'page_state');
   const bindEvent = await fetch(`${base}/continuation/v1/events/bind`, {
+    method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 4, conversation_fingerprint: fp })
+  });
+  assert.equal(bindEvent.status, 200);
+  assert.equal(bridgeCalls.at(-1)?.kind, 'bind');
+  const bindMissingFingerprint = await fetch(`${base}/continuation/v1/events/bind`, {
     method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 4 })
   });
-  assert.equal(bindEvent.status, 202);
-  const dispatchEvent = await fetch(`${base}/continuation/v1/events/dispatch`, {
-    method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 4 })
-  });
-  assert.equal(dispatchEvent.status, 202);
-  assert.equal(events.at(-1)?.type, 'dispatch_authorized');
-  const arbitrary = await fetch(`${base}/continuation/v1/events/dispatch`, {
-    method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 4, selector: '#danger', script: 'alert(1)', command: 'git push' })
-  });
-  assert.equal(arbitrary.status, 400, 'bridge accepted arbitrary selector/script/command fields');
+  assert.equal(bindMissingFingerprint.status, 400, 'bridge bound a chat without an opaque conversation fingerprint');
+  const safePage = { auth_state: 'signed_in', composer_ready: true, streaming: false, platform_state: 'idle', blocking_interaction: false, recent_user_input: false };
+  const unauthDispatch = await fetch(`${base}/continuation/v1/dispatch/authorize`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 4, conversation_fingerprint: fp, page_state: safePage }) });
+  assert.equal(unauthDispatch.status, 401, 'dispatch endpoint was not browser-client authenticated');
+  const unsafeDispatch = await fetch(`${base}/continuation/v1/dispatch/authorize`, { method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 4, conversation_fingerprint: fp, page_state: { ...safePage, streaming: true } }) });
+  assert.equal(unsafeDispatch.status, 409, 'streaming page was authorized for dispatch');
+  const authorize = await fetch(`${base}/continuation/v1/dispatch/authorize`, { method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 4, conversation_fingerprint: fp, page_state: safePage }) });
+  assert.equal(authorize.status, 200);
+  const grant = await authorize.json();
+  assert.equal(grant.authorization_token, authToken);
+  assert.equal(grant.message, fixedMessage);
+  assert.equal(bridgeCalls.at(-1)?.kind, 'authorize');
+  const arbitrary = await fetch(`${base}/continuation/v1/dispatch/authorize`, { method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 4, conversation_fingerprint: fp, page_state: safePage, selector: '#danger', script: 'alert(1)', command: 'git push', message: 'arbitrary' }) });
+  assert.equal(arbitrary.status, 409, 'bridge accepted arbitrary selector/script/command/message fields');
+  const complete = await fetch(`${base}/continuation/v1/dispatch/complete`, { method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 5, conversation_fingerprint: fp, authorization_token: authToken }) });
+  assert.equal(complete.status, 200);
+  assert.equal(bridgeCalls.at(-1)?.kind, 'complete');
+  const release = await fetch(`${base}/continuation/v1/dispatch/release`, { method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 5, authorization_token: authToken }) });
+  assert.equal(release.status, 200);
+  assert.equal(bridgeCalls.at(-1)?.kind, 'release');
+  const manual = await fetch(`${base}/continuation/v1/events/manual`, { method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 4, conversation_fingerprint: fp, reason: 'manual_message' }) });
+  assert.equal(manual.status, 200);
+  assert.equal(bridgeCalls.at(-1)?.kind, 'manual');
   assert.equal(statusResponse.headers.get('access-control-allow-origin'), null, 'bridge enabled permissive browser CORS');
   const revokeResponse = await fetch(`${base}/continuation/v1/client`, { method: 'DELETE', headers: browserHeaders });
   assert.equal(revokeResponse.status, 204);
@@ -114,13 +143,15 @@ try {
   for (const forbidden of ['<all_urls>', 'webRequestBlocking', 'debugger', 'downloads', 'history', 'passwords']) {
     assert(!manifestText.includes(forbidden), `extension manifest exposed forbidden capability ${forbidden}`);
   }
-  const extensionFiles = ['background.js', 'content.js', 'popup.js'];
+  assert.deepEqual(manifest.content_scripts?.[0]?.js, ['chatgpt-adapter.js', 'content.js'], 'ChatGPT adapter must load before the generic content controller');
+  const extensionFiles = ['background.js', 'chatgpt-adapter.js', 'content.js', 'popup.js'];
   const sourceText = (await Promise.all(extensionFiles.map((name) => fs.readFile(path.resolve('browser-extension', name), 'utf8')))).join('\n');
   for (const forbidden of ['innerText', 'textContent', 'document.body.innerHTML', 'eval(', 'new Function', 'chrome.debugger']) {
     assert(!sourceText.includes(forbidden), `extension source contains forbidden conversation/DOM capability ${forbidden}`);
   }
   assert(!sourceText.includes('Authorization: Bearer'), 'extension source hard-coded bearer material');
   assert(!sourceText.includes('x-codexpro-extension-id'), 'extension relies on a custom identity header that Chrome MV3 may omit');
+  assert(!/chrome\.runtime\.sendMessage\([^;]*\)\.catch/.test(sourceText), 'content script assumes Promise-returning chrome.runtime.sendMessage');
 
   const cliSecret = 'mcp-token-plan30-must-not-print';
   const cli = spawnSync(process.execPath, ['scripts/codexpro.mjs', 'continuation', 'browser', 'pair', '--profile', 'smoke'], { encoding: 'utf8', env: { ...process.env, CODEXPRO_HOME: cliHome, CODEXPRO_HTTP_TOKEN: cliSecret, CODEXPRO_CONTINUATION_ENABLED: '1' } });

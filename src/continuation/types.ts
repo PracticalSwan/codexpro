@@ -9,6 +9,15 @@ export type ContinuationState = typeof CONTINUATION_STATES[number];
 export type ContinuationDisposition = "resume" | "redirect" | "supersede" | "cancel";
 export type ContinuationTemplateKey = "resume_all_v1" | "focus_remaining_v1";
 export type ContinuationCancelReason = "user_canceled" | "superseded_by_user";
+export type ContinuationDispatchSource = "browser" | "telegram";
+
+export interface ContinuationDispatchAuthorizationRecord {
+  tokenHash: string;
+  source: ContinuationDispatchSource;
+  authorizedAt: string;
+  expiresAt: string;
+  routeFingerprint: string;
+}
 
 export interface ContinuationIntent {
   id: string;
@@ -40,6 +49,9 @@ export interface ContinuationRecord {
   selectedContinuationIntentId?: string;
   manualTurnPending?: ManualTurnPending;
   cancelReason?: ContinuationCancelReason;
+  conversationFingerprint?: string;
+  dispatchAuthorization?: ContinuationDispatchAuthorizationRecord;
+  lastDispatchAt?: string;
   continuationCount: number;
   outstandingNonce?: string;
   lastCheckpointId?: string;
@@ -126,7 +138,8 @@ export function defaultContinuationIntent(revision: number): ContinuationIntent 
 const ALLOWED_RECORD_KEYS = new Set([
   "schemaVersion", "id", "workspaceId", "workspaceRoot", "mcpSessionId", "revision", "state", "title", "currentPhase",
   "completedEvidence", "remainingWork", "continuationIntents", "selectedContinuationIntentId", "manualTurnPending", "cancelReason",
-  "continuationCount", "outstandingNonce", "lastCheckpointId", "lastRequestId", "createdAt", "updatedAt", "lastHeartbeatAt"
+  "continuationCount", "outstandingNonce", "lastCheckpointId", "lastRequestId", "createdAt", "updatedAt", "lastHeartbeatAt",
+  "conversationFingerprint", "dispatchAuthorization", "lastDispatchAt"
 ]);
 
 export function validateContinuationRecord(value: unknown): ContinuationRecord {
@@ -155,6 +168,19 @@ export function validateContinuationRecord(value: unknown): ContinuationRecord {
   const createdAt = strictTimestamp(raw.createdAt, "continuation created timestamp");
   const updatedAt = strictTimestamp(raw.updatedAt, "continuation updated timestamp");
   const lastHeartbeatAt = raw.lastHeartbeatAt === undefined ? undefined : strictTimestamp(raw.lastHeartbeatAt, "continuation heartbeat timestamp");
+  const conversationFingerprint = raw.conversationFingerprint === undefined ? undefined : String(raw.conversationFingerprint);
+  if (conversationFingerprint && !/^[a-f0-9]{64}$/.test(conversationFingerprint)) throw new Error("Invalid conversation fingerprint.");
+  const lastDispatchAt = raw.lastDispatchAt === undefined ? undefined : strictTimestamp(raw.lastDispatchAt, "continuation dispatch timestamp");
+  let dispatchAuthorization: ContinuationDispatchAuthorizationRecord | undefined;
+  if (raw.dispatchAuthorization !== undefined) {
+    if (!raw.dispatchAuthorization || typeof raw.dispatchAuthorization !== "object" || Array.isArray(raw.dispatchAuthorization)) throw new Error("Malformed dispatch authorization.");
+    const auth = raw.dispatchAuthorization as Record<string, unknown>;
+    if (!Object.keys(auth).every((key) => ["tokenHash", "source", "authorizedAt", "expiresAt", "routeFingerprint"].includes(key))) throw new Error("Unsupported dispatch authorization field.");
+    const tokenHash = String(auth.tokenHash ?? ""); const routeFingerprint = String(auth.routeFingerprint ?? "");
+    if (!/^[a-f0-9]{64}$/.test(tokenHash) || !/^[a-f0-9]{64}$/.test(routeFingerprint)) throw new Error("Invalid dispatch authorization verifier.");
+    if (auth.source !== "browser" && auth.source !== "telegram") throw new Error("Invalid dispatch authorization source.");
+    dispatchAuthorization = { tokenHash, source: auth.source, authorizedAt: strictTimestamp(auth.authorizedAt, "dispatch authorization timestamp"), expiresAt: strictTimestamp(auth.expiresAt, "dispatch authorization expiry"), routeFingerprint };
+  }
 
   let manualTurnPending: ManualTurnPending | undefined;
   if (raw.manualTurnPending !== undefined) {
@@ -176,10 +202,11 @@ export function validateContinuationRecord(value: unknown): ContinuationRecord {
     continuationIntents, ...(selectedContinuationIntentId ? { selectedContinuationIntentId } : {}),
     ...(manualTurnPending ? { manualTurnPending } : {}), ...(cancelReason ? { cancelReason } : {}), continuationCount: Number(raw.continuationCount),
     ...(outstandingNonce ? { outstandingNonce } : {}), ...(lastCheckpointId ? { lastCheckpointId } : {}), ...(lastRequestId ? { lastRequestId } : {}),
+    ...(conversationFingerprint ? { conversationFingerprint } : {}), ...(dispatchAuthorization ? { dispatchAuthorization } : {}), ...(lastDispatchAt ? { lastDispatchAt } : {}),
     createdAt, updatedAt, ...(lastHeartbeatAt ? { lastHeartbeatAt } : {})
   };
   if (record.state === "paused_by_user" && !record.manualTurnPending) throw new Error("Paused continuation requires pending manual-turn state.");
-  if (TERMINAL_CONTINUATION_STATES.has(record.state) && (record.outstandingNonce || record.selectedContinuationIntentId || record.manualTurnPending)) throw new Error("Terminal continuation retains active authorization state.");
+  if (TERMINAL_CONTINUATION_STATES.has(record.state) && (record.outstandingNonce || record.selectedContinuationIntentId || record.manualTurnPending || record.dispatchAuthorization)) throw new Error("Terminal continuation retains active authorization state.");
   const bytes = Buffer.byteLength(JSON.stringify(record), "utf8");
   if (bytes > MAX_RECORD_BYTES) throw new Error("Continuation record exceeds bounded storage limit.");
   return record;
@@ -193,6 +220,8 @@ export function publicContinuationRecord(record: ContinuationRecord): Record<str
     completed_evidence: [...record.completedEvidence], remaining_work: [...record.remainingWork],
     continuation_intents: record.continuationIntents.map((intent) => ({ id: intent.id, template_key: intent.templateKey, label: intent.label, ...(intent.focusRef ? { focus_ref: intent.focusRef } : {}), revision: intent.revision })),
     continuation_count: record.continuationCount, manual_turn_pending: Boolean(record.manualTurnPending),
+    conversation_bound: Boolean(record.conversationFingerprint), ...(record.conversationFingerprint ? { conversation_fingerprint_suffix: record.conversationFingerprint.slice(-8) } : {}),
+    dispatch_authorization_pending: Boolean(record.dispatchAuthorization), ...(record.lastDispatchAt ? { last_dispatch_at: record.lastDispatchAt } : {}),
     user_action_required: ["continuation_ready", "awaiting_user_send", "paused_by_user", "waiting_for_auth", "blocked_interaction"].includes(record.state),
     created_at: record.createdAt, updated_at: record.updatedAt, ...(record.lastHeartbeatAt ? { last_heartbeat_at: record.lastHeartbeatAt } : {})
   };
@@ -203,7 +232,7 @@ const ALLOWED_TRANSITIONS: Record<ContinuationState, ReadonlySet<ContinuationSta
   working: new Set(["continuation_requested", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "completed", "canceled", "error"]),
   continuation_requested: new Set(["working", "continuation_ready", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "canceled", "error"]),
   continuation_ready: new Set(["working", "awaiting_user_send", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "canceled", "error"]),
-  awaiting_user_send: new Set(["working", "dispatched", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "canceled", "error"]),
+  awaiting_user_send: new Set(["working", "continuation_ready", "dispatched", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "canceled", "error"]),
   dispatched: new Set(["working", "waiting_for_transport", "paused_by_user", "canceled", "error"]),
   waiting_for_auth: new Set(["working", "continuation_requested", "paused_by_user", "canceled", "error"]),
   waiting_for_transport: new Set(["working", "continuation_requested", "paused_by_user", "canceled", "error"]),

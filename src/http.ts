@@ -29,7 +29,8 @@ import { BrowserPairingStore } from "./continuation/browserAuth.js";
 import { existingManagedBrowserProfile, writeBrowserProfileMetadata } from "./continuation/browserProfile.js";
 import { startBrowserContinuationBridge } from "./continuation/browserBridge.js";
 import { ContinuationStore } from "./continuation/store.js";
-import { publicContinuationRecord, TERMINAL_CONTINUATION_STATES } from "./continuation/types.js";
+import { publicContinuationRecord, TERMINAL_CONTINUATION_STATES, type ContinuationRecord } from "./continuation/types.js";
+import { bindContinuationConversation, authorizeContinuationDispatch, completeContinuationDispatch, releaseContinuationDispatch, observeContinuationManualTurn } from "./continuation/ops.js";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -2051,11 +2052,38 @@ async function main(): Promise<void> {
   if (continuationEnabled) {
     const browserStore = new BrowserPairingStore(path.join(continuationRoot, "browser"));
     const continuationStore = new ContinuationStore(continuationRoot, config.maxOperationReceipts);
+    const bindingForRecord = (record: ContinuationRecord) => ({ workspace: { id: record.workspaceId, root: record.workspaceRoot }, ...(record.mcpSessionId ? { sessionId: record.mcpSessionId } : {}) });
     browserBridge = await startBrowserContinuationBridge({
       store: browserStore,
       statusProvider: async () => {
-        const task = (await continuationStore.list()).find((record) => !TERMINAL_CONTINUATION_STATES.has(record.state));
-        return { continuation_enabled: true, task: task ? publicContinuationRecord(task) : null };
+        const active = (await continuationStore.list()).filter((record) => !TERMINAL_CONTINUATION_STATES.has(record.state));
+        return { continuation_enabled: true, task: active.length === 1 ? publicContinuationRecord(active[0]) : null, ...(active.length > 1 ? { ambiguous_active_tasks: active.length } : {}) };
+      },
+      bindConversation: async ({ taskId, revision, conversationFingerprint }) => {
+        const current = await continuationStore.require(taskId);
+        const record = await bindContinuationConversation({ enabled: true, store: continuationStore, binding: bindingForRecord(current), continuationId: taskId, expectedRevision: revision, conversationFingerprint });
+        return { task: publicContinuationRecord(record) };
+      },
+      authorizeDispatch: async ({ taskId, revision, conversationFingerprint }) => {
+        const current = await continuationStore.require(taskId);
+        const grant = await authorizeContinuationDispatch({ enabled: true, store: continuationStore, binding: bindingForRecord(current), continuationId: taskId, expectedRevision: revision, conversationFingerprint, source: "browser" });
+        return { authorization_token: grant.token, task_id: grant.record.id, revision: grant.record.revision, conversation_fingerprint: conversationFingerprint, message: grant.message };
+      },
+      completeDispatch: async ({ taskId, revision, conversationFingerprint, authorizationToken }) => {
+        const current = await continuationStore.require(taskId);
+        const record = await completeContinuationDispatch({ store: continuationStore, binding: bindingForRecord(current), continuationId: taskId, expectedRevision: revision, conversationFingerprint, token: authorizationToken });
+        return { task: publicContinuationRecord(record) };
+      },
+      releaseDispatch: async ({ taskId, revision, authorizationToken }) => {
+        const current = await continuationStore.require(taskId);
+        const record = await releaseContinuationDispatch({ store: continuationStore, binding: bindingForRecord(current), continuationId: taskId, expectedRevision: revision, token: authorizationToken });
+        return { task: publicContinuationRecord(record) };
+      },
+      manualInteraction: async ({ taskId, revision, conversationFingerprint, reason }) => {
+        const current = await continuationStore.require(taskId);
+        if (current.conversationFingerprint !== conversationFingerprint) throw new Error("wrong_chat");
+        const record = await observeContinuationManualTurn({ store: continuationStore, binding: bindingForRecord(current), continuationId: taskId, expectedRevision: revision, reason });
+        return { task: publicContinuationRecord(record) };
       },
       onEvent: async (event) => {
         if (event.type !== "page_state") return;

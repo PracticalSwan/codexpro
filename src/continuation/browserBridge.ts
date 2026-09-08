@@ -17,10 +17,26 @@ export interface BrowserBridgeOptions {
   store: BrowserPairingStore;
   statusProvider: (clientId: string) => Promise<unknown>;
   onEvent?: (event: BrowserBridgeEvent) => Promise<void> | void;
+  bindConversation?: (input: { clientId: string; taskId: string; revision: number; conversationFingerprint: string }) => Promise<unknown>;
+  authorizeDispatch?: (input: { clientId: string; taskId: string; revision: number; conversationFingerprint: string }) => Promise<Record<string, unknown>>;
+  completeDispatch?: (input: { clientId: string; taskId: string; revision: number; conversationFingerprint: string; authorizationToken: string }) => Promise<unknown>;
+  releaseDispatch?: (input: { clientId: string; taskId: string; revision: number; authorizationToken: string }) => Promise<unknown>;
+  manualInteraction?: (input: { clientId: string; taskId: string; revision: number; conversationFingerprint: string; reason: "manual_message" | "stop_generating" }) => Promise<unknown>;
 }
 
 function jsonError(res: Response, status: number, code: string, message: string): void {
   res.status(status).json({ error: { code, message } });
+}
+const OPERATION_CODES = new Set([
+  "stale_continuation_revision", "manual_turn_pending", "continuation_not_ready", "stale_continuation_nonce", "wrong_chat",
+  "dispatch_authorization_missing", "dispatch_authorization_invalid", "dispatch_authorization_expired", "continuation_disabled"
+]);
+function operationError(res: Response, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  const candidate = message.split(":", 1)[0] ?? "continuation_operation_failed";
+  const code = OPERATION_CODES.has(candidate) ? candidate : "continuation_operation_failed";
+  const status = code === "stale_continuation_revision" ? 409 : code === "wrong_chat" ? 409 : code.startsWith("dispatch_") || code === "manual_turn_pending" || code === "continuation_not_ready" || code === "stale_continuation_nonce" ? 409 : 400;
+  jsonError(res, status, code, code);
 }
 
 function browserOriginId(req: Request): string | null {
@@ -54,6 +70,12 @@ const TaskEventBody = z.object({
   task_id: z.string().regex(/^continuation_[A-Za-z0-9-]{1,80}$/),
   revision: z.number().int().min(1)
 }).strict();
+const FingerprintBody = TaskEventBody.extend({ conversation_fingerprint: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
+const SafePageBody = z.object({ auth_state: z.literal("signed_in"), composer_ready: z.literal(true), streaming: z.literal(false), platform_state: z.literal("idle"), blocking_interaction: z.literal(false), recent_user_input: z.literal(false) }).strict();
+const AuthorizeBody = FingerprintBody.extend({ page_state: SafePageBody }).strict();
+const CompleteBody = FingerprintBody.extend({ authorization_token: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
+const ReleaseBody = TaskEventBody.extend({ authorization_token: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
+const ManualBody = FingerprintBody.extend({ reason: z.enum(["manual_message", "stop_generating"]) }).strict();
 export function createBrowserBridgeApp(options: BrowserBridgeOptions) {
   const app = express();
   app.disable("x-powered-by");
@@ -89,6 +111,7 @@ export function createBrowserBridgeApp(options: BrowserBridgeOptions) {
   app.use("/continuation/v1/status", authenticate);
   app.use("/continuation/v1/page-state", authenticate);
   app.use("/continuation/v1/events", authenticate);
+  app.use("/continuation/v1/dispatch", authenticate);
   app.use("/continuation/v1/client", authenticate);
   app.get("/continuation/v1/status", async (_req, res) => {
     const clientId = String(res.locals.browserClientId);
@@ -101,16 +124,43 @@ export function createBrowserBridgeApp(options: BrowserBridgeOptions) {
     res.status(204).end();
   });
   app.post("/continuation/v1/events/bind", async (req, res) => {
-    const parsed = TaskEventBody.safeParse(req.body);
+    const parsed = options.bindConversation ? FingerprintBody.safeParse(req.body) : TaskEventBody.safeParse(req.body);
     if (!parsed.success) { jsonError(res, 400, "invalid_request", "Invalid bind event."); return; }
-    await options.onEvent?.({ type: "bind_requested", clientId: String(res.locals.browserClientId), taskId: parsed.data.task_id, revision: parsed.data.revision });
+    const data = parsed.data as { task_id: string; revision: number; conversation_fingerprint?: string };
+    if (options.bindConversation) {
+      try {
+        const result = await options.bindConversation({ clientId: String(res.locals.browserClientId), taskId: data.task_id, revision: data.revision, conversationFingerprint: data.conversation_fingerprint! });
+        res.status(200).json(result);
+      } catch (error) { operationError(res, error); }
+      return;
+    }
+    await options.onEvent?.({ type: "bind_requested", clientId: String(res.locals.browserClientId), taskId: data.task_id, revision: data.revision });
     res.status(202).json({ accepted: true });
   });
-  app.post("/continuation/v1/events/dispatch", async (req, res) => {
-    const parsed = TaskEventBody.safeParse(req.body);
-    if (!parsed.success) { jsonError(res, 400, "invalid_request", "Invalid dispatch event."); return; }
-    await options.onEvent?.({ type: "dispatch_authorized", clientId: String(res.locals.browserClientId), taskId: parsed.data.task_id, revision: parsed.data.revision });
-    res.status(202).json({ accepted: true });
+  app.post("/continuation/v1/dispatch/authorize", async (req, res) => {
+    const parsed = AuthorizeBody.safeParse(req.body);
+    if (!parsed.success || !options.authorizeDispatch) { jsonError(res, 409, "dispatch_precondition_failed", "Dispatch page state is not safely idle or authorization is unavailable."); return; }
+    const d = parsed.data;
+    try { res.status(200).json(await options.authorizeDispatch({ clientId: String(res.locals.browserClientId), taskId: d.task_id, revision: d.revision, conversationFingerprint: d.conversation_fingerprint })); }
+    catch (error) { operationError(res, error); }
+  });
+  app.post("/continuation/v1/dispatch/complete", async (req, res) => {
+    const parsed = CompleteBody.safeParse(req.body); if (!parsed.success || !options.completeDispatch) { jsonError(res, 400, "invalid_request", "Invalid dispatch completion."); return; }
+    const d = parsed.data;
+    try { res.status(200).json(await options.completeDispatch({ clientId: String(res.locals.browserClientId), taskId: d.task_id, revision: d.revision, conversationFingerprint: d.conversation_fingerprint, authorizationToken: d.authorization_token })); }
+    catch (error) { operationError(res, error); }
+  });
+  app.post("/continuation/v1/dispatch/release", async (req, res) => {
+    const parsed = ReleaseBody.safeParse(req.body); if (!parsed.success || !options.releaseDispatch) { jsonError(res, 400, "invalid_request", "Invalid dispatch release."); return; }
+    const d = parsed.data;
+    try { res.status(200).json(await options.releaseDispatch({ clientId: String(res.locals.browserClientId), taskId: d.task_id, revision: d.revision, authorizationToken: d.authorization_token })); }
+    catch (error) { operationError(res, error); }
+  });
+  app.post("/continuation/v1/events/manual", async (req, res) => {
+    const parsed = ManualBody.safeParse(req.body); if (!parsed.success || !options.manualInteraction) { jsonError(res, 400, "invalid_request", "Invalid manual interaction event."); return; }
+    const d = parsed.data;
+    try { res.status(200).json(await options.manualInteraction({ clientId: String(res.locals.browserClientId), taskId: d.task_id, revision: d.revision, conversationFingerprint: d.conversation_fingerprint, reason: d.reason })); }
+    catch (error) { operationError(res, error); }
   });
   app.delete("/continuation/v1/client", async (_req, res) => {
     await options.store.revokeClient(String(res.locals.browserClientId));

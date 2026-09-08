@@ -55,11 +55,11 @@ Plan 35 assumes relevant Plans 22–28 are implemented because it integrates the
 
 ## Milestone 32 — Conversation binding/user dispatch
 
-- [ ] Add isolated ChatGPT DOM capability adapter.
-- [ ] Require user **Bind this chat** action.
-- [ ] Require user **Continue task** action for every dispatch.
-- [ ] Prove stable-route binding, changed/new chat invalidation, stale popup revision, and manual user-message/Stop races fail closed: a manual send stales browser/Telegram actions without capturing text. Streaming/platform-busy/error/unknown states also fail closed with no automatic Retry.
-- [ ] Make Plan 32 milestone commit.
+- [x] Add isolated ChatGPT DOM capability adapter.
+- [x] Require user **Bind this chat** action.
+- [x] Require user **Continue task** action for every dispatch.
+- [x] Prove stable-route binding, changed/new chat invalidation, stale popup revision, and manual user-message/Stop races fail closed: a manual send stales browser/Telegram actions without capturing text. Streaming/platform-busy/error/unknown states also fail closed with no automatic Retry.
+- [x] Make Plan 32 milestone commit.
 ## Milestone 33 — Watchdog/recovery
 
 - [ ] Add MCP heartbeat/dispatch acknowledgement.

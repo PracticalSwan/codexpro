@@ -66,6 +66,7 @@ Implementation begins only when the user authorizes the exact plan scope. For si
 - Resume only after the user completes authentication directly in the browser and sends `continue`; recover repository/process/browser/task state first, then verify only coarse signed-in health.
 - Branded Chrome/Edge uses the browser-supported manual **Load unpacked** flow for the CodexPro companion; do not depend on removed/ignored command-line unpacked-extension flags.
 - MV3 service-worker timers are not authoritative liveness. A coarse content-script heartbeat may wake the worker, but every reconnect must fetch fresh server task/revision state before controls become available.
+- ChatGPT DOM integration must prefer the primary `#prompt-textarea`/ProseMirror editor and composer-scoped send control over hidden fallback textareas. Extension-generated fixed-message insertion must be distinguished from trusted user input so only genuine user activity triggers `recent_user_input`/manual-turn precedence.
 - Authentication stop requirements override continuous batch execution.
 
 ## Runtime lifecycle rule
