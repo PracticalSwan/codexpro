@@ -290,6 +290,8 @@ const saved = run([
   'https://widgets.codexpro.test',
   '--tool-cards',
   'on',
+  '--sync-call-deadline-minutes',
+  '12',
   '--analysis',
   'on',
   '--artifact-export',
@@ -314,7 +316,7 @@ if (!saved.includes('Saved workspace settings')) {
 }
 
 const shown = run(['settings', 'show', '--root', root], env);
-for (const expected of ['Tunnel', 'ngrok', 'codexpro-test.ngrok-free.app', '19087', 'Tool cards', 'on', 'Analysis', 'on', 'Artifact export', 'on', 'Durable Goals', 'on', 'CodeGraph', 'on', 'LSP', 'off', 'Git push', 'off', 'Environment inheritance', 'off', 'Bash transcript', 'full', 'Projects', realReuseRoot, '<saved>']) {
+for (const expected of ['Tunnel', 'ngrok', 'codexpro-test.ngrok-free.app', '19087', 'Tool cards', 'on', 'Analysis', 'on', 'Artifact export', 'on', 'Durable Goals', 'on', 'CodeGraph', 'on', 'LSP', 'off', 'Git push', 'off', 'Environment inheritance', 'off', 'Bash transcript', 'full', 'Sync deadline', '12 min', 'Projects', realReuseRoot, '<saved>']) {
   if (!shown.includes(expected)) {
     throw new Error(`settings show missing ${expected}\n${shown}`);
   }
@@ -335,9 +337,16 @@ if (
   || profile.lspEnabled !== false
   || profile.allowGitPush !== false
   || profile.inheritEnv !== false
+  || profile.syncCallDeadlineMode !== 'bounded'
+  || profile.syncCallDeadlineMs !== 720_000
   || JSON.stringify(profile.allowedRoots) !== JSON.stringify([realReuseRoot])
 ) {
   throw new Error(`settings profile did not persist tool/widget options: ${JSON.stringify(profile)}`);
+}
+run(['settings', 'set', '--root', root, '--sync-call-deadline-minutes', 'unlimited'], env);
+const observeProfile = await readProfile(root, home);
+if (observeProfile.syncCallDeadlineMode !== 'observe' || observeProfile.syncCallDeadlineMs !== 720_000) {
+  throw new Error(`settings unlimited did not preserve the finite reference: ${JSON.stringify(observeProfile)}`);
 }
 run([
   'settings',
@@ -522,6 +531,10 @@ runFail([
   'abc'
 ], env, /Invalid port: abc/i);
 
+for (const value of ['4', '61', '12.5', 'banana']) {
+  runFail(['settings', 'set', '--root', policyRoot, '--tunnel', 'none', '--sync-call-deadline-minutes', value], env, /sync-call-deadline-minutes/i);
+}
+
 const runtimePort = await getFreePort();
 const runtimePath = await runtimeStatusPath(runtimeRoot, home);
 run([
@@ -540,8 +553,8 @@ await withStartedCodexPro([
   '--root',
   runtimeRoot
 ], env, async (child) => {
-  const runtime = await waitForJson(runtimePath, (data) => data.toolCards === true && data.pid === child.pid, 'tool-cards runtime status');
-  if (runtime.toolCards !== true || runtime.pid !== child.pid) {
+  const runtime = await waitForJson(runtimePath, (data) => data.toolCards === true && data.syncCallDeadlineMode === 'bounded' && data.syncCallDeadlineMs === 1_200_000 && data.pid === child.pid, 'tool-cards runtime status');
+  if (runtime.toolCards !== true || runtime.syncCallDeadlineMode !== 'bounded' || runtime.syncCallDeadlineMs !== 1_200_000 || runtime.pid !== child.pid) {
     throw new Error(`runtime status did not persist toolCards: ${JSON.stringify(runtime)}`);
   }
 }, { forceKill: true });

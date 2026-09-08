@@ -28,12 +28,12 @@ Plan 23 and Plan 24 are architecturally independent after Plan 22, but the seque
 
 ## Milestone 22 — Configurable deadline, settings surfaces, and quality invariant
 
-- [ ] Implement `src/deadline.ts` with `bounded | observe` mode, 20-minute finite default/reference, 5–60 minute bounded validation, proportional reserve, elapsed awareness, and fake-clock tests.
-- [ ] Add deadline mode + milliseconds to runtime/profile status and expose `--sync-call-deadline-minutes <5-60|unlimited>` through launcher/settings plus the authenticated website profile editor.
-- [ ] Wrap MCP dispatch in cooperative deadline context using the effective runtime value.
-- [ ] Verify focused deadline smoke, MCP compatibility smoke, and build.
-- [ ] Review for unsafe generic cancellation or any path that could return while an unmanaged mutation continues.
-- [ ] Make the Plan 22 milestone commit.
+- [x] Implement `src/deadline.ts` with `bounded | observe` mode, 20-minute finite default/reference, 5–60 minute bounded validation, proportional reserve, elapsed awareness, and fake-clock tests.
+- [x] Add deadline mode + milliseconds to runtime/profile status and expose `--sync-call-deadline-minutes <5-60|unlimited>` through launcher/settings plus the authenticated website profile editor.
+- [x] Wrap MCP dispatch in cooperative deadline context using the effective runtime value.
+- [x] Verify focused deadline smoke, MCP compatibility smoke, and build.
+- [x] Review for unsafe generic cancellation or any path that could return while an unmanaged mutation continues.
+- [x] Make the Plan 22 milestone commit.
 
 ## Milestone 23 — Composite verification budgeting
 

@@ -75,7 +75,7 @@
 
 ## D-019 — The configured synchronous deadline is a transport boundary, not a quality target
 **Decision:** Tool-time awareness is enabled by default. Normal synchronous handling is bounded at `1,200,000` ms (20 minutes), configurable from 5–60 minutes; explicit Unlimited/observe mode exists only for temporary harmless host-window discovery and does not turn normal work into unbounded synchronous execution. No timing mode lowers scope, acceptance criteria, reasoning/review depth, required tests, or safety checks. Work that cannot finish correctly inside one call must yield to a truthful durable continuation.
-**Why:** Host/tool closure windows may differ or change, so the operator needs a safety-margin setting; optimizing the model to finish before any chosen cutoff would still trade correctness for latency. CodexPro should preserve the complete goal across calls.
+**Why:** Host/tool closure windows may differ or change, so the operator needs a safety-margin setting; optimizing the model to finish before any chosen cutoff would still trade correctness for latency. CodexPro should preserve the complete goal across calls. The implemented runtime/profile contract carries `syncCallDeadlineMode` plus the finite `syncCallDeadlineMs` reference, and the authenticated admin editor distinguishes saved next-run values from the current runtime.
 **Revisit only if:** the host platform exposes a reliable negotiated deadline/continuation primitive; even then, the quality-preservation invariant remains.
 
 ## D-020 — Long work uses distinct existing/durable execution roles

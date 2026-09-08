@@ -12,6 +12,7 @@ import { createMutationCheckpoint, finalizeMutationCheckpoint, restoreCheckpoint
 import { runHooks } from "./hooks/runner.js";
 import { z } from "zod";
 import type { CodexProConfig } from "./config.js";
+import { withSyncCallDeadline } from "./deadline.js";
 import { WorkspaceManager, PathGuard, CodexProError, type Workspace, type WorkspaceRegistry } from "./guard.js";
 import { repoTree, readTextFile, writeTextFile, editTextFile, ensureAiBridge, withFileWriteLocks } from "./fsOps.js";
 import { viewWorkspaceImage } from "./imageOps.js";
@@ -318,6 +319,7 @@ function assertWriteToolAllowed(config: CodexProConfig, relPath: string): void {
 }
 
 function registerWrappedToolCompat(
+  config: CodexProConfig,
   server: McpServer,
   name: string,
   options: Record<string, unknown>,
@@ -329,7 +331,9 @@ function registerWrappedToolCompat(
     telemetry?.record({ stage: "request_arrival", status: "ok", tool: name, backend: "mcp_tool" });
     telemetry?.record({ stage: "dispatch", status: "ok", tool: name, backend: "mcp_tool" });
     try {
-      const result = tagToolResult(await handler(args ?? {}), name, options);
+      const result = await withSyncCallDeadline(config.syncCallDeadlineMode, config.syncCallDeadlineMs, async () =>
+        tagToolResult(await handler(args ?? {}), name, options)
+      );
       const status = result?.isError ? "error" : "ok";
       telemetry?.record({
         stage: "completion",
@@ -649,7 +653,7 @@ function registerCodexTool(
       throw error;
     }
   };
-  registerWrappedToolCompat(server, name, descriptorOptionsForConfig(config, name, options), validatedHandler);
+  registerWrappedToolCompat(config, server, name, descriptorOptionsForConfig(config, name, options), validatedHandler);
   rememberRegisteredTool(server, name);
   rememberRegisteredToolHandler(server, name, validatedHandler);
 }
@@ -1505,6 +1509,8 @@ export function createCodexProServer(
         toolMode: config.toolMode,
         toolCards: config.toolCards,
         connectionTest: config.connectionTest,
+        syncCallDeadlineMode: config.syncCallDeadlineMode,
+        syncCallDeadlineMs: config.syncCallDeadlineMs,
         allowGitPush: config.allowGitPush,
         codeGraphEnabled: config.codeGraphEnabled,
         codeGraphConfigured: Boolean(config.codeGraphExecutable || resolveCommand("codegraph")),

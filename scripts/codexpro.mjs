@@ -20,6 +20,9 @@ import { resolveOpenAiRuntimeKey, runOpenAiKeyCommand } from './openai-key-store
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const UNTRACKED_FILE_HASH_BYTES = 64 * 1024;
 const UNTRACKED_SYMLINK_TARGET_BYTES = 512;
+const DEFAULT_SYNC_CALL_DEADLINE_MS = 1_200_000;
+const MIN_SYNC_CALL_DEADLINE_MS = 300_000;
+const MAX_SYNC_CALL_DEADLINE_MS = 3_600_000;
 
 function packageVersion() {
   return JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8')).version;
@@ -78,6 +81,8 @@ Options:
   --host <host>             Local bind host. Default: 127.0.0.1.
   --port <port>             Local port. Default: 8787.
   --bash <off|safe|full>    Bash mode. Default: safe.
+  --sync-call-deadline-minutes <5-60|unlimited>
+                             Tool-call transport deadline. Default: 20 minutes. Unlimited is observe-only discovery mode; it does not extend ChatGPT tool access or reduce task-quality requirements.
   --no-bash                 Shortcut for --bash off.
   --bash-transcript <compact|full>
                              Chat transcript for bash results. Default: compact.
@@ -754,6 +759,8 @@ function saveRuntimeConnection(root, details, options = {}) {
     write: options.write ?? '',
     toolMode: options.toolMode ?? '',
     toolCards: Boolean(options.toolCards),
+    syncCallDeadlineMode: options.syncCallDeadlineMode ?? 'bounded',
+    syncCallDeadlineMs: options.syncCallDeadlineMs ?? DEFAULT_SYNC_CALL_DEADLINE_MS,
     analysisEnabled: Boolean(options.analysisEnabled),
     artifactExportEnabled: Boolean(options.artifactExportEnabled),
     goalsEnabled: Boolean(options.goalsEnabled),
@@ -824,6 +831,41 @@ function optionBool(args, profile, field, envNames = [], fallback = false) {
   }
   if (profile?.[field] !== undefined && profile[field] !== '') return boolFromValue(profile[field], fallback);
   return fallback;
+}
+
+function strictSyncCallDeadlineMs(value, label = 'sync call deadline') {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < MIN_SYNC_CALL_DEADLINE_MS || parsed > MAX_SYNC_CALL_DEADLINE_MS) {
+    throw new Error(`${label} must be an integer from 300000 to 3600000 ms (5-60 minutes).`);
+  }
+  return parsed;
+}
+
+function syncCallDeadlineOption(args, profile = {}) {
+  const reference = profile.syncCallDeadlineMs === undefined ? DEFAULT_SYNC_CALL_DEADLINE_MS : strictSyncCallDeadlineMs(profile.syncCallDeadlineMs, 'saved sync call deadline');
+  if (args.syncCallDeadlineMinutes !== undefined) {
+    const raw = String(args.syncCallDeadlineMinutes).trim().toLowerCase();
+    if (raw === 'unlimited') return { mode: 'observe', deadlineMs: reference };
+    if (!/^[0-9]+$/.test(raw)) throw new Error('--sync-call-deadline-minutes must be an integer from 5 to 60 or unlimited.');
+    const minutes = Number(raw);
+    if (!Number.isInteger(minutes) || minutes < 5 || minutes > 60) throw new Error('--sync-call-deadline-minutes must be an integer from 5 to 60 or unlimited.');
+    return { mode: 'bounded', deadlineMs: minutes * 60_000 };
+  }
+  const envModeRaw = process.env.CODEXPRO_SYNC_CALL_DEADLINE_MODE;
+  const envMsRaw = process.env.CODEXPRO_SYNC_CALL_DEADLINE_MS;
+  if ((envModeRaw !== undefined && envModeRaw !== '') || (envMsRaw !== undefined && envMsRaw !== '')) {
+    const mode = envModeRaw === 'unlimited' ? 'observe' : (envModeRaw || 'bounded');
+    if (!['bounded','observe'].includes(mode)) throw new Error('CODEXPRO_SYNC_CALL_DEADLINE_MODE must be bounded or observe.');
+    return { mode, deadlineMs: envMsRaw ? strictSyncCallDeadlineMs(envMsRaw, 'CODEXPRO_SYNC_CALL_DEADLINE_MS') : reference };
+  }
+  const mode = profile.syncCallDeadlineMode ?? 'bounded';
+  if (!['bounded','observe'].includes(mode)) throw new Error('Saved sync call deadline mode must be bounded or observe.');
+  return { mode, deadlineMs: reference };
+}
+
+function syncCallDeadlineProfileEntry(args, profile = {}) {
+  const resolved = syncCallDeadlineOption(args, profile);
+  return { syncCallDeadlineMode: resolved.mode, syncCallDeadlineMs: resolved.deadlineMs };
 }
 
 function jsonArgsEnv(value) {
@@ -3397,6 +3439,7 @@ function profileFromPreference(root, args, profile, preference) {
     ...(toolMode ? { toolMode } : {}),
     ...(widgetDomain ? { widgetDomain } : {}),
     ...toolCardsProfileEntry(args, profile),
+    ...syncCallDeadlineProfileEntry(args, profile),
     ...capabilityProfileEntries(args, profile),
     ...(allowedRoots.length ? { allowedRoots } : {}),
     ...(args.noInstallCloudflared ? { noInstallCloudflared: true } : {}),
@@ -3643,6 +3686,7 @@ async function runSetupWizard(argv) {
         ...(toolMode ? { toolMode } : {}),
         ...(widgetDomain ? { widgetDomain } : {}),
         ...toolCardsEntry,
+        ...syncCallDeadlineProfileEntry(defaults, profile),
         ...capabilityProfileEntries(defaults, profile),
         ...(allowedRoots.length ? { allowedRoots } : {}),
         ...(defaults.noInstallCloudflared ? { noInstallCloudflared: true } : {})
@@ -3694,6 +3738,7 @@ function printProfile(root, profile) {
     ...(safe.write ? [labelValue('Write', safe.write)] : []),
     ...(safe.toolMode ? [labelValue('Tool mode', safe.toolMode)] : []),
     ...(safe.toolCards !== undefined ? [labelValue('Tool cards', safe.toolCards ? 'on' : 'off')] : []),
+    labelValue('Sync deadline', safe.syncCallDeadlineMode === 'observe' ? 'Unlimited (observe only)' : `${Math.round((safe.syncCallDeadlineMs ?? DEFAULT_SYNC_CALL_DEADLINE_MS) / 60_000)} min`),
     labelValue('Analysis', safe.analysisEnabled === undefined ? 'on' : safe.analysisEnabled ? 'on' : 'off'),
     labelValue('Artifact export', safe.artifactExportEnabled ? 'on' : 'off'),
     labelValue('Durable Goals', safe.goalsEnabled ? 'on' : 'off'),
@@ -3806,6 +3851,7 @@ function saveSettingsFromArgs(root, args, profile) {
     ...(toolMode ? { toolMode } : {}),
     ...(widgetDomain ? { widgetDomain } : {}),
     ...toolCardsProfileEntry(args, profile),
+    ...syncCallDeadlineProfileEntry(args, profile),
     ...capabilityProfileEntries(args, profile),
     ...(allowedRoots.length ? { allowedRoots } : {}),
     ...(args.noInstallCloudflared ?? profile.noInstallCloudflared ? { noInstallCloudflared: true } : {})
@@ -4270,6 +4316,7 @@ async function main() {
   const toolMode = optionValue(args, profile, 'toolMode', ['CODEXPRO_TOOL_MODE'], 'standard');
   const widgetDomain = optionValue(args, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], 'https://rebel0789.github.io');
   const toolCards = optionBool(args, profile, 'toolCards', ['CODEXPRO_TOOL_CARDS'], false);
+  const syncCallDeadline = syncCallDeadlineOption(args, profile);
   const analysisEnabled = optionBool(args, profile, 'analysisEnabled', ['CODEXPRO_ANALYSIS'], true);
   const artifactExportEnabled = optionBool(args, profile, 'artifactExportEnabled', ['CODEXPRO_ARTIFACT_EXPORT'], false);
   const goalsEnabled = optionBool(args, profile, 'goalsEnabled', ['CODEXPRO_GOALS'], false);
@@ -4308,6 +4355,8 @@ async function main() {
     CODEXPRO_TOOL_MODE: toolMode,
     CODEXPRO_WIDGET_DOMAIN: widgetDomain,
     CODEXPRO_TOOL_CARDS: toolCards ? '1' : '0',
+    CODEXPRO_SYNC_CALL_DEADLINE_MODE: syncCallDeadline.mode,
+    CODEXPRO_SYNC_CALL_DEADLINE_MS: String(syncCallDeadline.deadlineMs),
     CODEXPRO_CONNECTION_TEST: connectionTest ? '1' : '0',
     CODEXPRO_ANALYSIS: analysisEnabled ? '1' : '0',
     CODEXPRO_ARTIFACT_EXPORT: artifactExportEnabled ? '1' : '0',
@@ -4349,6 +4398,7 @@ async function main() {
     ...(allowRoots.length > 1 ? [labelValue('Projects', allowRoots.slice(1).join(', '))] : []),
     labelValue('Mode', `${mode}  tools=${toolMode}  write=${write}  bash=${bash}`),
     labelValue('Bash transcript', bashTranscript),
+    labelValue('Sync deadline', syncCallDeadline.mode === 'observe' ? 'Unlimited (observe only)' : `${syncCallDeadline.deadlineMs / 60_000} min`),
     labelValue('Codex sessions', codexSessions),
     ...(bashSession ? [labelValue('Bash session', `${bashSession}${requireBashSession ? ' required' : ''}`)] : []),
     labelValue('Local URL', `http://${host}:${port}/mcp`),
@@ -4396,6 +4446,8 @@ async function main() {
     bashSession,
     requireBashSession,
     toolCards,
+    syncCallDeadlineMode: syncCallDeadline.mode,
+    syncCallDeadlineMs: syncCallDeadline.deadlineMs,
     connectionTest,
     analysisEnabled,
     artifactExportEnabled,

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DEFAULT_ANALYSIS_LIMITS, type AnalysisLimits } from "./analysis/types.js";
+import { DEFAULT_SYNC_CALL_DEADLINE_MS, normalizeSyncCallDeadlineConfig, type SyncCallDeadlineMode } from "./deadline.js";
 
 export type BashMode = "off" | "safe" | "full";
 export type BashTranscriptMode = "compact" | "full";
@@ -87,6 +88,8 @@ export interface CodexProConfig {
   maxGoalWorkers: number;
   analysisEnabled: boolean;
   analysisLimits: AnalysisLimits;
+  syncCallDeadlineMode: SyncCallDeadlineMode;
+  syncCallDeadlineMs: number;
 }
 
 const DEFAULT_BLOCKED_GLOBS = [
@@ -425,6 +428,14 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     maxOutputBytes + 1,
     numberFrom(process.env.CODEXPRO_MAX_BASH_OBSERVED_OUTPUT_BYTES, 16_000_000, 64_000, 500_000_000)
   );
+  const deadlineModeInput = typeof args["sync-call-deadline-mode"] === "string" ? args["sync-call-deadline-mode"] : process.env.CODEXPRO_SYNC_CALL_DEADLINE_MODE;
+  const deadlineMsInput = typeof args["sync-call-deadline-ms"] === "string" ? args["sync-call-deadline-ms"] : process.env.CODEXPRO_SYNC_CALL_DEADLINE_MS;
+  const normalizedDeadlineMode = deadlineModeInput === "unlimited" ? "observe" : (deadlineModeInput ?? "bounded");
+  if (normalizedDeadlineMode !== "bounded" && normalizedDeadlineMode !== "observe") throw new Error("CODEXPRO_SYNC_CALL_DEADLINE_MODE must be bounded or observe.");
+  const syncDeadline = normalizeSyncCallDeadlineConfig({
+    mode: normalizedDeadlineMode,
+    deadlineMs: deadlineMsInput === undefined || deadlineMsInput === "" ? DEFAULT_SYNC_CALL_DEADLINE_MS : Number(deadlineMsInput)
+  });
 
   return {
     defaultRoot,
@@ -509,6 +520,8 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
       maxScannedBytes: numberFrom(process.env.CODEXPRO_ANALYSIS_MAX_SCANNED_BYTES, DEFAULT_ANALYSIS_LIMITS.maxScannedBytes, 1_000_000, 512 * 1024 * 1024),
       maxSymbols: numberFrom(process.env.CODEXPRO_ANALYSIS_MAX_SYMBOLS, DEFAULT_ANALYSIS_LIMITS.maxSymbols, 100, 1_000_000),
       maxRelationships: numberFrom(process.env.CODEXPRO_ANALYSIS_MAX_RELATIONSHIPS, DEFAULT_ANALYSIS_LIMITS.maxRelationships, 100, 2_000_000)
-    }
+    },
+    syncCallDeadlineMode: syncDeadline.mode,
+    syncCallDeadlineMs: syncDeadline.deadlineMs
   };
 }

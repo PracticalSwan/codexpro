@@ -141,6 +141,8 @@ codexpro settings set --analysis on --artifact-export on --goals on --codegraph 
 
 `codexpro settings show` reports the effective capability state, and later unrelated `settings set` changes preserve these flags.
 
+Tool-time awareness is enabled independently of browser continuation. The normal synchronous transport boundary is 20 minutes; save another bounded value from 5–60 minutes with `codexpro settings set --sync-call-deadline-minutes 12`, or temporarily select `unlimited` for observe-only host-window discovery. Unlimited disables CodexPro's cooperative cutoff but does not extend ChatGPT tool access, lower quality requirements, or make long mutating calls advisable. Saved changes apply on the next launch.
+
 Use a narrower profile for untrusted repositories.
 
 ## Daily workflow

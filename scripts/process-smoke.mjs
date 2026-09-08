@@ -66,5 +66,5 @@ try {
     if (saved[key] === undefined) delete process.env[key];
     else process.env[key] = saved[key];
   }
-  await fs.rm(rootRaw, { recursive: true, force: true });
+  await fs.rm(rootRaw, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 }

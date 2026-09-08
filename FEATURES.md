@@ -48,6 +48,7 @@ CodexPro exposes tools according to the active configuration and optional `.code
 | MCP compatibility | SDK v2 / legacy protocol | Uses the stable split MCP v2 packages, but defaults to the 2025 protocol era; interactive `ask` and Tasks stay disabled until separately verified client capabilities exist. |
 | Write mode | `off`, `handoff`, `workspace` | Controls direct workspace mutation. |
 | Bash mode | `off`, `safe`, `full` | Removes Bash entirely, allows restricted verification, or permits trusted full shell use. |
+| Synchronous tool deadline | bounded 5–60 min / Unlimited observe-only | Tool-time awareness defaults to a 20-minute transport budget. Observe mode keeps elapsed diagnostics but removes only CodexPro's cooperative cutoff; it never changes task-quality or safety requirements. |
 | Analysis | on/off | Enables built-in repository analysis. |
 | Codex sessions | `off`, `metadata`, `read` | Controls local Codex history discovery and bounded transcript reads. |
 | Artifact export | on/off | Controls `export_file`. |

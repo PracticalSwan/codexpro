@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import type { BashMode, BashTranscriptMode, CodexSessionsMode, ToolMode, WriteMode } from "./config.js";
 import { expandHome } from "./config.js";
+import type { SyncCallDeadlineMode } from "./deadline.js";
 
 export type TunnelMode = "openai" | "none" | "cloudflare" | "cloudflare-named" | "ngrok" | "tailscale";
 export type ConnectorMode = "agent" | "handoff" | "pro";
@@ -36,6 +37,8 @@ export interface WorkspaceProfile {
   write?: WriteMode | string;
   toolMode?: ToolMode | string;
   toolCards?: boolean;
+  syncCallDeadlineMode?: SyncCallDeadlineMode;
+  syncCallDeadlineMs?: number;
   widgetDomain?: string;
   analysisEnabled?: boolean;
   artifactExportEnabled?: boolean;
@@ -71,6 +74,8 @@ export interface RuntimeConnection {
   write?: WriteMode | string;
   toolMode?: ToolMode | string;
   toolCards?: boolean;
+  syncCallDeadlineMode?: SyncCallDeadlineMode;
+  syncCallDeadlineMs?: number;
   analysisEnabled?: boolean;
   artifactExportEnabled?: boolean;
   goalsEnabled?: boolean;

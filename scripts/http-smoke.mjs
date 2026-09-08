@@ -390,7 +390,7 @@ try {
   if (!homeText.includes('Authorization: "Bearer " + connectorToken') || homeText.includes('fetch("/admin/profile" + window.location.search')) {
     throw new Error('onboarding profile save did not reuse the captured token as a Bearer credential');
   }
-  for (const fieldName of ['tunnelName', 'ngrokConfig', 'cloudflareConfig', 'cloudflareTokenFile', 'toolCards', 'bashTranscript', 'widgetDomain', 'analysisEnabled', 'artifactExportEnabled', 'goalsEnabled', 'codeGraphEnabled', 'codeGraphExecutable', 'codeGraphArgs', 'lspEnabled', 'lspExecutable', 'lspArgs', 'allowGitPush', 'inheritEnv', 'connectionTest', 'noInstallCloudflared']) {
+  for (const fieldName of ['tunnelName', 'ngrokConfig', 'cloudflareConfig', 'cloudflareTokenFile', 'toolCards', 'syncCallDeadlineMode', 'syncCallDeadlineMinutes', 'bashTranscript', 'widgetDomain', 'analysisEnabled', 'artifactExportEnabled', 'goalsEnabled', 'codeGraphEnabled', 'codeGraphExecutable', 'codeGraphArgs', 'lspEnabled', 'lspExecutable', 'lspArgs', 'allowGitPush', 'inheritEnv', 'connectionTest', 'noInstallCloudflared']) {
     if (!homeText.includes(`name="${fieldName}"`)) {
       throw new Error(`onboarding page did not include profile field ${fieldName}`);
     }
@@ -406,6 +406,9 @@ try {
   const profileBeforeJson = await profileBefore.json();
   if (profileBefore.status !== 200 || profileBeforeJson.exists !== false) {
     throw new Error(`expected empty admin profile response, got ${profileBefore.status} ${JSON.stringify(profileBeforeJson)}`);
+  }
+  if (profileBeforeJson.runtime?.syncCallDeadlineMode !== 'bounded' || profileBeforeJson.runtime?.syncCallDeadlineMs !== 1_200_000 || profileBeforeJson.effective?.syncCallDeadlineMode !== 'bounded' || profileBeforeJson.effective?.syncCallDeadlineMinutes !== 20) {
+    throw new Error(`admin profile GET did not expose saved/effective vs running deadline state: ${JSON.stringify(profileBeforeJson)}`);
   }
   if (JSON.stringify(profileBeforeJson).includes(token)) {
     throw new Error('admin profile GET leaked the raw auth token');
@@ -462,6 +465,12 @@ try {
   if (invalidProfile.status !== 400) {
     throw new Error(`expected invalid guarded profile to return 400, got ${invalidProfile.status}`);
   }
+  for (const value of [4, 61, 12.5]) {
+    const invalidDeadline = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tunnel: 'none', syncCallDeadlineMode: 'bounded', syncCallDeadlineMinutes: value })
+    });
+    if (invalidDeadline.status !== 400) throw new Error(`expected invalid deadline ${value} to return 400, got ${invalidDeadline.status}`);
+  }
   await fs.mkdir(path.join(profileHome, 'profiles'), { recursive: true });
   await fs.writeFile(path.join(profileHome, 'profiles', `${runtimeId}.json`), JSON.stringify({
     version: 1,
@@ -489,6 +498,8 @@ try {
       write: 'workspace',
       toolMode: 'full',
       toolCards: true,
+      syncCallDeadlineMode: 'bounded',
+      syncCallDeadlineMinutes: 12,
       widgetDomain: 'https://widgets.codexpro.test',
       analysisEnabled: true,
       artifactExportEnabled: true,
@@ -523,6 +534,8 @@ try {
     savedProfile.bashSession !== 'http-main' ||
     savedProfile.requireBashSession !== true ||
     savedProfile.toolCards !== true ||
+    savedProfile.syncCallDeadlineMode !== 'bounded' ||
+    savedProfile.syncCallDeadlineMs !== 720_000 ||
     savedProfile.analysisEnabled !== true ||
     savedProfile.artifactExportEnabled !== true ||
     savedProfile.goalsEnabled !== true ||
@@ -551,7 +564,7 @@ try {
   const localProfile = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ tunnel: 'none' })
+    body: JSON.stringify({ tunnel: 'none', syncCallDeadlineMode: 'observe' })
   });
   const localProfileJson = await localProfile.json();
   const localSavedProfile = JSON.parse(await fs.readFile(localProfileJson.profile_path, 'utf8'));
@@ -563,6 +576,12 @@ try {
     localSavedProfile.cloudflareConfig ||
     localSavedProfile.cloudflareToken ||
     localSavedProfile.cloudflareTokenFile ||
+    localSavedProfile.syncCallDeadlineMode !== 'observe' ||
+    localSavedProfile.syncCallDeadlineMs !== 720_000 ||
+    localProfileJson.effective?.syncCallDeadlineMode !== 'observe' ||
+    localProfileJson.effective?.syncCallDeadlineMinutes !== 12 ||
+    localProfileJson.runtime?.syncCallDeadlineMode !== 'bounded' ||
+    localProfileJson.runtime?.syncCallDeadlineMs !== 1_200_000 ||
     JSON.stringify(localSavedProfile.allowedRoots) !== JSON.stringify([realAlternateRoot]) ||
     localProfileJson.profile?.hostname ||
     localProfileJson.profile?.ngrokConfig ||
