@@ -232,3 +232,5 @@ export { invalidateWorkspaceAnalysis } from "./cache.js";
 export { reviewWorkspaceChanges } from "./impact.js";
 export { listAnalysisProviders, normalizeProviderPaths, registerAnalysisProvider, resolveAnalysisProviders, searchOptionalAnalysisProviders } from "./providers.js";
 export type * from "./types.js";
+
+export { inspectWorkspaceResumable } from "./resumable.js";

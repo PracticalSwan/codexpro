@@ -145,6 +145,7 @@ Current support status: Stage A (one-shot Bash and workspace processes) is live-
 | Workspace event cursor | `workspace_events` | Take an `evt_*` baseline, then request later create/edit/delete/rename deltas. |
 | Task checkpoint | `save_task_snapshot` | Store bounded task facts, inspected files, decisions, verification, and remaining work. |
 | Task restore | `load_task_snapshot` | Load the saved checkpoint in a later call/session. |
+| Resumable analysis batch | `gather_context`, `inspect_workspace` | Expensive foreground analysis may return `complete=false` plus opaque `batch_*`; repeat the same request with `continuation_token`. No work runs between calls, source/request drift fails stale, and private cursor state stores bounded identifiers/hashes rather than source bodies. |
 
 Allowed hidden workspace paths participate in event snapshots; blocked paths still remain excluded.
 

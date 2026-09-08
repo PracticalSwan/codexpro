@@ -55,6 +55,7 @@ try {
     importBuilt('analysis/classify.js'),
     importBuilt('analysis/index.js')
   ]);
+  assert.equal(typeof analysisApi.inspectWorkspaceResumable, 'function');
   const config = loadConfig(['--root', tmp, '--bash', 'off', '--write', 'off']);
   const guard = new PathGuard(config);
   const workspace = new WorkspaceManager(config).defaultWorkspace();

@@ -58,6 +58,8 @@ const DECLARATIONS: Partial<Record<AnalysisLanguage, Pattern[]>> = {
 
 const SOURCE_LANGUAGES = new Set<AnalysisLanguage>(["typescript", "javascript", "python", "go", "rust", "swift", "java", "csharp", "c", "cpp"]);
 
+export function isAnalyzableInventoryFile(file: InventoryFile): boolean { return SOURCE_LANGUAGES.has(file.language) && !file.generated; }
+
 export interface ExtractedFile {
   path: string;
   text: string;
@@ -89,9 +91,10 @@ export async function extractWorkspaceFiles(
   config: CodexProConfig,
   guard: PathGuard,
   workspace: Workspace,
-  inventoryFiles: InventoryFile[]
+  inventoryFiles: InventoryFile[],
+  allInventoryFiles: InventoryFile[] = inventoryFiles
 ): Promise<{ files: ExtractedFile[]; analyzedFiles: number; scannedBytes: number; truncated: boolean; warnings: string[] }> {
-  const fileSet = new Set(inventoryFiles.map((file) => file.path));
+  const fileSet = new Set(allInventoryFiles.map((file) => file.path));
   const extracted: ExtractedFile[] = [];
   let scannedBytes = 0;
   let symbolCount = 0;

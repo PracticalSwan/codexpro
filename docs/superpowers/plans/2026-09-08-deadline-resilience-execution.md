@@ -66,10 +66,10 @@ Plan 23 and Plan 24 are architecturally independent after Plan 22, but the seque
 
 ## Milestone 27 — Resumable non-process batches
 
-- [ ] Add bounded `batch_*` state with request/source fingerprints.
-- [ ] Integrate continuation into `gather_context` and large `inspect_workspace` paths.
-- [ ] Compare resumed vs uninterrupted deterministic outputs.
-- [ ] Verify context/analysis/resumable smokes, full smoke, and milestone commit.
+- [x] Add bounded `batch_*` state with request/source fingerprints.
+- [x] Integrate continuation into `gather_context` and large `inspect_workspace` paths.
+- [x] Compare resumed vs uninterrupted deterministic outputs.
+- [x] Verify context/analysis/resumable smokes, full smoke, and milestone commit.
 
 ## Milestone 28 — Observability and diagnostics
 

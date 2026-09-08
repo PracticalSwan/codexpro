@@ -1,6 +1,6 @@
 # Resumable Non-Process Batch Operations Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Let expensive in-process scans/analysis stop at a safe boundary and continue in a later MCP call without restarting from zero or running background work.
 
@@ -30,14 +30,14 @@
 **Interfaces:**
 - Produces: `BatchRecord`, `BatchStore.create/require/update/complete`, opaque `batch_*` IDs, and operation/source fingerprint validation.
 
-- [ ] **Step 1: Write cursor-store tests first**
+- [x] **Step 1: Write cursor-store tests first**
 
 Cover atomic create/update, workspace binding, source-fingerprint mismatch, bounded state size, terminal records, and rejection of unknown operation kinds.
 
 Run: `node scripts/resumable-batch-smoke.mjs`
 Expected: FAIL before the batch modules exist.
 
-- [ ] **Step 2: Implement a strict record shape**
+- [x] **Step 2: Implement a strict record shape**
 
 Use fields equivalent to:
 
@@ -70,15 +70,15 @@ Keep accumulated source content out of the cursor record; persist only bounded i
 **Interfaces:**
 - Adds optional `continuation_token` input and additive `complete` / `continuation_token` output to `gather_context`.
 
-- [ ] **Step 1: Add a forced-yield context test**
+- [x] **Step 1: Add a forced-yield context test**
 
 With a fake short deadline and a fixture large enough to require several units, assert the first call returns selected evidence plus `complete=false` and `batch_*`; the next call resumes after the persisted cursor and eventually returns `complete=true` without duplicating completed units.
 
-- [ ] **Step 2: Introduce deterministic chunk boundaries**
+- [x] **Step 2: Introduce deterministic chunk boundaries**
 
 Advance by existing context budgets (files/bytes/relationships) and deadline checks, not arbitrary elapsed sleeps. Before starting another expensive unit, call `deadline.shouldYield(estimatedUnitFloorMs)`; if true, persist and return.
 
-- [ ] **Step 3: Guard against source drift**
+- [x] **Step 3: Guard against source drift**
 
 Recompute the relevant workspace/source fingerprint on continuation. If changed inputs invalidate deterministic continuation, return a stale-continuation error with instructions to start a fresh gather rather than combining mismatched evidence.
 
@@ -90,11 +90,11 @@ Recompute the relevant workspace/source fingerprint on continuation. If changed 
 - Modify: `scripts/analysis-smoke.mjs`
 - Modify: `scripts/resumable-batch-smoke.mjs`
 
-- [ ] **Step 1: Add a multi-chunk inventory/analysis fixture**
+- [x] **Step 1: Add a multi-chunk inventory/analysis fixture**
 
 Force a short test budget, verify the first call advances a real subset of files/symbol work, and verify continuation completes the same final bounded analysis as an uninterrupted run.
 
-- [ ] **Step 2: Persist only resumable analytical state**
+- [x] **Step 2: Persist only resumable analytical state**
 
 Store offsets/visited identifiers/hash summaries needed to continue. Do not persist raw source bodies, prompt text, or a second unbounded analysis cache.
 
@@ -104,11 +104,11 @@ Store offsets/visited identifiers/hash summaries needed to continue. Do not pers
 - Modify: `FEATURES.md`
 - Modify: `docs/agentic/PROJECT_MEMORY.md` after verified implementation
 
-- [ ] **Step 1: Compare resumed vs uninterrupted outputs**
+- [x] **Step 1: Compare resumed vs uninterrupted outputs**
 
 For deterministic fixtures, the completed resumed result must match the uninterrupted result in selected paths/relationships/reasons subject to the same existing output bounds.
 
-- [ ] **Step 2: Run gates**
+- [x] **Step 2: Run gates**
 
 Run: `node scripts/resumable-batch-smoke.mjs`
 Run: `node scripts/context-v2-smoke.mjs`
@@ -118,7 +118,7 @@ Run: `npm run smoke`
 Run: `git diff --check`
 Expected: PASS.
 
-- [ ] **Step 3: Commit milestone**
+- [x] **Step 3: Commit milestone**
 
 ```bash
 git add src/batches src/contextOps.ts src/analysis/index.ts src/server.ts scripts/resumable-batch-smoke.mjs scripts/context-v2-smoke.mjs scripts/analysis-smoke.mjs FEATURES.md docs/agentic/PROJECT_MEMORY.md

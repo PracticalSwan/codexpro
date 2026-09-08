@@ -27,7 +27,7 @@ import { codexproInventory, loadSkill } from "./capabilitiesOps.js";
 import { listCodexSessions, readCodexSession, searchCodexSession, readCodexSessionAround } from "./codexSessions.js";
 import { TOOL_CARD_LEGACY_URIS, TOOL_CARD_MIME_TYPE, TOOL_CARD_URI, toolCardWidgetHtml } from "./toolCardWidget.js";
 import { hasSecretValue, redactSensitiveText, redactStructured } from "./redact.js";
-import { inspectWorkspace, invalidateWorkspaceAnalysis, reviewWorkspaceChanges } from "./analysis/index.js";
+import { inspectWorkspace, inspectWorkspaceResumable, invalidateWorkspaceAnalysis, reviewWorkspaceChanges } from "./analysis/index.js";
 import { WorkspacePolicyRegistry, toolRulesForPolicy } from "./policyOps.js";
 import { evaluatePolicyRules, policyResourcesForTool } from "./policyRules.js";
 import { OperationStore } from "./operations/store.js";
@@ -41,6 +41,7 @@ import { connectionDiagnostics, toolSurfaceDiagnostics } from "./diagnosticsOps.
 import { WorkspaceProcessManager } from "./processOps.js";
 import { discoverTrustedChecks, runChecks, verifyChanges } from "./checksOps.js";
 import { readMany, searchMany, gatherContextV2, prepareSubtaskContext } from "./contextOps.js";
+import { gatherContextResumable } from "./contextBatch.js";
 import { instructionsForPath } from "./instructionOps.js";
 import { WorkspaceEventTracker } from "./workspaceEvents.js";
 import { CodexProRuntimeState } from "./runtimeState.js";
@@ -56,6 +57,8 @@ import { readDocument } from "./documentOps.js";
 import { exportWorkspaceFile } from "./exportOps.js";
 import { GoalStore } from "./goals/store.js";
 import { JobStore, publicJobRecord } from "./jobs/store.js";
+import { BatchStore } from "./batches/store.js";
+import { publicBatchRecord } from "./batches/types.js";
 import { cancelJob, reconcileJob, resumeJob } from "./jobs/runner.js";
 import { registerVerificationJobProducer, startChecksJob, startVerificationJob } from "./jobs/verification.js";
 import { proposeGoal, approveGoal, startGoal, pauseGoal, resumeGoal, cancelGoal } from "./goals/runner.js";
@@ -1277,6 +1280,7 @@ export function createCodexProServer(
     return store;
   };
   const jobStore = new JobStore({ baseDir: config.jobDir, maxJobs: config.maxOperationReceipts, maxOutputBytes: config.maxOperationBytes, maxReadBytes: config.maxProcessReadBytes });
+  const batchStore = new BatchStore(config.batchDir, Math.max(config.maxOperationBytes, 64 * 1024), config.maxOperationReceipts);
   registerVerificationJobProducer();
   const goalStores = new Map<string, GoalStore>();
   const goalStoreFor = (workspace: Workspace): GoalStore => {
@@ -1743,25 +1747,27 @@ export function createCodexProServer(
     return textResult(`# Instructions For Path\n\n${result.text}`, { workspace_id: workspace.id, ...result });
   });
 
-  const contextInputSchema = {
+  const contextBaseInputSchema = {
     workspace_id: z.string().optional(), target_path: z.string().optional(), target_symbol: z.string().max(256).optional(),
     changed_paths: z.array(z.string()).max(config.maxOperationFiles).optional(),
     strategy: z.enum(["task", "symbol", "change"]).optional(), include_tests: z.boolean().optional(),
     include_recent_changes: z.boolean().optional(), max_bytes: z.number().int().min(1000).optional(),
     target_tokens: z.number().int().min(1).max(2_000_000).optional()
   };
+  const contextInputSchema = { ...contextBaseInputSchema, continuation_token: z.string().regex(/^batch_[A-Za-z0-9-]{1,80}$/).optional() };
   registerCodexTool(config, server, "gather_context", {
     title: "Gather Context", description: "Gather byte-bounded task/symbol/change context with ranked reasons, optional tests/recent Git evidence, token estimate, and bounded runtime caching.",
     inputSchema: contextInputSchema, annotations: READ_ONLY_ANNOTATIONS
   }, async (args) => {
     const workspace = workspaces.getWorkspace(args.workspace_id);
-    const result = await gatherContextV2({ config: configForWorkspace(workspace), guard, workspace, cache: runtimeState.contextCacheFor(workspace.id), strategy: args.strategy, targetPath: args.target_path, targetSymbol: args.target_symbol, changedPaths: args.changed_paths, includeTests: args.include_tests, includeRecentChanges: args.include_recent_changes, maxBytes: args.max_bytes, targetTokens: args.target_tokens });
-    return textResult(`# Gather Context\n\n${result.text}`, { workspace_id: workspace.id, ...result });
+    const result = await gatherContextResumable({ config: configForWorkspace(workspace), guard, workspace, store: batchStore, cache: runtimeState.contextCacheFor(workspace.id), continuationToken: args.continuation_token, strategy: args.strategy, targetPath: args.target_path, targetSymbol: args.target_symbol, changedPaths: args.changed_paths, includeTests: args.include_tests, includeRecentChanges: args.include_recent_changes, maxBytes: args.max_bytes, targetTokens: args.target_tokens });
+    const { batch, continuationToken, ...publicResult } = result;
+    return textResult(`# Gather Context\n\n${result.text}`, { workspace_id: workspace.id, ...publicResult, continuation_token: continuationToken ?? null, ...(batch ? { batch: publicBatchRecord(batch) } : {}) });
   });
 
   registerCodexTool(config, server, "prepare_subtask_context", {
     title: "Prepare Subtask Context", description: "Return the same bounded ranked context as a read-only data bundle for a host-created subtask. Does not launch a model, process, or remote request.",
-    inputSchema: contextInputSchema, annotations: READ_ONLY_ANNOTATIONS
+    inputSchema: contextBaseInputSchema, annotations: READ_ONLY_ANNOTATIONS
   }, async (args) => {
     const workspace = workspaces.getWorkspace(args.workspace_id);
     const result = await prepareSubtaskContext({ config: configForWorkspace(workspace), guard, workspace, cache: runtimeState.contextCacheFor(workspace.id), strategy: args.strategy, targetPath: args.target_path, targetSymbol: args.target_symbol, changedPaths: args.changed_paths, includeTests: args.include_tests, includeRecentChanges: args.include_recent_changes, maxBytes: args.max_bytes, targetTokens: args.target_tokens });
@@ -2779,7 +2785,8 @@ export function createCodexProServer(
         include_symbols: z.boolean().optional().describe("Include symbols in structured output. Default: true."),
         include_relationships: z.boolean().optional().describe("Include relationships in structured output. Default: true."),
         max_symbols: z.number().int().min(1).max(100000).optional().describe("Maximum returned symbols. Analysis remains bounded by server config."),
-        max_relationships: z.number().int().min(1).max(250000).optional().describe("Maximum returned relationships. Analysis remains bounded by server config.")
+        max_relationships: z.number().int().min(1).max(250000).optional().describe("Maximum returned relationships. Analysis remains bounded by server config."),
+        continuation_token: z.string().regex(/^batch_[A-Za-z0-9-]{1,80}$/).optional().describe("Opaque continuation token from an incomplete inspect_workspace call; repeat the same request arguments.")
       },
       annotations: READ_ONLY_ANNOTATIONS,
       _meta: {
@@ -2791,7 +2798,10 @@ export function createCodexProServer(
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
       if (args.path) guard.resolve(workspace, args.path);
-      const result = await inspectWorkspace(configForWorkspace(workspace), guard, workspace);
+      const workspaceConfig = configForWorkspace(workspace);
+      const inspectRequestFingerprint = createHash("sha256").update(JSON.stringify({ path: args.path ?? ".", max_files: args.max_files ?? null, include_symbols: args.include_symbols ?? null, include_relationships: args.include_relationships ?? null, max_symbols: args.max_symbols ?? null, max_relationships: args.max_relationships ?? null, limits: workspaceConfig.analysisLimits })).digest("hex");
+      const inspection = await inspectWorkspaceResumable({ config: workspaceConfig, guard, workspace, store: batchStore, continuationToken: args.continuation_token, requestFingerprint: inspectRequestFingerprint });
+      const result = inspection.analysis;
       const prefix = typeof args.path === "string" && args.path.trim()
         ? guard.resolve(workspace, args.path).relPath.replace(/^\.\/?$/, "")
         : "";
@@ -2846,7 +2856,10 @@ export function createCodexProServer(
         warnings: outputWarnings,
         output_limited: outputLimited,
         returned: { files: files.length, symbols: symbols.length, relationships: relationships.length },
-        cache: result.cache
+        cache: result.cache,
+        complete: inspection.complete,
+        continuation_token: inspection.continuationToken ?? null,
+        ...(inspection.batch ? { batch: publicBatchRecord(inspection.batch) } : {})
       });
     }
   );

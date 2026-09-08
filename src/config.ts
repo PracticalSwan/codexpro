@@ -84,6 +84,7 @@ export interface CodexProConfig {
   goalsEnabled: boolean;
   goalDir: string;
   jobDir: string;
+  batchDir: string;
   maxGoals: number;
   maxGoalTasks: number;
   maxGoalWorkers: number;
@@ -512,6 +513,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     goalsEnabled: boolFrom(process.env.CODEXPRO_GOALS, false),
     goalDir: expandHome(process.env.CODEXPRO_GOAL_DIR || path.join(os.homedir(), ".codexpro", "goals")),
     jobDir: expandHome(process.env.CODEXPRO_JOB_DIR || path.join(os.homedir(), ".codexpro", "jobs")),
+    batchDir: expandHome(process.env.CODEXPRO_BATCH_DIR || path.join(os.homedir(), ".codexpro", "batches")),
     maxGoals: numberFrom(process.env.CODEXPRO_MAX_GOALS, 128, 1, 1024),
     maxGoalTasks: numberFrom(process.env.CODEXPRO_MAX_GOAL_TASKS, 64, 1, 256),
     maxGoalWorkers: numberFrom(process.env.CODEXPRO_MAX_GOAL_WORKERS, 4, 1, 8),
