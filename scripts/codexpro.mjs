@@ -661,24 +661,158 @@ function codexProHome() {
   const customHome = process.env.CODEXPRO_HOME;
   return customHome ? path.resolve(expandHome(customHome)) : path.join(os.homedir(), '.codexpro');
 }
-async function runContinuationCommand(argv) {
-  const continuationEnabled = process.env.CODEXPRO_CONTINUATION_ENABLED === "1";
-  if (!continuationEnabled) throw new Error("continuation_disabled: enable task continuation before browser setup.");
-  if (argv[0] !== "browser") throw new Error("Supported continuation command: codexpro continuation browser <pair|open|status|auth> [options]");
-  const action = argv[1];
-  if (!["pair", "open", "status", "auth"].includes(action)) throw new Error("Supported browser actions: pair, open, status, auth.");
-  let profile = "default";
-  let browser = "chrome";
-  let executable;
-  for (let index = 2; index < argv.length; index += 1) {
-    if (argv[index] === "--profile") { profile = argv[++index] ?? ""; continue; }
-    if (argv[index] === "--browser") { browser = argv[++index] ?? ""; continue; }
-    if (argv[index] === "--executable") { executable = argv[++index] ?? ""; continue; }
-    if (argv[index] === "--help" || argv[index] === "-h") {
-      console.log("Usage: codexpro continuation browser <pair|open|status|auth> --profile <label> [--browser chrome|edge] [--executable <path>]"); return;
-    }
-    throw new Error(`Unknown continuation browser option: ${argv[index]}`);
+
+function continuationProcessAlive(pid) {
+  if (!Number.isInteger(Number(pid)) || Number(pid) <= 0) return false;
+  try { process.kill(Number(pid), 0); return true; }
+  catch (error) { return error?.code === 'EPERM'; }
+}
+
+function sameContinuationRoot(left, right) {
+  const a = path.resolve(String(left ?? ''));
+  const b = path.resolve(String(right ?? ''));
+  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+function liveRuntimeConnection(root) {
+  const runtime = readJsonFile(runtimeStatusPathForRoot(root));
+  if (!runtime || !Object.keys(runtime).length || (runtime.root && !sameContinuationRoot(runtime.root, root))) return null;
+  if (!continuationProcessAlive(runtime.pid)) return null;
+  if (runtime.runtimePid && !continuationProcessAlive(runtime.runtimePid)) return null;
+  return runtime;
+}
+
+function continuationDeadlineLabel(mode, milliseconds) {
+  if (mode === 'observe') return 'Unlimited (observe only)';
+  const value = Number(milliseconds);
+  return Number.isFinite(value) && value > 0 ? `${Math.round(value / 60_000)} min` : 'unavailable';
+}
+
+async function printContinuationCliStatus(root, settings) {
+  const homeDir = codexProHome();
+  const continuationRoot = path.join(homeDir, 'continuation');
+  const runtime = liveRuntimeConnection(root);
+  const typesUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'types.js')).href;
+  const storeUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'store.js')).href;
+  const profileUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'browserProfile.js')).href;
+  const launcherUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'browserLauncher.js')).href;
+  const authUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'browserAuth.js')).href;
+  const [{ TERMINAL_CONTINUATION_STATES }, { ContinuationStore }, profileModule, launcherModule, { BrowserPairingStore }] = await Promise.all([
+    import(typesUrl), import(storeUrl), import(profileUrl), import(launcherUrl), import(authUrl)
+  ]);
+  let records = [];
+  if (fs.existsSync(path.join(continuationRoot, 'records'))) {
+    const store = new ContinuationStore(continuationRoot, 128);
+    records = (await store.list()).filter((record) => sameContinuationRoot(record.workspaceRoot, root));
   }
+  const active = records.filter((record) => !TERMINAL_CONTINUATION_STATES.has(record.state));
+  const task = active[0] ?? records[0] ?? null;
+  let browserState = { running: false, paired: false, auth_state: 'unknown' };
+  if (settings.continuationEnabled) {
+    const managed = await profileModule.existingManagedBrowserProfile(homeDir, settings.continuationProfile);
+    if (managed) {
+      const pairingRoot = path.join(continuationRoot, 'browser');
+      const clients = fs.existsSync(pairingRoot) ? await new BrowserPairingStore(pairingRoot).listPublicClients() : [];
+      const paired = clients.some((entry) => entry.profile_label === settings.continuationProfile && entry.active === true);
+      browserState = await profileModule.browserProfileStatus({ profile: managed, paired, processIdentity: launcherModule.managedBrowserProcessStartIdentity });
+    }
+  }
+  const savedDeadline = continuationDeadlineLabel(settings.syncCallDeadlineMode ?? 'bounded', settings.syncCallDeadlineMs ?? DEFAULT_SYNC_CALL_DEADLINE_MS);
+  const runtimeDeadline = runtime ? continuationDeadlineLabel(runtime.syncCallDeadlineMode, runtime.syncCallDeadlineMs) : 'unavailable';
+  printBox('CodexPro task continuation', [
+    labelValue('Workspace', root),
+    labelValue('Task continuation', settings.continuationEnabled ? 'enabled (saved next run)' : 'disabled (saved next run)'),
+    labelValue('Current continuation', runtime ? (typeof runtime.continuationEnabled === 'boolean' ? (runtime.continuationEnabled ? 'enabled' : 'disabled') : 'unavailable') : 'unavailable'),
+    labelValue('Saved next run continuation', settings.continuationEnabled ? 'enabled' : 'disabled'),
+    labelValue('Current runtime', runtime ? runtimeDeadline : 'unavailable'),
+    labelValue('Transport', runtime ? 'ready' : 'unavailable'),
+    ...(runtime && runtimeDeadline !== savedDeadline ? [labelValue('Saved next run deadline', savedDeadline)] : []),
+    ...(!runtime ? [labelValue('Saved next run deadline', savedDeadline)] : []),
+    labelValue('Browser setup', settings.continuationEnabled ? 'required when continuation is used' : 'not required'),
+    labelValue('Browser profile', settings.continuationProfile),
+    labelValue('Browser paired', browserState.paired ? 'yes' : 'no'),
+    labelValue('Browser auth', browserState.auth_state ?? 'unknown'),
+    labelValue('Active tasks', String(active.length)),
+    ...(task ? [
+      labelValue('Task', `${task.id.replace(/^continuation_/, '').slice(0, 8)} ${task.title}`),
+      labelValue('Task revision', String(task.revision)),
+      labelValue('Task state', task.state),
+      labelValue('Current phase', task.currentPhase ?? 'not set'),
+      labelValue('Remaining work', String(task.remainingWork.length)),
+      labelValue('Bound chat', task.conversationFingerprint ? 'yes' : 'no'),
+      labelValue('Continuation ready', task.state === 'continuation_ready' ? 'yes' : 'no'),
+      labelValue('Dispatch count', String(task.continuationCount))
+    ] : []),
+    labelValue('Local durable work', 'unknown until runtime integration (Plan 35)')
+  ]);
+}
+
+async function runContinuationCommand(argv) {
+  if (argv.includes('--help') || argv.includes('-h') || argv[0] === 'help') {
+    console.log([
+      'Usage:',
+      '  codexpro continuation status [--root <dir>]',
+      '  codexpro continuation arm-status [--root <dir>]',
+      '  codexpro continuation disarm --task <id|short-id> [--root <dir>]',
+      '  codexpro continuation browser status|pair|open|auth [--profile <label>] [--root <dir>]',
+      '  codexpro continuation browser clear-profile --profile <label> --yes [--root <dir>]',
+      '',
+      'Saved continuation settings are next-run defaults. Status reports current runtime state separately when available.'
+    ].join('\n'));
+    return;
+  }
+  const command = argv[0] ?? 'status';
+  if (!['status', 'arm-status', 'disarm', 'browser'].includes(command)) {
+    throw new Error('Supported continuation commands: status, arm-status, disarm, browser.');
+  }
+  const optionStart = command === 'browser' ? 2 : 1;
+  const parsed = parseArgs(argv.slice(optionStart));
+  const root = realDir(parsed.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
+  const savedProfile = parsed.noProfile ? {} : loadWorkspaceProfile(root);
+  const deadline = syncCallDeadlineOption({}, savedProfile);
+  const settings = { ...(await continuationProfileEntries({}, savedProfile)), syncCallDeadlineMode: deadline.mode, syncCallDeadlineMs: deadline.deadlineMs };
+  if (command === 'status' || command === 'arm-status') {
+    await printContinuationCliStatus(root, settings);
+    return;
+  }
+  if (command === 'disarm') {
+    const taskRef = String(parsed.task ?? '').trim();
+    if (!taskRef) throw new Error('continuation disarm requires --task <id|short-id>.');
+    const continuationRoot = path.join(codexProHome(), 'continuation');
+    const storeUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'store.js')).href;
+    const opsUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'ops.js')).href;
+    const { ContinuationStore } = await import(storeUrl);
+    const { cancelContinuation } = await import(opsUrl);
+    const store = new ContinuationStore(continuationRoot, 128);
+    const records = await store.list();
+    const matches = records.filter((record) => sameContinuationRoot(record.workspaceRoot, root) && (record.id === taskRef || record.id.startsWith(`continuation_${taskRef}`) || record.id.startsWith(taskRef)));
+    if (matches.length !== 1) throw new Error(matches.length ? 'continuation task reference is ambiguous.' : 'continuation task was not found for this workspace.');
+    const current = matches[0];
+    const binding = { workspace: { id: current.workspaceId, root: current.workspaceRoot }, ...(current.mcpSessionId ? { sessionId: current.mcpSessionId } : {}) };
+    const canceled = await cancelContinuation({ store, binding, continuationId: current.id, expectedRevision: current.revision, reason: 'user_canceled' });
+    printBox('CodexPro continuation disarmed', [
+      labelValue('Task', canceled.id.replace(/^continuation_/, '').slice(0, 8)),
+      labelValue('State', canceled.state),
+      labelValue('Revision', String(canceled.revision)),
+      'Continuation automation only was canceled. Local processes, jobs, Goals, browser processes, runtime, tunnel, and Git state were not stopped.'
+    ]);
+    return;
+  }
+  const continuationEnabled = settings.continuationEnabled;
+  const action = argv[1];
+  if (!["pair", "open", "status", "auth", "clear-profile"].includes(action)) throw new Error("Supported browser actions: pair, open, status, auth, clear-profile.");
+  const profile = parsed.profile ?? settings.continuationProfile;
+  if (!continuationEnabled && action === 'status') {
+    printBox('CodexPro browser continuation', [
+      labelValue('Task continuation', 'disabled (saved next run)'),
+      labelValue('Profile', profile),
+      labelValue('Browser setup', 'not required while continuation is disabled')
+    ]);
+    return;
+  }
+  if (!continuationEnabled) throw new Error('continuation_disabled: enable task continuation before browser setup.');
+  const browser = parsed.browser ?? settings.continuationBrowser;
+  const executable = parsed.executable;
   const homeDir = codexProHome();
   const extensionPath = path.join(projectRoot, "browser-extension");
   const authModuleUrl = pathToFileURL(path.join(projectRoot, "dist", "continuation", "browserAuth.js")).href;
@@ -705,6 +839,28 @@ async function runContinuationCommand(argv) {
   }
   const profileModule = await import(profileModuleUrl);
   const launcherModule = await import(launcherModuleUrl);
+  if (action === "clear-profile") {
+    if (!parsed.yes) throw new Error('clear-profile is destructive; pass --yes after verifying the exact managed profile label.');
+    const managed = await profileModule.existingManagedBrowserProfile(homeDir, profile);
+    if (!managed) throw new Error(`Managed browser profile ${profile} is not initialized.`);
+    const expectedParent = path.resolve(homeDir, 'browser', 'chatgpt');
+    const actualParent = path.dirname(path.resolve(managed.profileRoot));
+    if (!sameContinuationRoot(expectedParent, actualParent)) throw new Error('Managed browser profile resolved outside the protected CodexPro browser root.');
+    const clients = await pairingStore.listPublicClients();
+    const paired = clients.some((entry) => entry.profile_label === profile && entry.active === true);
+    const status = await profileModule.browserProfileStatus({ profile: managed, paired, processIdentity: launcherModule.managedBrowserProcessStartIdentity });
+    if (status.running) throw new Error(`Managed browser profile ${profile} is running; close that managed browser before clearing it.`);
+    for (const client of clients) {
+      if (client.profile_label === profile && client.active === true && typeof client.client_id === 'string') await pairingStore.revokeClient(client.client_id);
+    }
+    fs.rmSync(managed.profileRoot, { recursive: true, force: false });
+    printBox('CodexPro managed browser profile cleared', [
+      labelValue('Profile', profile),
+      labelValue('Paired client', paired ? 'revoked' : 'none'),
+      'Only the selected CodexPro-managed ChatGPT browser profile was deleted. Normal browser profiles and other managed profiles were untouched.'
+    ]);
+    return;
+  }
   if (action === "status") {
     const managed = await profileModule.existingManagedBrowserProfile(homeDir, profile);
     if (!managed) { console.log(`Managed browser profile ${profile} is not initialized.`); return; }
@@ -836,6 +992,14 @@ function saveRuntimeConnection(root, details, options = {}) {
     toolCards: Boolean(options.toolCards),
     syncCallDeadlineMode: options.syncCallDeadlineMode ?? 'bounded',
     syncCallDeadlineMs: options.syncCallDeadlineMs ?? DEFAULT_SYNC_CALL_DEADLINE_MS,
+    continuationEnabled: Boolean(options.continuationEnabled),
+    continuationBrowser: options.continuationBrowser ?? 'chrome',
+    continuationProfile: options.continuationProfile ?? 'default',
+    continuationCooldownMs: options.continuationCooldownMs ?? 60_000,
+    continuationMaxDispatches: options.continuationMaxDispatches ?? 20,
+    continuationUnexpectedGraceMs: options.continuationUnexpectedGraceMs ?? 120_000,
+    continuationNotificationsEnabled: options.continuationNotificationsEnabled !== false,
+    continuationTelegramEnabled: Boolean(options.continuationTelegramEnabled),
     analysisEnabled: Boolean(options.analysisEnabled),
     artifactExportEnabled: Boolean(options.artifactExportEnabled),
     goalsEnabled: Boolean(options.goalsEnabled),
@@ -966,6 +1130,21 @@ function toolCardsProfileEntry(args, profile = {}) {
 function toolCardsCliArgs(args, profile = {}) {
   if (!hasToolCardsInput(args, profile)) return [];
   return ['--tool-cards', optionBool(args, profile, 'toolCards', ['CODEXPRO_TOOL_CARDS'], false) ? 'on' : 'off'];
+}
+
+async function continuationProfileEntries(args, profile = {}) {
+  const moduleUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'settings.js')).href;
+  const { normalizeContinuationSettings } = await import(moduleUrl);
+  return normalizeContinuationSettings({
+    continuationEnabled: args.continuation ?? optionValue(args, profile, 'continuationEnabled', ['CODEXPRO_CONTINUATION_ENABLED']),
+    continuationBrowser: optionValue(args, profile, 'continuationBrowser', ['CODEXPRO_CONTINUATION_BROWSER']),
+    continuationProfile: optionValue(args, profile, 'continuationProfile', ['CODEXPRO_CONTINUATION_PROFILE']),
+    continuationCooldownMs: optionValue(args, profile, 'continuationCooldownMs', ['CODEXPRO_CONTINUATION_COOLDOWN_MS']),
+    continuationMaxDispatches: optionValue(args, profile, 'continuationMaxDispatches', ['CODEXPRO_CONTINUATION_MAX_DISPATCHES']),
+    continuationUnexpectedGraceMs: optionValue(args, profile, 'continuationUnexpectedGraceMs', ['CODEXPRO_CONTINUATION_UNEXPECTED_GRACE_MS']),
+    continuationNotificationsEnabled: args.continuationNotifications ?? optionValue(args, profile, 'continuationNotificationsEnabled', ['CODEXPRO_CONTINUATION_NOTIFICATIONS_ENABLED']),
+    continuationTelegramEnabled: args.continuationTelegram ?? optionValue(args, profile, 'continuationTelegramEnabled', ['CODEXPRO_CONTINUATION_TELEGRAM_ENABLED'])
+  });
 }
 
 function capabilityProfileEntries(args, profile = {}) {
@@ -3814,6 +3993,14 @@ function printProfile(root, profile) {
     ...(safe.toolMode ? [labelValue('Tool mode', safe.toolMode)] : []),
     ...(safe.toolCards !== undefined ? [labelValue('Tool cards', safe.toolCards ? 'on' : 'off')] : []),
     labelValue('Sync deadline', safe.syncCallDeadlineMode === 'observe' ? 'Unlimited (observe only)' : `${Math.round((safe.syncCallDeadlineMs ?? DEFAULT_SYNC_CALL_DEADLINE_MS) / 60_000)} min`),
+    labelValue('Task continuation', safe.continuationEnabled ? 'on' : 'off'),
+    labelValue('Continuation browser', safe.continuationBrowser ?? 'chrome'),
+    labelValue('Continuation profile', safe.continuationProfile ?? 'default'),
+    labelValue('Continuation cooldown', `${safe.continuationCooldownMs ?? 60_000} ms`),
+    labelValue('Continuation max dispatches', safe.continuationMaxDispatches ?? 20),
+    labelValue('Unexpected interruption grace', `${safe.continuationUnexpectedGraceMs ?? 120_000} ms`),
+    labelValue('Continuation notifications', safe.continuationNotificationsEnabled === false ? 'off' : 'on'),
+    labelValue('Telegram continuation', safe.continuationTelegramEnabled ? 'on' : 'off'),
     labelValue('Analysis', safe.analysisEnabled === undefined ? 'on' : safe.analysisEnabled ? 'on' : 'off'),
     labelValue('Artifact export', safe.artifactExportEnabled ? 'on' : 'off'),
     labelValue('Durable Goals', safe.goalsEnabled ? 'on' : 'off'),
@@ -3846,7 +4033,7 @@ function printProfileList(profiles = listWorkspaceProfiles()) {
   printBox('CodexPro saved setups', profiles.slice(0, 50).map((profile, index) => profileOneLine(profile, index + 1)));
 }
 
-function saveSettingsFromArgs(root, args, profile) {
+async function saveSettingsFromArgs(root, args, profile) {
   if (args.cloudflareToken !== undefined) {
     throw new Error('codexpro settings set does not save raw --cloudflare-token. Save it to a local file and use --cloudflare-token-file <path>; start still accepts --cloudflare-token for a single launch.');
   }
@@ -3902,6 +4089,7 @@ function saveSettingsFromArgs(root, args, profile) {
   const ngrokFallbackConfig = tunnel === 'openai'
     ? (profile.tunnel === 'ngrok' ? profile.ngrokConfig : profile.ngrokFallbackConfig) ?? ''
     : profile.ngrokFallbackConfig ?? '';
+  const continuation = await continuationProfileEntries(args, profile);
   const savedPath = saveWorkspaceProfile(root, {
     port,
     mode,
@@ -3927,6 +4115,7 @@ function saveSettingsFromArgs(root, args, profile) {
     ...(widgetDomain ? { widgetDomain } : {}),
     ...toolCardsProfileEntry(args, profile),
     ...syncCallDeadlineProfileEntry(args, profile),
+    ...continuation,
     ...capabilityProfileEntries(args, profile),
     ...(allowedRoots.length ? { allowedRoots } : {}),
     ...(args.noInstallCloudflared ?? profile.noInstallCloudflared ? { noInstallCloudflared: true } : {})
@@ -4021,7 +4210,7 @@ async function runSettings(argv) {
   }
 
   if (action === 'set') {
-    saveSettingsFromArgs(root, args, profile);
+    await saveSettingsFromArgs(root, args, profile);
     return;
   }
 
@@ -4396,6 +4585,7 @@ async function main() {
   const widgetDomain = optionValue(args, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], 'https://rebel0789.github.io');
   const toolCards = optionBool(args, profile, 'toolCards', ['CODEXPRO_TOOL_CARDS'], false);
   const syncCallDeadline = syncCallDeadlineOption(args, profile);
+  const continuation = await continuationProfileEntries(args, profile);
   const analysisEnabled = optionBool(args, profile, 'analysisEnabled', ['CODEXPRO_ANALYSIS'], true);
   const artifactExportEnabled = optionBool(args, profile, 'artifactExportEnabled', ['CODEXPRO_ARTIFACT_EXPORT'], false);
   const goalsEnabled = optionBool(args, profile, 'goalsEnabled', ['CODEXPRO_GOALS'], false);
@@ -4436,6 +4626,14 @@ async function main() {
     CODEXPRO_TOOL_CARDS: toolCards ? '1' : '0',
     CODEXPRO_SYNC_CALL_DEADLINE_MODE: syncCallDeadline.mode,
     CODEXPRO_SYNC_CALL_DEADLINE_MS: String(syncCallDeadline.deadlineMs),
+    CODEXPRO_CONTINUATION_ENABLED: continuation.continuationEnabled ? '1' : '0',
+    CODEXPRO_CONTINUATION_BROWSER: continuation.continuationBrowser,
+    CODEXPRO_CONTINUATION_PROFILE: continuation.continuationProfile,
+    CODEXPRO_CONTINUATION_COOLDOWN_MS: String(continuation.continuationCooldownMs),
+    CODEXPRO_CONTINUATION_MAX_DISPATCHES: String(continuation.continuationMaxDispatches),
+    CODEXPRO_CONTINUATION_UNEXPECTED_GRACE_MS: String(continuation.continuationUnexpectedGraceMs),
+    CODEXPRO_CONTINUATION_NOTIFICATIONS_ENABLED: continuation.continuationNotificationsEnabled ? '1' : '0',
+    CODEXPRO_CONTINUATION_TELEGRAM_ENABLED: continuation.continuationTelegramEnabled ? '1' : '0',
     CODEXPRO_CONNECTION_TEST: connectionTest ? '1' : '0',
     CODEXPRO_ANALYSIS: analysisEnabled ? '1' : '0',
     CODEXPRO_ARTIFACT_EXPORT: artifactExportEnabled ? '1' : '0',
@@ -4527,6 +4725,7 @@ async function main() {
     toolCards,
     syncCallDeadlineMode: syncCallDeadline.mode,
     syncCallDeadlineMs: syncCallDeadline.deadlineMs,
+    ...continuation,
     connectionTest,
     analysisEnabled,
     artifactExportEnabled,

@@ -29,18 +29,18 @@
 
 **Interfaces:**
 - Adds `continuationEnabled`, `continuationBrowser`, `continuationProfile`, `continuationCooldownMs`, `continuationMaxDispatches`, `continuationUnexpectedGraceMs`, `continuationNotificationsEnabled`, and preserves Plan 37's `continuationTelegramEnabled` when present.
-- [ ] **Step 1: Add failing profile/default tests**
+- [x] **Step 1: Add failing profile/default tests**
 
 Assert defaults: continuation off, Telegram off, browser `chrome`, profile `default`, cooldown 60,000 ms, max dispatches 20, unexpected-interruption grace 120,000 ms, notifications on. With continuation off, browser auth/pair/watchdog and Telegram setup/worker report disabled/not-required rather than prompting setup. Tool-time settings remain available. Validate bounded profile label and supported browser choices.
 
 Run: `node scripts/settings-smoke.mjs`
 Expected: FAIL until fields are implemented.
 
-- [ ] **Step 2: Add strict validation**
+- [x] **Step 2: Add strict validation**
 
 Use one shared validator for CLI/admin/profile persistence. Reject invalid browser names, unsafe profile labels/paths, cooldown below 10 seconds or above 10 minutes, max dispatches outside 1–100, and grace outside 30 seconds–10 minutes.
 
-- [ ] **Step 3: Preserve unrelated settings**
+- [x] **Step 3: Preserve unrelated settings**
 
 Changing deadline/tunnel/bash/profile settings must preserve continuation fields and vice versa. `settings use` copies only non-secret continuation preferences, never paired-client or browser session state.
 
@@ -54,19 +54,21 @@ Changing deadline/tunnel/bash/profile settings must preserve continuation fields
 **Interfaces:**
 - Adds `codexpro continuation status`, `arm-status`, `disarm`, `browser status|open|auth|pair`, plus `codexpro settings set --continuation enabled|disabled` for the next-run profile default. Browser setup requiring continuation fails clearly while disabled; Plan 37 Telegram setup does the same.
 
-- [ ] **Step 1: Add help/parse tests**
+- [x] **Step 1: Add help/parse tests**
 
 Verify clear command help, no secrets in output, exact next-run/live-state distinction, and failure when browser continuation is disabled but a browser action requiring enablement is requested.
 
-- [ ] **Step 2: Add safe public status**
+- [x] **Step 2: Add safe public status**
 
 Show task state/revision, task short ID/title, current phase, remaining-work count, paired-browser status, auth enum, bound/unbound, continuation-ready, dispatch count, **current runtime deadline**, saved next-run deadline when different, runtime/transport availability, and whether local durable work is active. Never print full conversation URL, account identity, cookies, browser-client token, or main MCP token. If no current runtime snapshot exists, show transport unavailable rather than substituting the 20-minute default.
 
-- [ ] **Step 3: Add immediate disarm**
+**Plan boundary:** Plan 34 reports durable-work status truthfully as `unknown until runtime integration (Plan 35)`. Canonical proc/job/batch/Goal aggregation is intentionally implemented in Plan 35 so this milestone does not duplicate those stores or infer from OS-wide process state.
+
+- [x] **Step 3: Add immediate disarm**
 
 `codexpro continuation disarm --task <id>` cancels only continuation automation state; it does not kill proc/job/Goal work, browser processes, CodexPro runtime, or Git operations. The terminal revision must invalidate outstanding nonce/readiness and cause the paired companion to clear any badge/notification/button on its next authoritative-state refresh.
 
-- [ ] **Step 4: Add explicit managed-profile clear/revoke**
+- [x] **Step 4: Add explicit managed-profile clear/revoke**
 
 `codexpro continuation browser clear-profile --profile <label> --yes` is a destructive privacy operation: require explicit `--yes`, resolve the exact managed profile under the CodexPro browser-state root, refuse while that managed browser is running, revoke its paired browser client, and delete only that selected managed profile. Never touch normal Chrome/Edge profiles or other managed profiles.
 ### Task 3: Add authenticated local admin controls
@@ -78,21 +80,21 @@ Show task state/revision, task short ID/title, current phase, remaining-work cou
 **Interfaces:**
 - Adds a **Task continuation** section beside existing runtime/profile controls.
 
-- [ ] **Step 1: Add HTML/API contract assertions**
+- [x] **Step 1: Add HTML/API contract assertions**
 
 Require a clearly labeled **Enable task continuation** toggle defaulting off, browser/profile selectors and tuning fields shown/enabled only when relevant, paired/auth/bound live status, active task revision/summary, current-runtime vs saved-next-run tool-time mode/deadline, transport availability, and immediate Disarm/Revoke browser controls. Telegram controls are hidden/disabled with `Requires task continuation` while continuation is off. No auto-send or auto-reconnect-tunnel option is present.
 
-- [ ] **Step 2: Separate saved defaults from current state**
+- [x] **Step 2: Separate saved defaults from current state**
 
 Clearly label profile fields as next-run defaults. Live task disarm, browser-client revoke, and continuation-state actions use separate authenticated endpoints and do not rewrite the running server configuration.
 
-- [ ] **Step 3: Redact sensitive browser state**
+- [x] **Step 3: Redact sensitive browser state**
 
 Admin HTML/JSON must never include browser client credentials, cookie values, account email/name, full conversation URL, message text, or browser profile file listings.
 
 ### Task 4: Verify and commit the milestone
 
-- [ ] **Step 1: Run focused settings/admin gates**
+- [x] **Step 1: Run focused settings/admin gates**
 
 Run: `node scripts/settings-smoke.mjs`
 Run: `node scripts/http-smoke.mjs`
@@ -101,7 +103,7 @@ Run: `npm run build`
 Run: `git diff --check`
 Expected: PASS.
 
-- [ ] **Step 2: Commit milestone**
+- [x] **Step 2: Commit milestone**
 
 ```bash
 git add src/profileStore.ts src/config.ts src/http.ts scripts/codexpro.mjs scripts/settings-smoke.mjs scripts/http-smoke.mjs scripts/browser-profile-smoke.mjs

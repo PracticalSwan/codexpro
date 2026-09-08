@@ -5,6 +5,7 @@ import path from "node:path";
 import type { BashMode, BashTranscriptMode, CodexSessionsMode, ToolMode, WriteMode } from "./config.js";
 import { expandHome } from "./config.js";
 import type { SyncCallDeadlineMode } from "./deadline.js";
+import { normalizeContinuationSettings, type ContinuationBrowser } from "./continuation/settings.js";
 
 export type TunnelMode = "openai" | "none" | "cloudflare" | "cloudflare-named" | "ngrok" | "tailscale";
 export type ConnectorMode = "agent" | "handoff" | "pro";
@@ -39,6 +40,14 @@ export interface WorkspaceProfile {
   toolCards?: boolean;
   syncCallDeadlineMode?: SyncCallDeadlineMode;
   syncCallDeadlineMs?: number;
+  continuationEnabled?: boolean;
+  continuationBrowser?: ContinuationBrowser;
+  continuationProfile?: string;
+  continuationCooldownMs?: number;
+  continuationMaxDispatches?: number;
+  continuationUnexpectedGraceMs?: number;
+  continuationNotificationsEnabled?: boolean;
+  continuationTelegramEnabled?: boolean;
   widgetDomain?: string;
   analysisEnabled?: boolean;
   artifactExportEnabled?: boolean;
@@ -76,6 +85,14 @@ export interface RuntimeConnection {
   toolCards?: boolean;
   syncCallDeadlineMode?: SyncCallDeadlineMode;
   syncCallDeadlineMs?: number;
+  continuationEnabled?: boolean;
+  continuationBrowser?: ContinuationBrowser;
+  continuationProfile?: string;
+  continuationCooldownMs?: number;
+  continuationMaxDispatches?: number;
+  continuationUnexpectedGraceMs?: number;
+  continuationNotificationsEnabled?: boolean;
+  continuationTelegramEnabled?: boolean;
   analysisEnabled?: boolean;
   artifactExportEnabled?: boolean;
   goalsEnabled?: boolean;
@@ -143,11 +160,13 @@ export function saveWorkspaceProfile(root: string, profile: WorkspaceProfile): s
   const dir = profileDir();
   const filePath = profilePathForRoot(canonicalRoot);
   const { profilePath: _profilePath, ...rest } = profile;
+  const continuation = normalizeContinuationSettings(rest);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const payload: WorkspaceProfile = {
     version: 1,
     updatedAt: new Date().toISOString(),
     ...rest,
+    ...continuation,
     root: canonicalRoot
   };
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });

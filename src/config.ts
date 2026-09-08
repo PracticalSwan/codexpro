@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { DEFAULT_ANALYSIS_LIMITS, type AnalysisLimits } from "./analysis/types.js";
 import { DEFAULT_SYNC_CALL_DEADLINE_MS, normalizeSyncCallDeadlineConfig, type SyncCallDeadlineMode } from "./deadline.js";
+import { normalizeContinuationSettings, type ContinuationSettings } from "./continuation/settings.js";
 
 export type BashMode = "off" | "safe" | "full";
 export type BashTranscriptMode = "compact" | "full";
@@ -11,7 +12,7 @@ export type WriteMode = "off" | "handoff" | "workspace";
 export type ToolMode = "minimal" | "standard" | "full";
 export const MIN_HTTP_TOKEN_BYTES = 24;
 
-export interface CodexProConfig {
+export interface CodexProConfig extends ContinuationSettings {
   defaultRoot: string;
   allowedRoots: string[];
   host: string;
@@ -438,8 +439,19 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     mode: normalizedDeadlineMode,
     deadlineMs: deadlineMsInput === undefined || deadlineMsInput === "" ? DEFAULT_SYNC_CALL_DEADLINE_MS : Number(deadlineMsInput)
   });
+  const continuation = normalizeContinuationSettings({
+    continuationEnabled: args["continuation-enabled"] ?? process.env.CODEXPRO_CONTINUATION_ENABLED,
+    continuationBrowser: args["continuation-browser"] ?? process.env.CODEXPRO_CONTINUATION_BROWSER,
+    continuationProfile: args["continuation-profile"] ?? process.env.CODEXPRO_CONTINUATION_PROFILE,
+    continuationCooldownMs: args["continuation-cooldown-ms"] ?? process.env.CODEXPRO_CONTINUATION_COOLDOWN_MS,
+    continuationMaxDispatches: args["continuation-max-dispatches"] ?? process.env.CODEXPRO_CONTINUATION_MAX_DISPATCHES,
+    continuationUnexpectedGraceMs: args["continuation-unexpected-grace-ms"] ?? process.env.CODEXPRO_CONTINUATION_UNEXPECTED_GRACE_MS,
+    continuationNotificationsEnabled: args["continuation-notifications-enabled"] ?? process.env.CODEXPRO_CONTINUATION_NOTIFICATIONS_ENABLED,
+    continuationTelegramEnabled: args["continuation-telegram-enabled"] ?? process.env.CODEXPRO_CONTINUATION_TELEGRAM_ENABLED
+  });
 
   return {
+    ...continuation,
     defaultRoot,
     allowedRoots,
     host,

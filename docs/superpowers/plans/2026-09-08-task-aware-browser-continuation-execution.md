@@ -70,11 +70,11 @@ Plan 35 assumes relevant Plans 22–28 are implemented because it integrates the
 
 ## Milestone 34 — Settings/admin UX
 
-- [ ] Add opt-in non-secret profile settings and strict validators.
-- [ ] Add continuation/browser CLI status/open/auth/pair/disarm commands.
-- [ ] Add authenticated admin controls and current-vs-saved state.
-- [ ] Verify no browser/auth/chat secrets in profile/UI output.
-- [ ] Make Plan 34 milestone commit.
+- [x] Add opt-in non-secret profile settings and strict validators.
+- [x] Add continuation/browser CLI status/open/auth/pair/disarm commands.
+- [x] Add authenticated admin controls and current-vs-saved state.
+- [x] Verify no browser/auth/chat secrets in profile/UI output.
+- [x] Make Plan 34 milestone commit.
 
 ## Milestone 35 — Runtime integration/instructions
 

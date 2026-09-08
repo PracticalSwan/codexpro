@@ -26,11 +26,13 @@ import { JobStore } from "./jobs/store.js";
 import { diagnosticsSnapshot } from "./diagnosticsOps.js";
 import { WorkspaceRegistry } from "./guard.js";
 import { BrowserPairingStore } from "./continuation/browserAuth.js";
-import { existingManagedBrowserProfile, writeBrowserProfileMetadata } from "./continuation/browserProfile.js";
+import { browserProfileStatus, existingManagedBrowserProfile, writeBrowserProfileMetadata } from "./continuation/browserProfile.js";
+import { managedBrowserProcessStartIdentity } from "./continuation/browserLauncher.js";
 import { startBrowserContinuationBridge } from "./continuation/browserBridge.js";
+import { normalizeContinuationSettings } from "./continuation/settings.js";
 import { ContinuationStore } from "./continuation/store.js";
-import { publicContinuationRecord, TERMINAL_CONTINUATION_STATES, type ContinuationRecord } from "./continuation/types.js";
-import { bindContinuationConversation, authorizeContinuationDispatch, completeContinuationDispatch, releaseContinuationDispatch, observeContinuationManualTurn } from "./continuation/ops.js";
+import { publicContinuationRecord, TERMINAL_CONTINUATION_STATES, validateContinuationRecord, type ContinuationRecord } from "./continuation/types.js";
+import { bindContinuationConversation, authorizeContinuationDispatch, completeContinuationDispatch, releaseContinuationDispatch, observeContinuationManualTurn, cancelContinuation } from "./continuation/ops.js";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -83,6 +85,14 @@ const argsField = z.preprocess((value) => {
   return trimmed.split(/\s+/);
 }, z.array(z.string().max(4096)).max(32).optional());
 
+const AdminContinuationDisarm = z.object({
+  task_id: z.string().regex(/^continuation_[A-Za-z0-9-]{1,80}$/)
+}).strict();
+
+const AdminContinuationBrowserRevoke = z.object({
+  profile: z.string().min(1).max(64)
+}).strict();
+
 const AdminProfilePatch = z.object({
   tunnel: z.enum(TUNNELS).optional(),
   hostname: textField(253),
@@ -102,6 +112,14 @@ const AdminProfilePatch = z.object({
   toolCards: z.boolean().optional(),
   syncCallDeadlineMode: z.enum(DEADLINE_MODES).optional(),
   syncCallDeadlineMinutes: z.coerce.number().int().min(5).max(60).optional(),
+  continuationEnabled: z.boolean().optional(),
+  continuationBrowser: z.enum(["chrome", "edge"]).optional(),
+  continuationProfile: textField(64),
+  continuationCooldownMs: z.coerce.number().optional(),
+  continuationMaxDispatches: z.coerce.number().optional(),
+  continuationUnexpectedGraceMs: z.coerce.number().optional(),
+  continuationNotificationsEnabled: z.boolean().optional(),
+  continuationTelegramEnabled: z.boolean().optional(),
   widgetDomain: textField(2048),
   analysisEnabled: z.boolean().optional(),
   artifactExportEnabled: z.boolean().optional(),
@@ -148,6 +166,14 @@ interface ProfileFormValues {
   toolCards: boolean;
   syncCallDeadlineMode: "bounded" | "observe";
   syncCallDeadlineMinutes: number;
+  continuationEnabled: boolean;
+  continuationBrowser: "chrome" | "edge";
+  continuationProfile: string;
+  continuationCooldownMs: number;
+  continuationMaxDispatches: number;
+  continuationUnexpectedGraceMs: number;
+  continuationNotificationsEnabled: boolean;
+  continuationTelegramEnabled: boolean;
   widgetDomain: string;
   analysisEnabled: boolean;
   artifactExportEnabled: boolean;
@@ -219,7 +245,18 @@ function profileValues(config: CodexProConfig, profile = readWorkspaceProfile(co
     "";
   const mode = oneOf(profile.mode ?? process.env.CODEXPRO_MODE, MODES, "agent");
   const write = effectiveWriteMode(mode, oneOf(profile.write ?? config.writeMode, WRITE_MODES, config.writeMode));
+  const continuation = normalizeContinuationSettings({
+    continuationEnabled: profile.continuationEnabled ?? config.continuationEnabled,
+    continuationBrowser: profile.continuationBrowser ?? config.continuationBrowser,
+    continuationProfile: profile.continuationProfile ?? config.continuationProfile,
+    continuationCooldownMs: profile.continuationCooldownMs ?? config.continuationCooldownMs,
+    continuationMaxDispatches: profile.continuationMaxDispatches ?? config.continuationMaxDispatches,
+    continuationUnexpectedGraceMs: profile.continuationUnexpectedGraceMs ?? config.continuationUnexpectedGraceMs,
+    continuationNotificationsEnabled: profile.continuationNotificationsEnabled ?? config.continuationNotificationsEnabled,
+    continuationTelegramEnabled: profile.continuationTelegramEnabled ?? config.continuationTelegramEnabled
+  });
   return {
+    ...continuation,
     port: String(profile.port ?? config.port),
     mode,
     tunnel: oneOf(profile.tunnel, TUNNELS, runtimeTunnelFallback()),
@@ -407,6 +444,25 @@ function profileForm(config: CodexProConfig): string {
           <label class="check-row"><input name="toolCards" type="checkbox" value="true"${values.toolCards ? " checked" : ""}><span>Enable ChatGPT tool cards</span></label>
           <label class="check-row"><input name="requireBashSession" type="checkbox" value="true"${values.requireBashSession ? " checked" : ""}><span>Require matching bash session id</span></label>
         </fieldset>
+        <fieldset class="profile-group" data-continuation-section>
+          <legend>Task continuation</legend>
+          <p><strong>Saved next run:</strong> these preferences do not change the process already running. <strong>Current runtime:</strong> live state is shown separately below.</p>
+          <label class="check-row"><input name="continuationEnabled" type="checkbox" value="true"${values.continuationEnabled ? " checked" : ""} data-continuation-toggle><span>Enable task continuation</span></label>
+          <div class="form-grid" data-continuation-options>
+            <label><span>Browser</span><select name="continuationBrowser"${values.continuationEnabled ? "" : " disabled"}>${selectOptions(["chrome", "edge"], values.continuationBrowser)}</select></label>
+            <label><span>Managed profile</span><input name="continuationProfile" value="${escapeHtml(values.continuationProfile)}"${values.continuationEnabled ? "" : " disabled"}></label>
+            <label><span>Cooldown (ms)</span><input name="continuationCooldownMs" type="number" min="10000" max="600000" step="1000" value="${values.continuationCooldownMs}"${values.continuationEnabled ? "" : " disabled"}></label>
+            <label><span>Maximum dispatches</span><input name="continuationMaxDispatches" type="number" min="1" max="100" step="1" value="${values.continuationMaxDispatches}"${values.continuationEnabled ? "" : " disabled"}></label>
+            <label><span>Unexpected interruption grace (ms)</span><input name="continuationUnexpectedGraceMs" type="number" min="30000" max="600000" step="1000" value="${values.continuationUnexpectedGraceMs}"${values.continuationEnabled ? "" : " disabled"}></label>
+          </div>
+          <label class="check-row"><input name="continuationNotificationsEnabled" type="checkbox" value="true"${values.continuationNotificationsEnabled ? " checked" : ""}${values.continuationEnabled ? "" : " disabled"}><span>Enable continuation notifications</span></label>
+          <label class="check-row"><input name="continuationTelegramEnabled" type="checkbox" value="true"${values.continuationTelegramEnabled ? " checked" : ""}${values.continuationEnabled ? "" : " disabled"}><span>Enable Telegram continuation <small>Requires task continuation</small></span></label>
+          <div class="current-url idle" data-continuation-status>Current runtime: loading safe continuation status from /admin/continuation.</div>
+          <div class="actions">
+            <button type="button" data-continuation-disarm>Disarm active task</button>
+            <button type="button" data-continuation-revoke>Revoke browser client</button>
+          </div>
+        </fieldset>
         <fieldset class="profile-group">
           <legend>Capabilities</legend>
           <p>Feature gates and optional intelligence providers for the next launch. Protected paths and authentication secrets remain outside this form.</p>
@@ -471,6 +527,7 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
     : String(existing.ngrokFallbackConfig ?? "");
   const cloudflareConfig = next.tunnel === "cloudflare-named" ? normalizeProfilePath(config.defaultRoot, next.cloudflareConfig) : "";
   const cloudflareTokenFile = next.tunnel === "cloudflare-named" ? normalizeProfilePath(config.defaultRoot, next.cloudflareTokenFile) : "";
+  const continuation = normalizeContinuationSettings(next);
   return {
     port: next.port,
     mode: next.mode,
@@ -497,6 +554,7 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
     toolCards: next.toolCards,
     syncCallDeadlineMode: next.syncCallDeadlineMode,
     syncCallDeadlineMs: next.syncCallDeadlineMinutes * 60_000,
+    ...continuation,
     ...(next.widgetDomain ? { widgetDomain: next.widgetDomain } : {}),
     analysisEnabled: next.analysisEnabled,
     artifactExportEnabled: next.artifactExportEnabled,
@@ -536,6 +594,14 @@ function profileResponse(config: CodexProConfig): Record<string, unknown> {
       toolCards: config.toolCards,
       syncCallDeadlineMode: config.syncCallDeadlineMode,
       syncCallDeadlineMs: config.syncCallDeadlineMs,
+      continuationEnabled: config.continuationEnabled,
+      continuationBrowser: config.continuationBrowser,
+      continuationProfile: config.continuationProfile,
+      continuationCooldownMs: config.continuationCooldownMs,
+      continuationMaxDispatches: config.continuationMaxDispatches,
+      continuationUnexpectedGraceMs: config.continuationUnexpectedGraceMs,
+      continuationNotificationsEnabled: config.continuationNotificationsEnabled,
+      continuationTelegramEnabled: config.continuationTelegramEnabled,
       widgetDomain: config.widgetDomain,
       analysisEnabled: config.analysisEnabled,
       artifactExportEnabled: config.artifactExportEnabled,
@@ -550,6 +616,97 @@ function profileResponse(config: CodexProConfig): Record<string, unknown> {
       inheritEnv: config.inheritEnv,
       connectionTest: config.connectionTest,
       authEnabled: Boolean(config.authToken)
+    }
+  });
+}
+
+function sameResolvedPath(left: string, right: string): boolean {
+  const a = path.resolve(left);
+  const b = path.resolve(right);
+  return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
+}
+
+async function continuationAdminResponse(config: CodexProConfig): Promise<Record<string, unknown>> {
+  const profile = readWorkspaceProfile(config.defaultRoot);
+  const saved = profileValues(config, profile);
+  const homeDir = path.dirname(config.operationDir);
+  const continuationRoot = path.join(homeDir, "continuation");
+  const recordsDir = path.join(continuationRoot, "records");
+  const records: ContinuationRecord[] = [];
+  try {
+    const names = (await fsp.readdir(recordsDir)).filter((name) => name.endsWith(".json")).slice(0, config.maxOperationReceipts * 4);
+    for (const name of names) {
+      try {
+        const file = path.join(recordsDir, name);
+        const stat = await fsp.lstat(file);
+        if (!stat.isFile() || stat.size > 128 * 1024) continue;
+        records.push(validateContinuationRecord(JSON.parse(await fsp.readFile(file, "utf8"))));
+      } catch {}
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  records.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  const active = records.filter((record) => sameResolvedPath(record.workspaceRoot, config.defaultRoot) && !TERMINAL_CONTINUATION_STATES.has(record.state));
+  const task = active[0] ?? null;
+
+  const browserProfileLabel = config.continuationEnabled ? config.continuationProfile : saved.continuationProfile;
+  let browser: Record<string, unknown> = {
+    setup_required: config.continuationEnabled,
+    initialized: false,
+    running: false,
+    paired: false,
+    auth_state: "unknown",
+    profile: browserProfileLabel,
+    bound: Boolean(task?.conversationFingerprint)
+  };
+  const managed = await existingManagedBrowserProfile(homeDir, browserProfileLabel);
+  if (managed) {
+    const pairingStore = new BrowserPairingStore(path.join(continuationRoot, "browser"));
+    const clients = await pairingStore.listPublicClients();
+    const paired = clients.some((entry) => entry.profile_label === browserProfileLabel && entry.active === true);
+    browser = {
+      setup_required: config.continuationEnabled,
+      initialized: true,
+      ...(await browserProfileStatus({ profile: managed, paired, processIdentity: managedBrowserProcessStartIdentity })),
+      bound: Boolean(task?.conversationFingerprint)
+    };
+  }
+
+  return redactStructured({
+    ok: true,
+    saved_next_run: {
+      enabled: saved.continuationEnabled,
+      browser: saved.continuationBrowser,
+      profile: saved.continuationProfile,
+      cooldown_ms: saved.continuationCooldownMs,
+      max_dispatches: saved.continuationMaxDispatches,
+      unexpected_grace_ms: saved.continuationUnexpectedGraceMs,
+      notifications_enabled: saved.continuationNotificationsEnabled,
+      telegram_enabled: saved.continuationTelegramEnabled,
+      deadline: { mode: saved.syncCallDeadlineMode, ms: saved.syncCallDeadlineMinutes * 60_000 }
+    },
+    runtime: {
+      enabled: config.continuationEnabled,
+      transport: "ready",
+      deadline: { mode: config.syncCallDeadlineMode, ms: config.syncCallDeadlineMs }
+    },
+    browser,
+    task: task ? {
+      task_id: task.id,
+      short_id: task.id.replace(/^continuation_/, "").slice(0, 8),
+      title: task.title,
+      revision: task.revision,
+      state: task.state,
+      current_phase: task.currentPhase ?? null,
+      remaining_work_count: task.remainingWork.length,
+      bound: Boolean(task.conversationFingerprint),
+      continuation_ready: task.state === "continuation_ready",
+      dispatch_count: task.continuationCount
+    } : null,
+    ...(active.length > 1 ? { ambiguous_active_tasks: active.length } : {}),
+    telegram: {
+      state: !config.continuationEnabled ? "requires_task_continuation" : config.continuationTelegramEnabled ? "enabled" : "disabled"
     }
   });
 }
@@ -1567,6 +1724,91 @@ function onboardingPage(config: CodexProConfig): string {
       updateTunnelHelp();
     });
     updateTunnelHelp();
+
+    const continuationToggle = profileForm?.elements?.continuationEnabled;
+    const continuationOptions = document.querySelector("[data-continuation-options]");
+    const continuationStatus = document.querySelector("[data-continuation-status]");
+    const continuationDisarm = document.querySelector("[data-continuation-disarm]");
+    const continuationRevoke = document.querySelector("[data-continuation-revoke]");
+    let activeContinuationTaskId = "";
+    function updateContinuationControls() {
+      const enabled = Boolean(continuationToggle?.checked);
+      if (continuationOptions) continuationOptions.hidden = !enabled;
+      for (const name of ["continuationBrowser", "continuationProfile", "continuationCooldownMs", "continuationMaxDispatches", "continuationUnexpectedGraceMs", "continuationNotificationsEnabled", "continuationTelegramEnabled"]) {
+        const control = profileForm?.elements?.[name];
+        if (control) control.disabled = !enabled;
+      }
+    }
+    async function refreshContinuationStatus() {
+      if (!continuationStatus) return;
+      try {
+        const headers = connectorToken ? { Authorization: "Bearer " + connectorToken } : {};
+        const response = await fetch("/admin/continuation", { headers });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error?.message || "Continuation status request failed: " + response.status);
+        activeContinuationTaskId = result.task?.task_id || "";
+        const currentDeadline = result.runtime?.deadline?.mode === "observe"
+          ? "Unlimited / observe only"
+          : result.runtime?.deadline?.ms ? Math.round(result.runtime.deadline.ms / 60000) + " min bounded" : "unavailable";
+        const savedDeadline = result.saved_next_run?.deadline?.mode === "observe"
+          ? "Unlimited / observe only"
+          : result.saved_next_run?.deadline?.ms ? Math.round(result.saved_next_run.deadline.ms / 60000) + " min bounded" : "unavailable";
+        const taskText = result.task
+          ? result.task.short_id + " " + result.task.title + " · " + result.task.state + " · remaining " + result.task.remaining_work_count
+          : "none";
+        continuationStatus.textContent = [
+          "Current runtime: " + (result.runtime?.enabled ? "continuation enabled" : "continuation disabled") + ", " + currentDeadline + ", transport " + (result.runtime?.transport || "unavailable"),
+          "Saved next run: " + (result.saved_next_run?.enabled ? "enabled" : "disabled") + ", " + savedDeadline,
+          "Task: " + taskText,
+          "Browser: " + (result.browser?.paired ? "paired" : "unpaired") + ", auth " + (result.browser?.auth_state || "unknown") + ", bound " + (result.browser?.bound ? "yes" : "no"),
+          "Telegram: " + (result.telegram?.state || "unavailable")
+        ].join(" | ");
+        if (continuationDisarm) continuationDisarm.disabled = !activeContinuationTaskId;
+        if (continuationRevoke) continuationRevoke.disabled = !String(profileForm?.elements?.continuationProfile?.value || "").trim();
+      } catch (error) {
+        activeContinuationTaskId = "";
+        continuationStatus.textContent = error instanceof Error ? error.message : String(error);
+        if (continuationDisarm) continuationDisarm.disabled = true;
+        if (continuationRevoke) continuationRevoke.disabled = true;
+      }
+    }
+    continuationToggle?.addEventListener("change", updateContinuationControls);
+    continuationDisarm?.addEventListener("click", async () => {
+      if (!activeContinuationTaskId) return;
+      continuationDisarm.disabled = true;
+      try {
+        const response = await fetch("/admin/continuation/disarm", {
+          method: "POST",
+          headers: { "content-type": "application/json", ...(connectorToken ? { Authorization: "Bearer " + connectorToken } : {}) },
+          body: JSON.stringify({ task_id: activeContinuationTaskId })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error?.message || "Disarm failed");
+        await refreshContinuationStatus();
+      } catch (error) {
+        if (continuationStatus) continuationStatus.textContent = error instanceof Error ? error.message : String(error);
+      }
+    });
+    continuationRevoke?.addEventListener("click", async () => {
+      const profile = String(profileForm?.elements?.continuationProfile?.value || "").trim();
+      if (!profile) return;
+      continuationRevoke.disabled = true;
+      try {
+        const response = await fetch("/admin/continuation/browser/revoke", {
+          method: "POST",
+          headers: { "content-type": "application/json", ...(connectorToken ? { Authorization: "Bearer " + connectorToken } : {}) },
+          body: JSON.stringify({ profile })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error?.message || "Browser revoke failed");
+        await refreshContinuationStatus();
+      } catch (error) {
+        if (continuationStatus) continuationStatus.textContent = error instanceof Error ? error.message : String(error);
+      }
+    });
+    updateContinuationControls();
+    refreshContinuationStatus();
+
     if (profileForm) {
       profileForm.addEventListener("submit", async (event) => {
         event.preventDefault();
@@ -1591,6 +1833,14 @@ function onboardingPage(config: CodexProConfig): string {
           toolCards: Boolean(form.elements.toolCards?.checked),
           syncCallDeadlineMode: data.syncCallDeadlineMode,
           syncCallDeadlineMinutes: Number(data.syncCallDeadlineMinutes),
+          continuationEnabled: Boolean(form.elements.continuationEnabled?.checked),
+          continuationBrowser: form.elements.continuationBrowser?.value || "chrome",
+          continuationProfile: form.elements.continuationProfile?.value || "default",
+          continuationCooldownMs: Number(form.elements.continuationCooldownMs?.value || 60000),
+          continuationMaxDispatches: Number(form.elements.continuationMaxDispatches?.value || 20),
+          continuationUnexpectedGraceMs: Number(form.elements.continuationUnexpectedGraceMs?.value || 120000),
+          continuationNotificationsEnabled: Boolean(form.elements.continuationNotificationsEnabled?.checked),
+          continuationTelegramEnabled: Boolean(form.elements.continuationTelegramEnabled?.checked),
           codexSessions: data.codexSessions,
           codexDir: data.codexDir,
           bashSession: data.bashSession,
@@ -1623,6 +1873,7 @@ function onboardingPage(config: CodexProConfig): string {
           const result = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(result.error?.message || "Save failed");
           if (status) status.textContent = "Saved. Restart CodexPro for these profile settings to apply.";
+          await refreshContinuationStatus();
         } catch (error) {
           if (status) status.textContent = error instanceof Error ? error.message : "Save failed";
         }
@@ -1906,6 +2157,57 @@ async function main(): Promise<void> {
 
   app.get("/admin/profile", (_req, res) => {
     res.json(profileResponse(config));
+  });
+
+  app.get("/admin/continuation", async (_req, res) => {
+    res.json(await continuationAdminResponse(config));
+  });
+
+  app.post("/admin/continuation/disarm", sameOriginAdminRequest, adminRateLimit, adminBodyLimit, express.json({ limit: "8kb" }), async (req, res) => {
+    const parsed = AdminContinuationDisarm.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      jsonError(res, 400, "invalid_continuation_disarm", "Invalid continuation disarm request.", parsed.error.flatten());
+      return;
+    }
+    try {
+      const continuationRoot = path.join(path.dirname(config.operationDir), "continuation");
+      const store = new ContinuationStore(continuationRoot, config.maxOperationReceipts);
+      const current = await store.require(parsed.data.task_id);
+      if (!sameResolvedPath(current.workspaceRoot, config.defaultRoot)) {
+        jsonError(res, 404, "continuation_not_found", "Continuation task was not found for this workspace.");
+        return;
+      }
+      const binding = {
+        workspace: { id: current.workspaceId, root: current.workspaceRoot },
+        ...(current.mcpSessionId ? { sessionId: current.mcpSessionId } : {})
+      };
+      const canceled = await cancelContinuation({ store, binding, continuationId: current.id, expectedRevision: current.revision, reason: "user_canceled" });
+      res.json({ ok: true, task: { task_id: canceled.id, revision: canceled.revision, state: canceled.state } });
+    } catch (error) {
+      jsonError(res, 400, "continuation_disarm_failed", error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.post("/admin/continuation/browser/revoke", sameOriginAdminRequest, adminRateLimit, adminBodyLimit, express.json({ limit: "8kb" }), async (req, res) => {
+    const parsed = AdminContinuationBrowserRevoke.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      jsonError(res, 400, "invalid_browser_revoke", "Invalid browser revoke request.", parsed.error.flatten());
+      return;
+    }
+    try {
+      const profileLabel = normalizeContinuationSettings({ continuationProfile: parsed.data.profile }).continuationProfile;
+      const store = new BrowserPairingStore(path.join(path.dirname(config.operationDir), "continuation", "browser"));
+      const clients = await store.listPublicClients();
+      let revoked = 0;
+      for (const client of clients) {
+        if (client.profile_label !== profileLabel || client.active !== true || typeof client.client_id !== "string") continue;
+        await store.revokeClient(client.client_id);
+        revoked += 1;
+      }
+      res.json({ ok: true, profile: profileLabel, revoked });
+    } catch (error) {
+      jsonError(res, 400, "browser_revoke_failed", error instanceof Error ? error.message : String(error));
+    }
   });
 
   app.post("/admin/profile", sameOriginAdminRequest, adminRateLimit, adminBodyLimit, express.json({ limit: "32kb" }), (req, res) => {

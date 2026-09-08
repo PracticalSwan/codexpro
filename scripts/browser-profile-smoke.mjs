@@ -1,13 +1,23 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { discoverBrowserExecutable, resolveManagedBrowserProfile, classifyBrowserAuthState, browserProfileStatus, writeBrowserProfileMetadata } from '../dist/continuation/browserProfile.js';
-import { buildManagedBrowserArgs, launchManagedBrowser } from '../dist/continuation/browserLauncher.js';
+import { buildManagedBrowserArgs, launchManagedBrowser, managedBrowserProcessStartIdentity } from '../dist/continuation/browserLauncher.js';
+import { BrowserPairingStore } from '../dist/continuation/browserAuth.js';
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-browser-workspace-'));
 const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-browser-home-'));
 const fakeExe = path.join(home, process.platform === 'win32' ? 'chrome.exe' : 'chrome');
+const cliEnv = { ...process.env, CODEXPRO_HOME: home, CODEXPRO_CONTINUATION_ENABLED: '1' };
+function runCli(args, expectSuccess = true) {
+  const result = spawnSync(process.execPath, ['scripts/codexpro.mjs', ...args], { cwd: path.resolve('.'), env: cliEnv, encoding: 'utf8' });
+  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+  if (expectSuccess && result.status !== 0) throw new Error(`CLI failed: ${args.join(' ')}\n${output}`);
+  if (!expectSuccess && result.status === 0) throw new Error(`CLI unexpectedly succeeded: ${args.join(' ')}\n${output}`);
+  return output;
+}
 await fs.writeFile(fakeExe, 'fixture');
 try {
   const discovered = discoverBrowserExecutable({ browser: 'chrome', override: fakeExe });
@@ -55,6 +65,27 @@ try {
   const persisted = JSON.parse(await fs.readFile(profile.metadataFile, 'utf8'));
   assert.equal(persisted.pid, 4242);
   assert(!JSON.stringify(status).includes(profile.userDataDir), 'public browser status leaked managed profile path');
+
+  const cleanupProfile = resolveManagedBrowserProfile({ homeDir: home, profileLabel: 'cleanup-test', browser: 'chrome', sourceRoots: [root] });
+  await fs.writeFile(path.join(cleanupProfile.userDataDir, 'marker.txt'), 'cleanup target\n', 'utf8');
+  const pairingStore = new BrowserPairingStore(path.join(home, 'continuation', 'browser'));
+  const pairing = await pairingStore.createPairing('cleanup-test');
+  const pairedClient = await pairingStore.exchangePairing('cleanup-test', pairing.code, { extensionVersion: '1.0.0' });
+  const ownedIdentity = managedBrowserProcessStartIdentity(process.pid);
+  assert(ownedIdentity, 'test process start identity unavailable');
+  await writeBrowserProfileMetadata(cleanupProfile, { pid: process.pid, processStartKey: ownedIdentity, authState: 'signed_in' });
+  const missingYes = runCli(['continuation', 'browser', 'clear-profile', '--profile', 'cleanup-test', '--root', root, '--executable', fakeExe], false);
+  assert.match(missingYes, /--yes/i);
+  const runningRefusal = runCli(['continuation', 'browser', 'clear-profile', '--profile', 'cleanup-test', '--root', root, '--executable', fakeExe, '--yes'], false);
+  assert.match(runningRefusal, /running/i);
+  await writeBrowserProfileMetadata(cleanupProfile, { pid: 999999, processStartKey: 'stale-test-process' });
+  const cleared = runCli(['continuation', 'browser', 'clear-profile', '--profile', 'cleanup-test', '--root', root, '--executable', fakeExe, '--yes']);
+  assert.match(cleared, /cleared|revoked/i);
+  await assert.rejects(fs.stat(cleanupProfile.profileRoot), /ENOENT/);
+  await fs.stat(profile.profileRoot);
+  const clientsAfterClear = await pairingStore.listPublicClients();
+  const clearedClient = clientsAfterClear.find((entry) => entry.client_id === pairedClient.clientId);
+  assert.equal(clearedClient?.active, false, 'clear-profile did not revoke the selected managed profile client');
 
   const sources = (await Promise.all(['src/continuation/browserProfile.ts','src/continuation/browserLauncher.ts'].map((file) => fs.readFile(file, 'utf8')))).join('\n');
   assert(!/Google[\\/]+Chrome[\\/]+User Data|Microsoft[\\/]+Edge[\\/]+User Data/.test(sources), 'implementation searches/copies normal browser profile paths');
