@@ -46,12 +46,12 @@ Plan 35 assumes relevant Plans 22–28 are implemented because it integrates the
 
 ## Milestone 31 — Managed browser/auth state
 
-- [ ] Add Chrome/Edge discovery and dedicated managed profile launcher.
-- [ ] Add coarse signed-in/signed-out/ambiguous health.
-- [ ] Reach live auth command and **STOP: WAITING_FOR_USER_AUTH**.
-- [ ] User signs in manually and sends `continue`.
-- [ ] Recover state, verify coarse signed-in status, and complete non-secret persistence checks.
-- [ ] Make Plan 31 milestone commit.
+- [x] Add Chrome/Edge discovery and dedicated managed profile launcher.
+- [x] Add coarse signed-in/signed-out/ambiguous health.
+- [x] Reach live auth command and **STOP: WAITING_FOR_USER_AUTH**.
+- [x] User signs in manually and sends `continue`.
+- [x] Recover state, verify coarse signed-in status, and complete non-secret persistence checks.
+- [x] Make Plan 31 milestone commit.
 
 ## Milestone 32 — Conversation binding/user dispatch
 

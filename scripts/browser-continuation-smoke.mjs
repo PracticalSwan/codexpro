@@ -29,15 +29,17 @@ try {
   now -= 300_001;
 
   const valid = await store.createPairing('default');
-  const client = await store.exchangePairing('default', valid.code, { extensionVersion: '0.1.0' });
+  const client = await store.exchangePairing('default', valid.code, { extensionVersion: '0.1.0', extensionId: 'abcdefghijklmnopabcdefghijklmnop' });
   assert.match(client.clientId, /^browser_[A-Za-z0-9-]{1,80}$/);
   assert.match(client.credential, /^[a-f0-9]{64}$/);
-  assert.equal(await store.verifyCredential(client.clientId, client.credential), true);
+  assert.equal(await store.verifyCredential(client.clientId, client.credential, 'abcdefghijklmnopabcdefghijklmnop'), true);
+  assert.equal(await store.verifyCredential(client.clientId, client.credential), true, 'paired loopback client rejected credential-only MV3 authentication without Origin');
+  assert.equal(await store.verifyCredential(client.clientId, client.credential, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'), false, 'extension-bound client accepted the wrong extension id');
   await assert.rejects(() => store.exchangePairing('default', valid.code), /pairing_consumed|pairing_code_invalid/i);
   const replacementPair = await store.createPairing('default');
-  const replacement = await store.exchangePairing('default', replacementPair.code);
+  const replacement = await store.exchangePairing('default', replacementPair.code, { extensionId: 'abcdefghijklmnopabcdefghijklmnop' });
   assert.equal(await store.verifyCredential(client.clientId, client.credential), false, 'replacement pairing did not revoke old client');
-  assert.equal(await store.verifyCredential(replacement.clientId, replacement.credential), true);
+  assert.equal(await store.verifyCredential(replacement.clientId, replacement.credential, 'abcdefghijklmnopabcdefghijklmnop'), true);
   const publicClients = await store.listPublicClients();
   assert(publicClients.some((item) => item.client_id === replacement.clientId && item.active === true));
   const serializedClients = JSON.stringify(publicClients);
@@ -45,7 +47,7 @@ try {
   assert(!serializedClients.includes('credentialHash'), 'public client status leaked verifier');
 
   await store.revokeClient(replacement.clientId);
-  assert.equal(await store.verifyCredential(replacement.clientId, replacement.credential), false);
+  assert.equal(await store.verifyCredential(replacement.clientId, replacement.credential, 'abcdefghijklmnopabcdefghijklmnop'), false);
 
   const bridgePair = await store.createPairing('bridge');
   const taskStatus = { task: { id: 'continuation_demo', revision: 4, state: 'working', title: 'Demo task' } };
@@ -65,12 +67,14 @@ try {
   const paired = await pairResponse.json();
   assert.match(paired.client_id, /^browser_/);
   assert.match(paired.credential, /^[a-f0-9]{64}$/);
-  const browserHeaders = { authorization: `Bearer ${paired.credential}`, 'x-codexpro-browser-client': paired.client_id, origin: extensionOrigin };
+  const browserHeaders = { authorization: `Bearer ${paired.credential}`, 'x-codexpro-browser-client': paired.client_id };
   const statusResponse = await fetch(`${base}/continuation/v1/status`, { headers: browserHeaders });
-  assert.equal(statusResponse.status, 200);
+  assert.equal(statusResponse.status, 200, 'paired MV3 client without Origin header could not poll status');
   assert.deepEqual(await statusResponse.json(), taskStatus);
   const csrf = await fetch(`${base}/continuation/v1/status`, { headers: { ...browserHeaders, origin: 'https://chatgpt.com' } });
   assert.equal(csrf.status, 403, 'ordinary webpage origin reached privileged browser bridge');
+  const wrongExtensionOrigin = await fetch(`${base}/continuation/v1/status`, { headers: { ...browserHeaders, origin: 'chrome-extension://ponmlkjihgfedcbaponmlkjihgfedcba' } });
+  assert.equal(wrongExtensionOrigin.status, 401, 'different extension origin reached privileged browser bridge');
   const forwarded = await fetch(`${base}/continuation/v1/status`, { headers: { ...browserHeaders, 'x-forwarded-for': '203.0.113.9' } });
   assert.equal(forwarded.status, 403, 'forwarded/tunneled request reached browser bridge');
   const wrongCredential = await fetch(`${base}/continuation/v1/status`, { headers: { ...browserHeaders, authorization: 'Bearer ' + '0'.repeat(64) } });
@@ -116,6 +120,7 @@ try {
     assert(!sourceText.includes(forbidden), `extension source contains forbidden conversation/DOM capability ${forbidden}`);
   }
   assert(!sourceText.includes('Authorization: Bearer'), 'extension source hard-coded bearer material');
+  assert(!sourceText.includes('x-codexpro-extension-id'), 'extension relies on a custom identity header that Chrome MV3 may omit');
 
   const cliSecret = 'mcp-token-plan30-must-not-print';
   const cli = spawnSync(process.execPath, ['scripts/codexpro.mjs', 'continuation', 'browser', 'pair', '--profile', 'smoke'], { encoding: 'utf8', env: { ...process.env, CODEXPRO_HOME: cliHome, CODEXPRO_HTTP_TOKEN: cliSecret, CODEXPRO_CONTINUATION_ENABLED: '1' } });

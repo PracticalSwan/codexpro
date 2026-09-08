@@ -7,6 +7,7 @@ const MAX_PAIRING_FAILURES = 5;
 const MAX_RECORD_BYTES = 16 * 1024;
 const PROFILE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const CLIENT_PATTERN = /^browser_[A-Za-z0-9-]{1,80}$/;
+const EXTENSION_ID_PATTERN = /^[a-p]{32}$/;
 const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 
 interface PairingRecord {
@@ -27,6 +28,7 @@ interface BrowserClientRecord {
   createdAt: string;
   revokedAt?: string;
   extensionVersion?: string;
+  extensionId?: string;
 }
 function profileLabel(value: unknown): string {
   const label = String(value ?? "").trim();
@@ -132,7 +134,7 @@ export class BrowserPairingStore {
       record.revokedAt = now; await atomicJson(this.clientFile(record.clientId), record);
     }
   }
-  async exchangePairing(profile: string, code: string, metadata: { extensionVersion?: string } = {}): Promise<BrowserCredentialResult> {
+  async exchangePairing(profile: string, code: string, metadata: { extensionVersion?: string; extensionId?: string } = {}): Promise<BrowserCredentialResult> {
     const label = profileLabel(profile);
     return this.withProfileLock(label, async () => {
       let pairing: PairingRecord;
@@ -153,18 +155,23 @@ export class BrowserPairingStore {
       const credential = randomBytes(32).toString("hex");
       const id = `browser_${randomUUID()}`;
       const version = metadata.extensionVersion?.trim();
+      const extensionId = metadata.extensionId?.trim();
+      if (extensionId && !EXTENSION_ID_PATTERN.test(extensionId)) throw new Error("Invalid browser extension id.");
       const client: BrowserClientRecord = {
         schemaVersion: 1, clientId: id, profileLabel: label, credentialHash: sha256(credential), createdAt: new Date(this.now()).toISOString(),
-        ...(version && /^[0-9A-Za-z._-]{1,32}$/.test(version) ? { extensionVersion: version } : {})
+        ...(version && /^[0-9A-Za-z._-]{1,32}$/.test(version) ? { extensionVersion: version } : {}),
+        ...(extensionId ? { extensionId } : {})
       };
       await atomicJson(this.clientFile(id), client);
       return { clientId: id, credential, profileLabel: label };
     });
   }
-  async verifyCredential(id: string, credential: string): Promise<boolean> {
+  async verifyCredential(id: string, credential: string, extensionId?: string): Promise<boolean> {
     let record: BrowserClientRecord;
     try { record = await this.readJson<BrowserClientRecord>(this.clientFile(id)); } catch { return false; }
     if (record.revokedAt || record.schemaVersion !== 1) return false;
+    if (record.extensionId && extensionId && extensionId !== record.extensionId) return false;
+    if (extensionId && !EXTENSION_ID_PATTERN.test(extensionId)) return false;
     const actual = sha256(String(credential ?? ""));
     return constantHexEqual(record.credentialHash, actual);
   }

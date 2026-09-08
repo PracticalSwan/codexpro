@@ -26,6 +26,7 @@ import { JobStore } from "./jobs/store.js";
 import { diagnosticsSnapshot } from "./diagnosticsOps.js";
 import { WorkspaceRegistry } from "./guard.js";
 import { BrowserPairingStore } from "./continuation/browserAuth.js";
+import { existingManagedBrowserProfile, writeBrowserProfileMetadata } from "./continuation/browserProfile.js";
 import { startBrowserContinuationBridge } from "./continuation/browserBridge.js";
 import { ContinuationStore } from "./continuation/store.js";
 import { publicContinuationRecord, TERMINAL_CONTINUATION_STATES } from "./continuation/types.js";
@@ -2055,6 +2056,15 @@ async function main(): Promise<void> {
       statusProvider: async () => {
         const task = (await continuationStore.list()).find((record) => !TERMINAL_CONTINUATION_STATES.has(record.state));
         return { continuation_enabled: true, task: task ? publicContinuationRecord(task) : null };
+      },
+      onEvent: async (event) => {
+        if (event.type !== "page_state") return;
+        const client = (await browserStore.listPublicClients()).find((entry) => entry.client_id === event.clientId && entry.active === true);
+        const label = typeof client?.profile_label === "string" ? client.profile_label : undefined;
+        if (!label) return;
+        const profile = await existingManagedBrowserProfile(path.dirname(continuationRoot), label);
+        if (!profile) return;
+        await writeBrowserProfileMetadata(profile, { authState: event.authState });
       }
     });
     await fsp.mkdir(path.dirname(browserRuntimeFile), { recursive: true, mode: 0o700 });

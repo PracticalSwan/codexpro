@@ -64,6 +64,8 @@ Implementation begins only when the user authorizes the exact plan scope. For si
 - For Plans 29–37 implementation or live browser verification, any ChatGPT/provider sign-in, CAPTCHA, passkey, 2FA, email confirmation, or similar security verification is a mandatory human boundary.
 - Launch/open only the dedicated managed browser profile, then **STOP** and report `WAITING_FOR_USER_AUTH`. Never ask for credentials/codes in chat/terminal and never capture login screenshots/keystrokes.
 - Resume only after the user completes authentication directly in the browser and sends `continue`; recover repository/process/browser/task state first, then verify only coarse signed-in health.
+- Branded Chrome/Edge uses the browser-supported manual **Load unpacked** flow for the CodexPro companion; do not depend on removed/ignored command-line unpacked-extension flags.
+- MV3 service-worker timers are not authoritative liveness. A coarse content-script heartbeat may wake the worker, but every reconnect must fetch fresh server task/revision state before controls become available.
 - Authentication stop requirements override continuous batch execution.
 
 ## Runtime lifecycle rule

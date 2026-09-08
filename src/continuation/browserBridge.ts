@@ -4,12 +4,12 @@ import { z } from "zod";
 import { BrowserPairingStore } from "./browserAuth.js";
 
 const CLIENT_ID = /^browser_[A-Za-z0-9-]{1,80}$/;
-const EXTENSION_ORIGIN = /^chrome-extension:\/\/[a-p]{32}$/;
+const EXTENSION_ORIGIN = /^chrome-extension:\/\/([a-p]{32})$/;
 const LOOPBACK_HOST = /^(?:127\.0\.0\.1|localhost)(?::\d{1,5})?$/i;
 const LOOPBACK_REMOTE = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
 export type BrowserBridgeEvent =
-  | { type: "page_state"; clientId: string; authState: "signed_in" | "signed_out" | "unknown"; composerAvailable: boolean; streaming: boolean; blockingInteraction: boolean }
+  | { type: "page_state"; clientId: string; authState: "signed_in" | "signed_out" | "authentication_required" | "ambiguous" | "unknown"; composerAvailable: boolean; streaming: boolean; blockingInteraction: boolean }
   | { type: "bind_requested"; clientId: string; taskId: string; revision: number }
   | { type: "dispatch_authorized"; clientId: string; taskId: string; revision: number };
 
@@ -23,8 +23,9 @@ function jsonError(res: Response, status: number, code: string, message: string)
   res.status(status).json({ error: { code, message } });
 }
 
-function browserOrigin(req: Request): boolean {
-  return typeof req.headers.origin === "string" && EXTENSION_ORIGIN.test(req.headers.origin);
+function browserOriginId(req: Request): string | null {
+  if (typeof req.headers.origin !== "string") return null;
+  return req.headers.origin.match(EXTENSION_ORIGIN)?.[1] ?? null;
 }
 function loopbackOnly(req: Request, res: Response, next: NextFunction): void {
   const host = req.get("host") ?? "";
@@ -33,7 +34,6 @@ function loopbackOnly(req: Request, res: Response, next: NextFunction): void {
   if (!LOOPBACK_HOST.test(host) || !LOOPBACK_REMOTE.has(remote) || forwarded) {
     jsonError(res, 403, "loopback_required", "Browser continuation bridge is loopback-only."); return;
   }
-  if (!browserOrigin(req)) { jsonError(res, 403, "origin_denied", "Browser continuation bridge requires the paired extension origin."); return; }
   res.setHeader("Cache-Control", "no-store");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Referrer-Policy", "no-referrer");
@@ -47,7 +47,7 @@ const PairBody = z.object({
   extension_version: z.string().regex(/^[0-9A-Za-z._-]{1,32}$/).optional()
 }).strict();
 const PageStateBody = z.object({
-  auth_state: z.enum(["signed_in", "signed_out", "unknown"]),
+  auth_state: z.enum(["signed_in", "signed_out", "authentication_required", "ambiguous", "unknown"]),
   composer_available: z.boolean(), streaming: z.boolean(), blocking_interaction: z.boolean()
 }).strict();
 const TaskEventBody = z.object({
@@ -61,10 +61,12 @@ export function createBrowserBridgeApp(options: BrowserBridgeOptions) {
   app.use("/continuation/v1", loopbackOnly);
 
   app.post("/continuation/v1/pair", async (req, res) => {
+    const extensionId = browserOriginId(req);
+    if (!extensionId) { jsonError(res, 403, "origin_denied", "Browser continuation pairing requires a Chrome extension origin."); return; }
     const parsed = PairBody.safeParse(req.body);
     if (!parsed.success) { jsonError(res, 400, "invalid_request", "Invalid pairing request."); return; }
     try {
-      const result = await options.store.exchangePairing(parsed.data.profile_label, parsed.data.code, { extensionVersion: parsed.data.extension_version });
+      const result = await options.store.exchangePairing(parsed.data.profile_label, parsed.data.code, { extensionVersion: parsed.data.extension_version, extensionId });
       res.json({ client_id: result.clientId, credential: result.credential, profile_label: result.profileLabel });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -76,7 +78,10 @@ export function createBrowserBridgeApp(options: BrowserBridgeOptions) {
   const authenticate = async (req: Request, res: Response, next: NextFunction) => {
     const id = String(req.headers["x-codexpro-browser-client"] ?? "");
     const credential = req.headers.authorization?.match(/^Bearer\s+([a-f0-9]{64})$/i)?.[1] ?? "";
-    if (!CLIENT_ID.test(id) || !credential || !(await options.store.verifyCredential(id, credential))) {
+    const rawOrigin = typeof req.headers.origin === "string" ? req.headers.origin : undefined;
+    const originId = browserOriginId(req);
+    if (rawOrigin && !originId) { jsonError(res, 403, "origin_denied", "Browser continuation bridge rejects non-extension browser origins."); return; }
+    if (!CLIENT_ID.test(id) || !credential || !(await options.store.verifyCredential(id, credential, originId ?? undefined))) {
       jsonError(res, 401, "browser_client_unauthorized", "Browser client credential is invalid or revoked."); return;
     }
     res.locals.browserClientId = id; next();

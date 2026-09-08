@@ -82,9 +82,14 @@ async function sendTaskEvent(kind, task) {
   return publicState(await stored());
 }
 async function sendPageState(pageState) {
-  await saveUi({ pageState });
+  const current = await stored();
+  const nextPageState = current.pageState?.auth_state === 'signed_in' && pageState?.auth_state === 'signed_out'
+    ? { ...pageState, auth_state: 'authentication_required' } : pageState;
+  await saveUi({ pageState: nextPageState });
   try {
-    await bridgeFetch('/continuation/v1/page-state', { method: 'POST', body: JSON.stringify(pageState) });
+    await bridgeFetch('/continuation/v1/page-state', { method: 'POST', body: JSON.stringify(nextPageState) });
+    await saveUi({ available: true });
+    await poll();
   } catch { await saveUi({ available: false, task: null }); }
 }
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

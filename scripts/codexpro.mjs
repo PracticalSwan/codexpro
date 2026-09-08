@@ -663,35 +663,77 @@ function codexProHome() {
 }
 async function runContinuationCommand(argv) {
   const continuationEnabled = process.env.CODEXPRO_CONTINUATION_ENABLED === "1";
-  if (!continuationEnabled) throw new Error("continuation_disabled: enable task continuation before browser pairing.");
-  if (argv[0] !== "browser" || argv[1] !== "pair") {
-    throw new Error("Supported continuation command: codexpro continuation browser pair --profile <label>");
-  }
+  if (!continuationEnabled) throw new Error("continuation_disabled: enable task continuation before browser setup.");
+  if (argv[0] !== "browser") throw new Error("Supported continuation command: codexpro continuation browser <pair|open|status|auth> [options]");
+  const action = argv[1];
+  if (!["pair", "open", "status", "auth"].includes(action)) throw new Error("Supported browser actions: pair, open, status, auth.");
   let profile = "default";
+  let browser = "chrome";
+  let executable;
   for (let index = 2; index < argv.length; index += 1) {
     if (argv[index] === "--profile") { profile = argv[++index] ?? ""; continue; }
+    if (argv[index] === "--browser") { browser = argv[++index] ?? ""; continue; }
+    if (argv[index] === "--executable") { executable = argv[++index] ?? ""; continue; }
     if (argv[index] === "--help" || argv[index] === "-h") {
-      console.log("Usage: codexpro continuation browser pair --profile <label>"); return;
+      console.log("Usage: codexpro continuation browser <pair|open|status|auth> --profile <label> [--browser chrome|edge] [--executable <path>]"); return;
     }
-    throw new Error(`Unknown continuation browser pair option: ${argv[index]}`);
+    throw new Error(`Unknown continuation browser option: ${argv[index]}`);
   }
-  const moduleUrl = pathToFileURL(path.join(projectRoot, "dist", "continuation", "browserAuth.js")).href;
-  const { BrowserPairingStore } = await import(moduleUrl);
-  const baseDir = path.join(codexProHome(), "continuation", "browser");
-  const pairing = await new BrowserPairingStore(baseDir).createPairing(profile);
-  let bridge = "not running";
-  try {
-    const runtime = JSON.parse(fs.readFileSync(path.join(baseDir, "runtime.json"), "utf8"));
-    if (typeof runtime.url === "string" && /^http:\/\/127\.0\.0\.1:\d+$/.test(runtime.url)) bridge = runtime.url;
-  } catch {}
-  console.log("CodexPro browser continuation pairing");
-  console.log(`Profile: ${pairing.profileLabel}`);
-  console.log(`Pairing code: ${pairing.code}`);
-  console.log(`Expires: ${pairing.expiresAt}`);
-  console.log(`Bridge: ${bridge}`);
-  console.log(`Extension: ${path.join(projectRoot, "browser-extension")}`);
-  console.log("Load the unpacked extension manually in the dedicated managed browser profile, then enter this code in the extension popup.");
-  console.log("The browser credential is generated only during local extension exchange and is never printed here.");
+  const homeDir = codexProHome();
+  const extensionPath = path.join(projectRoot, "browser-extension");
+  const authModuleUrl = pathToFileURL(path.join(projectRoot, "dist", "continuation", "browserAuth.js")).href;
+  const profileModuleUrl = pathToFileURL(path.join(projectRoot, "dist", "continuation", "browserProfile.js")).href;
+  const launcherModuleUrl = pathToFileURL(path.join(projectRoot, "dist", "continuation", "browserLauncher.js")).href;
+  const { BrowserPairingStore } = await import(authModuleUrl);
+  const pairingStore = new BrowserPairingStore(path.join(homeDir, "continuation", "browser"));
+  if (action === "pair") {
+    const pairing = await pairingStore.createPairing(profile);
+    let bridge = "not running";
+    try {
+      const runtime = JSON.parse(fs.readFileSync(path.join(homeDir, "continuation", "browser", "runtime.json"), "utf8"));
+      if (typeof runtime.url === "string" && /^http:\/\/127\.0\.0\.1:\d+$/.test(runtime.url)) bridge = runtime.url;
+    } catch {}
+    console.log("CodexPro browser continuation pairing");
+    console.log(`Profile: ${pairing.profileLabel}`);
+    console.log(`Pairing code: ${pairing.code}`);
+    console.log(`Expires: ${pairing.expiresAt}`);
+    console.log(`Bridge: ${bridge}`);
+    console.log(`Extension: ${extensionPath}`);
+    console.log("Load the unpacked extension manually in the dedicated managed browser profile, then enter this code in the extension popup.");
+    console.log("The browser credential is generated only during local extension exchange and is never printed here.");
+    return;
+  }
+  const profileModule = await import(profileModuleUrl);
+  const launcherModule = await import(launcherModuleUrl);
+  if (action === "status") {
+    const managed = await profileModule.existingManagedBrowserProfile(homeDir, profile);
+    if (!managed) { console.log(`Managed browser profile ${profile} is not initialized.`); return; }
+    const clients = await pairingStore.listPublicClients();
+    const paired = clients.some((entry) => entry.profile_label === profile && entry.active === true);
+    console.log(JSON.stringify(await profileModule.browserProfileStatus({ profile: managed, paired, processIdentity: launcherModule.managedBrowserProcessStartIdentity }), null, 2));
+    return;
+  }
+  const managed = profileModule.resolveManagedBrowserProfile({
+    homeDir,
+    profileLabel: profile,
+    browser,
+    sourceRoots: [process.cwd()]
+  });
+  const browserExecutable = profileModule.discoverBrowserExecutable({ browser, override: executable });
+  const launched = await launcherModule.launchManagedBrowser({
+    executable: browserExecutable,
+    profile: managed,
+    extensionPath,
+    url: "https://chatgpt.com/"
+  });
+  console.log(`Managed ChatGPT browser profile: ${managed.profileLabel}`);
+  console.log(`Browser: ${managed.browser}`);
+  console.log(`Process: ${launched.pid}${launched.reused ? " (existing managed instance)" : ""}`);
+  if (action === "auth") {
+    console.log("WAITING_FOR_USER_AUTH");
+    console.log("Sign in to ChatGPT directly in the managed browser. Complete any provider login, CAPTCHA, passkey, email confirmation, or 2FA in the browser, then return to the controlling ChatGPT conversation and send: continue");
+    console.log("Do not paste credentials or verification codes into CodexPro or ChatGPT maintenance messages.");
+  }
 }
 function profileDir() {
   return path.join(codexProHome(), 'profiles');

@@ -145,6 +145,8 @@ Tool-time awareness is enabled independently of browser continuation. The normal
 
 For host-window discovery, use a disposable new ChatGPT chat, temporarily save Unlimited/observe for the next manually started runtime, invoke only the read-only `tool_time_probe`, and note the ChatGPT UI closure time. If no server-side abort is observable, record that UI time manually rather than treating a completed server wait as the host cutoff. Restore a bounded deadline with safety margin afterward. `connection_diagnostics` and `tool_surface_diagnostics` report current deadline/capability state; authenticated `/admin/diagnostics` also separates current effective from saved-next-run deadline and reports active structured jobs/recent yields.
 
+Browser continuation remains opt-in. `codexpro continuation browser auth --profile default` opens a dedicated CodexPro-managed Chrome/Edge profile and stops for manual ChatGPT authentication. On current branded Chrome/Edge, load `browser-extension/` manually from the dedicated profile's extensions page; CodexPro never copies or attaches to your normal browser profile. The companion records only coarse auth/page capability state, never credentials, account identity, or conversation text.
+
 Routing is advisory and derives from the finite deadline reference `D`: `sync_preferred = min(5 minutes, 25% of D)` and `async_preferred = 75% of D`. Never reduce task scope, review depth, verification, or safety to fit one call. Route long model training/rendering or other shell work through `proc_*`, long trusted verification through `job_*`, and substantial dependency/review/projection engineering through `goal_*`.
 
 Use a narrower profile for untrusted repositories.

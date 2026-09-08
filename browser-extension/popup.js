@@ -13,8 +13,9 @@ function render(state) {
   if (state.profileLabel) $('profile').value = state.profileLabel;
   $('task').hidden = !state.task;
   if (state.task) setText($('taskSummary'), `${state.task.id} · ${state.task.state} · rev ${state.task.revision}`);
-  $('bind').disabled = !state.available || !state.task;
-  $('continue').disabled = !state.available || !state.task;
+  const signedIn = state.pageState?.auth_state === 'signed_in';
+  $('bind').disabled = !state.available || !state.task || !signedIn;
+  $('continue').disabled = !state.available || !state.task || !signedIn;
 }
 async function refresh() {
   try { render(await request({ type: 'codexpro_get_state' })); setText($('error'), ''); }
