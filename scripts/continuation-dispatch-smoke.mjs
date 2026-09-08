@@ -61,7 +61,10 @@ try {
   await assert.rejects(() => completeContinuationDispatch({ store, binding, continuationId: ready.id, expectedRevision: grant.record.revision, conversationFingerprint: fp, token: '0'.repeat(64), now: 2000 }), /dispatch_authorization_invalid/);
 
   const completed = await completeContinuationDispatch({ store, binding, continuationId: ready.id, expectedRevision: grant.record.revision, conversationFingerprint: fp, token: grant.token, now: 2000 });
-  assert.equal(completed.state, 'dispatched');
+  assert.equal(completed.state, 'awaiting_ack');
+  assert.equal(completed.continuationCount, 1);
+  assert.match(completed.watchdog?.pendingAckNonceHash || '', /^[a-f0-9]{64}$/);
+  assert.equal(completed.watchdog?.pendingAckDispatchRevision, completed.revision);
   assert.equal(completed.dispatchAuthorization, undefined);
   assert.equal(completed.outstandingNonce, undefined);
   await assert.rejects(() => completeContinuationDispatch({ store, binding, continuationId: ready.id, expectedRevision: completed.revision, conversationFingerprint: fp, token: grant.token, now: 3000 }), /dispatch_authorization_missing/);

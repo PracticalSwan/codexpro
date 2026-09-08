@@ -55,8 +55,17 @@ function clearAuthorization(record: ContinuationRecord): void {
   delete record.dispatchAuthorization;
 }
 
+function clearWatchdogActiveState(record: ContinuationRecord): void {
+  if (!record.watchdog) return;
+  delete record.watchdog.notificationKey;
+  delete record.watchdog.pendingExplicitRequest;
+  delete record.watchdog.pendingAckNonceHash;
+  delete record.watchdog.pendingAckDispatchRevision;
+}
+
 function clearTerminalState(record: ContinuationRecord): void {
   clearAuthorization(record);
+  clearWatchdogActiveState(record);
   delete record.manualTurnPending;
   record.continuationIntents = [];
   delete record.conversationFingerprint;
@@ -104,13 +113,30 @@ export async function authorizeContinuationDispatch(input: { enabled: boolean; s
   return { record, token, message: FIXED_CONTINUATION_MESSAGE };
 }
 
-export async function completeContinuationDispatch(input: { store: ContinuationStore; binding: ContinuationBinding; continuationId: string; expectedRevision: number; conversationFingerprint: string; token: string; now?: number; }): Promise<ContinuationRecord> {
+export async function completeContinuationDispatch(input: { store: ContinuationStore; binding: ContinuationBinding; continuationId: string; expectedRevision: number; conversationFingerprint: string; token: string; now?: number; cooldownMs?: number; }): Promise<ContinuationRecord> {
   const fingerprint = routeFingerprint(input.conversationFingerprint); const current = await input.store.requireForBinding(input.continuationId, input.binding); const auth = current.dispatchAuthorization;
   if (current.state !== "awaiting_user_send" || !auth) throw new Error("dispatch_authorization_missing");
+  if (!current.outstandingNonce) throw new Error("stale_continuation_nonce");
   if (auth.routeFingerprint !== fingerprint || current.conversationFingerprint !== fingerprint) throw new Error("wrong_chat");
   if (auth.tokenHash !== tokenHash(String(input.token ?? ""))) throw new Error("dispatch_authorization_invalid");
-  if ((input.now ?? Date.now()) > Date.parse(auth.expiresAt)) throw new Error("dispatch_authorization_expired");
-  return input.store.update(input.continuationId, input.binding, { expectedRevision: input.expectedRevision }, (record) => { record.state = "dispatched"; record.lastDispatchAt = new Date(input.now ?? Date.now()).toISOString(); clearAuthorization(record); return record; });
+  const now = input.now ?? Date.now();
+  if (now > Date.parse(auth.expiresAt)) throw new Error("dispatch_authorization_expired");
+  const cooldownMs = input.cooldownMs ?? 60_000;
+  if (!Number.isInteger(cooldownMs) || cooldownMs < 0 || cooldownMs > 86_400_000) throw new Error("invalid_continuation_cooldown");
+  const pendingAckNonceHash = tokenHash(current.outstandingNonce);
+  const dispatchRevision = current.revision + 1;
+  return input.store.update(input.continuationId, input.binding, { expectedRevision: input.expectedRevision }, (record) => {
+    record.state = "awaiting_ack";
+    record.lastDispatchAt = new Date(now).toISOString();
+    record.continuationCount += 1;
+    record.watchdog ??= {};
+    record.watchdog.pendingAckNonceHash = pendingAckNonceHash;
+    record.watchdog.pendingAckDispatchRevision = dispatchRevision;
+    record.watchdog.cooldownUntilAt = new Date(now + cooldownMs).toISOString();
+    delete record.watchdog.notificationKey;
+    clearAuthorization(record);
+    return record;
+  });
 }
 
 export async function releaseContinuationDispatch(input: { store: ContinuationStore; binding: ContinuationBinding; continuationId: string; expectedRevision: number; token: string; }): Promise<ContinuationRecord> {
@@ -160,6 +186,7 @@ export async function checkpointContinuation(input: {
     record.continuationIntents = intents;
     record.lastCheckpointId = checkpointId;
     clearAuthorization(record);
+    clearWatchdogActiveState(record);
     return record;
   });
 }
@@ -183,7 +210,6 @@ export async function requestContinuation(input: {
     record.selectedContinuationIntentId = input.selectedIntentId ?? intents[0]?.id;
     record.outstandingNonce = randomBytes(32).toString("hex");
     record.lastRequestId = requestId;
-    record.continuationCount += 1;
     return record;
   });
 }
@@ -199,6 +225,7 @@ export async function observeContinuationManualTurn(input: {
     record.state = "paused_by_user";
     record.manualTurnPending = { reason: input.reason, observedAt: new Date().toISOString(), observedRevision: record.revision };
     clearAuthorization(record);
+    clearWatchdogActiveState(record);
     return record;
   });
 }

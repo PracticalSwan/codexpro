@@ -62,11 +62,11 @@ Plan 35 assumes relevant Plans 22–28 are implemented because it integrates the
 - [x] Make Plan 32 milestone commit.
 ## Milestone 33 — Watchdog/recovery
 
-- [ ] Add MCP heartbeat/dispatch acknowledgement.
-- [ ] Add explicit-request and conservative inferred-interruption readiness.
-- [ ] Add current-runtime deadline/transport generation, restart/sleep/reconnect baseline reset, proc/job/Goal suppression, cooldown, max-dispatch, nonce replay protection, user-pause, auth/disconnect handling.
-- [ ] Prove watchdog only notifies/prepares and never submits.
-- [ ] Make Plan 33 milestone commit.
+- [x] Add MCP heartbeat/dispatch acknowledgement.
+- [x] Add explicit-request and conservative inferred-interruption readiness.
+- [x] Add current-runtime deadline/transport generation, restart/sleep/reconnect baseline reset, proc/job/Goal suppression, cooldown, max-dispatch, nonce replay protection, user-pause, auth/disconnect handling.
+- [x] Prove watchdog only notifies/prepares and never submits.
+- [x] Make Plan 33 milestone commit.
 
 ## Milestone 34 — Settings/admin UX
 

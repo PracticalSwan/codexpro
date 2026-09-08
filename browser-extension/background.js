@@ -1,6 +1,8 @@
 const FIXED_MESSAGE = 'Continue the current task from the latest CodexPro continuation state. Preserve the original goal and acceptance criteria. Do not repeat work already recorded as completed and verified.';
 const DEFAULT_PAGE = { auth_state: 'unknown', conversation_route_present: false, conversation_route_stable: false, conversation_route_key: null, composer_ready: false, streaming: false, platform_state: 'unknown', blocking_interaction: false, recent_user_input: false };
 const DEFAULT_STATE = { paired: false, available: false, profileLabel: 'default', bridgeUrl: '', clientId: '', task: null, pageState: DEFAULT_PAGE };
+const NOTIFICATION_PREFIX = 'codexpro-continuation-';
+const NOTIFICATION_ICON = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="%23222222"/><path d="M18 32h28M34 20l12 12-12 12" fill="none" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 let pollTimer = null;
 
 function loopbackBridgeUrl(value) {
@@ -32,6 +34,33 @@ async function saveUi(patch) {
 function publicState(value, extra = {}) {
   return { paired: Boolean(value.clientId && value.credential), available: Boolean(value.available), profileLabel: value.profileLabel || 'default', bridgeUrl: value.bridgeUrl || '', clientId: value.clientId || '', task: value.task || null, pageState: value.pageState || DEFAULT_PAGE, currentChatBound: false, localBindingAvailable: false, ...extra };
 }
+async function clearReadyNotification() {
+  const { notifiedContinuationId } = await chrome.storage.local.get('notifiedContinuationId');
+  if (typeof notifiedContinuationId === 'string' && notifiedContinuationId.startsWith(NOTIFICATION_PREFIX)) {
+    try { await chrome.notifications.clear(notifiedContinuationId); } catch {}
+  }
+  try { await chrome.action.setBadgeText({ text: '' }); } catch {}
+  await chrome.storage.local.remove(['notifiedContinuationKey', 'notifiedContinuationId']);
+}
+async function syncReadyNotification(task) {
+  const keyPart = String(task?.notification_key || '');
+  const ready = task?.state === 'continuation_ready' && task?.conversation_bound === true && task?.manual_turn_pending !== true && /^[a-f0-9]{64}$/.test(keyPart);
+  if (!ready) { await clearReadyNotification(); return; }
+  const current = await stored();
+  const binding = await bindingFor(task.id);
+  if (!binding || current.pageState?.auth_state !== 'signed_in') { await clearReadyNotification(); return; }
+  const notificationKey = `${task.id}:${task.revision}:${keyPart}`;
+  const saved = await chrome.storage.local.get(['notifiedContinuationKey', 'notifiedContinuationId']);
+  if (saved.notifiedContinuationKey === notificationKey) {
+    try { await chrome.action.setBadgeText({ text: '1' }); } catch {}
+    return;
+  }
+  await clearReadyNotification();
+  const notificationId = `${NOTIFICATION_PREFIX}${keyPart.slice(0, 32)}`;
+  await chrome.notifications.create(notificationId, { type: 'basic', iconUrl: NOTIFICATION_ICON, title: 'CodexPro continuation ready', message: `${task.title || 'Current task'} is ready. Open the bound chat and press Continue task.` });
+  try { await chrome.action.setBadgeText({ text: '1' }); } catch {}
+  await chrome.storage.local.set({ notifiedContinuationKey: notificationKey, notifiedContinuationId: notificationId });
+}
 async function bridgeFetch(pathname, init = {}) {
   const state = await stored();
   if (!loopbackBridgeUrl(state.bridgeUrl) || !state.clientId || !state.credential) throw new Error('transport_unavailable');
@@ -47,8 +76,10 @@ async function bridgeFetch(pathname, init = {}) {
 async function refreshTask() {
   const response = await bridgeFetch('/continuation/v1/status');
   const result = await response.json();
-  await saveUi({ available: true, task: result.task || null });
-  return result.task || null;
+  const task = result.task || null;
+  await saveUi({ available: true, task });
+  await syncReadyNotification(task);
+  return task;
 }
 async function poll() {
   try {
@@ -56,6 +87,7 @@ async function poll() {
     schedule(task ? 5000 : 30000);
   } catch {
     await saveUi({ available: false, task: null });
+    await clearReadyNotification();
     schedule(30000);
   }
 }
@@ -128,7 +160,9 @@ async function bindCurrentChat() {
   const response = await bridgeFetch('/continuation/v1/events/bind', { method: 'POST', body: JSON.stringify({ task_id: task.id, revision: task.revision, conversation_fingerprint: fingerprint }) });
   const result = await response.json();
   await saveBinding(task.id, { tabId: active.tabId, routeKey: page.conversation_route_key, fingerprint });
-  await saveUi({ task: result.task || task, pageState: page, available: true });
+  const boundTask = result.task || task;
+  await saveUi({ task: boundTask, pageState: page, available: true });
+  await syncReadyNotification(boundTask);
   return popupState();
 }
 async function releaseAuthorization(grant) {
@@ -165,7 +199,9 @@ async function continueCurrentTask() {
   }
   const completed = await bridgeFetch('/continuation/v1/dispatch/complete', { method: 'POST', body: JSON.stringify({ task_id: grant.task_id, revision: grant.revision, conversation_fingerprint: binding.fingerprint, authorization_token: grant.authorization_token }) });
   const result = await completed.json();
-  await saveUi({ task: result.task || null, available: true });
+  const completedTask = result.task || null;
+  await saveUi({ task: completedTask, available: true });
+  await syncReadyNotification(completedTask);
   return popupState();
 }
 async function sendManualInteraction(message, sender) {
@@ -177,23 +213,29 @@ async function sendManualInteraction(message, sender) {
   try {
     const response = await bridgeFetch('/continuation/v1/events/manual', { method: 'POST', body: JSON.stringify({ task_id: task.id, revision: task.revision, conversation_fingerprint: binding.fingerprint, reason: message.reason }) });
     const result = await response.json();
-    await saveUi({ task: result.task || null, available: true });
-  } catch { await saveUi({ available: false }); }
+    const pausedTask = result.task || null;
+    await saveUi({ task: pausedTask, available: true });
+    await syncReadyNotification(pausedTask);
+  } catch { await saveUi({ available: false }); await clearReadyNotification(); }
 }
-async function sendPageState(pageState) {
+async function sendPageState(pageState, sender) {
   const current = await stored();
   const nextPageState = current.pageState?.auth_state === 'signed_in' && pageState?.auth_state === 'signed_out' ? { ...pageState, auth_state: 'authentication_required' } : pageState;
   await saveUi({ pageState: nextPageState });
+  const binding = current.task?.id ? await bindingFor(current.task.id) : null;
+  const routeInvalidated = Boolean(binding && sender?.tab?.id === binding.tabId && binding.routeKey !== nextPageState.conversation_route_key);
+  const unsafe = nextPageState.auth_state !== 'signed_in' || routeInvalidated || Boolean(nextPageState.streaming) || Boolean(nextPageState.blocking_interaction) || Boolean(nextPageState.recent_user_input) || nextPageState.platform_state !== 'idle';
+  if (unsafe) await clearReadyNotification(); else if (current.task) await syncReadyNotification(current.task);
   const coarse = { auth_state: nextPageState.auth_state, composer_available: Boolean(nextPageState.composer_ready ?? nextPageState.composer_available), streaming: Boolean(nextPageState.streaming), blocking_interaction: Boolean(nextPageState.blocking_interaction) };
   try {
     await bridgeFetch('/continuation/v1/page-state', { method: 'POST', body: JSON.stringify(coarse) });
     await saveUi({ available: true });
     await poll();
-  } catch { await saveUi({ available: false, task: null }); }
+  } catch { await saveUi({ available: false, task: null }); await clearReadyNotification(); }
 }
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   void (async () => {
-    if (message?.type === 'codexpro_page_state') { await sendPageState(message.pageState); return { ok: true }; }
+    if (message?.type === 'codexpro_page_state') { await sendPageState(message.pageState, sender); return { ok: true }; }
     if (message?.type === 'codexpro_manual_interaction') { await sendManualInteraction(message, sender); return { ok: true }; }
     if (message?.type === 'codexpro_get_state') return popupState();
     if (message?.type === 'codexpro_pair') return pair(message);
@@ -202,6 +244,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     throw new Error('unsupported_companion_action');
   })().then((value) => sendResponse({ ok: true, value }), (error) => sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) }));
   return true;
+});
+
+chrome.notifications.onClicked.addListener((notificationId) => {
+  void (async () => {
+    const saved = await chrome.storage.local.get(['notifiedContinuationId', 'uiState']);
+    if (saved.notifiedContinuationId !== notificationId || !saved.uiState?.task?.id) return;
+    const binding = await bindingFor(saved.uiState.task.id);
+    if (!binding?.tabId) return;
+    try {
+      const tab = await chrome.tabs.get(binding.tabId);
+      await chrome.tabs.update(binding.tabId, { active: true });
+      if (tab?.windowId) await chrome.windows.update(tab.windowId, { focused: true });
+    } catch {}
+  })();
 });
 
 chrome.runtime.onInstalled.addListener(() => { schedule(1000); });

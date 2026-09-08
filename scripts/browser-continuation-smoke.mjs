@@ -152,6 +152,10 @@ try {
   assert(!sourceText.includes('Authorization: Bearer'), 'extension source hard-coded bearer material');
   assert(!sourceText.includes('x-codexpro-extension-id'), 'extension relies on a custom identity header that Chrome MV3 may omit');
   assert(!/chrome\.runtime\.sendMessage\([^;]*\)\.catch/.test(sourceText), 'content script assumes Promise-returning chrome.runtime.sendMessage');
+  assert(sourceText.includes('chrome.notifications.create('), 'ready continuation does not create a browser notification');
+  assert(sourceText.includes('chrome.action.setBadgeText('), 'ready continuation does not set/clear the extension badge');
+  assert(sourceText.includes('chrome.notifications.onClicked.addListener('), 'continuation notification cannot focus the bound chat');
+  assert(!/notifications\.onClicked\.addListener[\s\S]{0,800}codexpro_continue/.test(sourceText), 'notification click directly dispatches a continuation message');
 
   const cliSecret = 'mcp-token-plan30-must-not-print';
   const cli = spawnSync(process.execPath, ['scripts/codexpro.mjs', 'continuation', 'browser', 'pair', '--profile', 'smoke'], { encoding: 'utf8', env: { ...process.env, CODEXPRO_HOME: cliHome, CODEXPRO_HTTP_TOKEN: cliSecret, CODEXPRO_CONTINUATION_ENABLED: '1' } });

@@ -1,6 +1,6 @@
 # Continuation Watchdog, Recovery, and Anti-Loop Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Detect likely interrupted/incomplete ChatGPT work conservatively, notify the user that continuation is ready, and prevent duplicate or runaway continuation cycles.
 
@@ -30,14 +30,14 @@
 
 **Interfaces:**
 - Produces `recordContinuationHeartbeat`, `acknowledgeContinuationDispatch`, `recordContinuationUserInteraction`, and `evaluateContinuationReadiness` with injectable clock/runtime snapshot. Server receive time/monotonic elapsed time is authoritative; browser-supplied timestamps are advisory only.
-- [ ] **Step 1: Write failing heartbeat/ack tests**
+- [x] **Step 1: Write failing heartbeat/ack tests**
 
 Assert every relevant MCP tool call for an armed session refreshes `lastHeartbeatAt`, a dispatched nonce becomes `awaiting_ack`, a later checkpoint/heartbeat acknowledges it, and duplicate/stale acknowledgements cannot create a new cycle. Completion/cancel or a newer task revision invalidates outstanding ready/dispatch state and cannot be reversed by a late heartbeat/ack.
 
 Run: `node scripts/continuation-watchdog-smoke.mjs`
 Expected: FAIL because watchdog helpers do not exist.
 
-- [ ] **Step 2: Implement nonce/ack invariants**
+- [x] **Step 2: Implement nonce/ack invariants**
 
 Only one outstanding nonce is allowed. Dispatch increments `continuationCount` once. A new continuation nonce cannot be created until the prior dispatch is acknowledged by a later model/CodexPro interaction or manually canceled/re-armed.
 
@@ -50,23 +50,23 @@ Only one outstanding nonce is allowed. Dispatch increments `continuationCount` o
 **Interfaces:**
 - Consumes `RuntimeContinuationSnapshot { runtimeGenerationId, syncCallDeadlineMode, syncCallDeadlineMs, transportState, observedAt }`, grace setting, browser/page observation generation + coarse state, last server-received user interaction, and owned durable-work status. It must never fall back to the default/saved profile while a current runtime snapshot exists.
 
-- [ ] **Step 1: Add explicit-request readiness tests**
+- [x] **Step 1: Add explicit-request readiness tests**
 
 An armed incomplete task with explicit `continuation_request`, current transport `ready`, correct bound chat, signed-in stable-idle page, no blocking interaction, no recent manual user turn/Stop event, current task revision, and no outstanding nonce becomes `continuation_ready`. Explicit request bypasses only the elapsed-time inference; it never bypasses transport/auth/page/user safety predicates.
 
-- [ ] **Step 2: Add inferred-interruption tests**
+- [x] **Step 2: Add inferred-interruption tests**
 
 Without explicit request, require current runtime mode `bounded`, then stale MCP heartbeat beyond `syncCallDeadlineMs + unexpectedInterruptionGraceMs`, transport `ready`, stable-idle page, task incomplete, valid binding/current revision, no manual-turn pause, and no productive proc/job/Goal. **Unlimited/observe disables timeout-inferred readiness entirely** because no finite CodexPro cutoff exists; only explicit semantic `continuation_request` may create readiness there. Add 20-minute-default, 5/12/60-minute, and observe-mode fixtures.
 
-- [ ] **Step 3: Integrate durable-work awareness**
+- [x] **Step 3: Integrate durable-work awareness**
 
 Use existing ownership/status APIs; do not infer process state from OS-wide process lists. If an owned process/job/Goal is running, readiness waits unless its persisted state explicitly says model attention is required.
 
-- [ ] **Step 4: Reset inference baselines on generation/reconnect gaps**
+- [x] **Step 4: Reset inference baselines on generation/reconnect gaps**
 
 When `runtimeGenerationId` changes, transport goes unavailable→ready, browser/bridge observation generation changes after a long gap, or a simulated sleep/clock jump is detected by missing heartbeats, set a fresh server-side `interruptionBaselineAt`. Do not instantly infer interruption from timestamps accumulated before that boundary. Explicit semantic requests may remain pending but still require current safety predicates.
 
-- [ ] **Step 5: Treat manual user/platform activity as a durable blocker**
+- [x] **Step 5: Treat manual user/platform activity as a durable blocker**
 
 A manual user message submission or recognized Stop-generating click clears ready nonce plus browser/Telegram notification/action tokens and transitions to `paused_by_user` with `manualTurnPending`. Generic ChatGPT busy/error/retry/unknown states suppress readiness indefinitely. Only `continuation_reconcile` from a later semantic controller turn may resolve the manual pause as resume/redirect/supersede/cancel; an ordinary heartbeat alone cannot clear it.
 ### Task 3: Add anti-loop, cooldown, and notification rules
@@ -80,15 +80,15 @@ A manual user message submission or recognized Stop-generating click clears read
 **Interfaces:**
 - Default cooldown 60 seconds; default maximum dispatch count 20; notification keyed by task + nonce.
 
-- [ ] **Step 1: Add cooldown/max-attempt tests**
+- [x] **Step 1: Add cooldown/max-attempt tests**
 
 Prove duplicate evaluations produce one notification, dispatch cannot recur inside cooldown, reaching max attempts changes state to manual-rearm-required, and restart/reconnect does not replay an old nonce.
 
-- [ ] **Step 2: Add browser notification behavior**
+- [x] **Step 2: Add browser notification behavior**
 
 When continuation becomes ready, set an extension badge and issue one browser notification keyed to task revision + nonce. Clicking the notification focuses the bound chat/popup; it does not submit the message. Completion/cancel, route invalidation, user pause, auth loss, or transport loss immediately clears the badge/notification when the companion next receives authoritative state.
 
-- [ ] **Step 3: Suppress when user is active or has sent a manual turn**
+- [x] **Step 3: Suppress when user is active or has sent a manual turn**
 
 Recent composer interaction suppresses readiness. A completed manual submit/Stop event is stronger: it invalidates the current nonce/actions and keeps the task paused until semantic reconciliation, even after the page becomes idle again. Add race tests where the user sends a manual prompt while a browser popup or Telegram button is already visible; stale actions must fail by revision/nonce.
 
@@ -99,16 +99,16 @@ Recent composer interaction suppresses readiness. A completed manual submit/Stop
 - Modify: `src/continuation/browserBridge.ts`
 - Modify: `scripts/continuation-watchdog-smoke.mjs`
 
-- [ ] **Step 1: Test bridge disconnect**
+- [x] **Step 1: Test bridge disconnect**
 
 If the extension/bridge heartbeat disappears, mark browser availability unknown/disconnected and never assume a continuation was delivered. On reconnect, fetch current task revision/runtime snapshot first and reset inferred-interruption baseline after a long observation gap; cached extension readiness is discarded.
 
-- [ ] **Step 2: Test auth expiry**
+- [x] **Step 2: Test auth expiry**
 
 When browser reports signed-out/authentication-required, move the task to `waiting_for_auth`, revoke any ready dispatch nonce, and require the Plan 31 manual sign-in flow before another continuation can be prepared. When the CodexPro runtime-status/transport snapshot is absent or not ready, use `waiting_for_transport`, revoke readiness, and never auto-start/restart CodexPro or any tunnel. Transport recovery alone does not reuse the pre-disconnect inference timer.
 ### Task 5: Verify and commit the milestone
 
-- [ ] **Step 1: Run deterministic fake-clock gates**
+- [x] **Step 1: Run deterministic fake-clock gates**
 
 Run: `node scripts/continuation-watchdog-smoke.mjs`
 Run: `node scripts/continuation-state-smoke.mjs`
@@ -116,12 +116,12 @@ Run: `node scripts/browser-continuation-smoke.mjs`
 Run: `npm run build`
 Expected: PASS without waiting real deadline durations.
 
-- [ ] **Step 2: Run stress for concurrent state transitions**
+- [x] **Step 2: Run stress for concurrent state transitions**
 
 Run: `npm run stress`
 Expected: PASS with no duplicate nonce/notification/dispatch state under concurrent status/heartbeat calls.
 
-- [ ] **Step 3: Commit milestone**
+- [x] **Step 3: Commit milestone**
 
 ```bash
 git add src/continuation browser-extension scripts/continuation-watchdog-smoke.mjs
@@ -137,3 +137,8 @@ git commit -m "feat: add continuation watchdog and recovery"
 - Active proc/job/Goal work, user activity, auth problems, streaming, or ambiguous UI suppress readiness.
 - One nonce yields at most one user notification and one user-authorized dispatch.
 - Restart/reconnect cannot create duplicate continuation loops.
+## Implementation Evidence
+
+Implemented on the cumulative `roadmap/plans-22-37` worktree. Dispatch counting now records successful sends only; successful sends enter `awaiting_ack`, require a later CodexPro/model interaction before another cycle, and enforce the 60-second default cooldown plus 20-dispatch manual-rearm limit. Readiness uses the current bounded runtime snapshot, resets inference baselines on generation/reconnect/gap signals, suppresses owned productive durable work and manual/platform activity, and disables timeout inference in observe mode. The browser companion persists one notification key per task revision/nonce, uses a badge plus notification only, and notification clicks only focus the bound tab.
+
+Verification: `node scripts/continuation-watchdog-smoke.mjs`, `node scripts/continuation-state-smoke.mjs`, `node scripts/continuation-dispatch-smoke.mjs`, `node scripts/browser-continuation-smoke.mjs`, TypeScript build, stress, and `git diff --check`.

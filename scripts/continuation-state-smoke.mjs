@@ -88,7 +88,7 @@ try {
   });
   assert.equal(requested.revision, 3);
   assert.equal(requested.state, 'continuation_requested');
-  assert.equal(requested.continuationCount, 1);
+  assert.equal(requested.continuationCount, 0, 'request must not increment successful-dispatch counter');
   assert.match(requested.outstandingNonce, /^[a-f0-9]{64}$/);
   assert.equal(requested.continuationIntents[0].revision, 3);
   const firstNonce = requested.outstandingNonce;
@@ -98,7 +98,7 @@ try {
   });
   assert.equal(duplicateRequest.revision, 3);
   assert.equal(duplicateRequest.outstandingNonce, firstNonce);
-  assert.equal(duplicateRequest.continuationCount, 1);
+  assert.equal(duplicateRequest.continuationCount, 0);
   const publicRequested = await continuationStatus(restarted, bindingA, armed.id);
   const publicText = JSON.stringify(publicRequested);
   assert(!publicText.includes(firstNonce), 'public continuation status leaked authorization nonce');

@@ -2,8 +2,9 @@ import { randomUUID } from "node:crypto";
 import { redactSensitiveText } from "../redact.js";
 
 export const CONTINUATION_STATES = [
-  "armed", "working", "continuation_requested", "continuation_ready", "awaiting_user_send", "dispatched",
-  "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "completed", "canceled", "error"
+  "armed", "working", "continuation_requested", "continuation_ready", "awaiting_user_send", "awaiting_ack", "dispatched",
+  "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "manual_rearm_required",
+  "completed", "canceled", "error"
 ] as const;
 export type ContinuationState = typeof CONTINUATION_STATES[number];
 export type ContinuationDisposition = "resume" | "redirect" | "supersede" | "cancel";
@@ -33,6 +34,21 @@ export interface ManualTurnPending {
   observedRevision: number;
 }
 
+export interface ContinuationWatchdogRecord {
+  runtimeGenerationId?: string;
+  transportState?: "ready" | "unavailable" | "unknown";
+  browserObservationGeneration?: string;
+  interruptionBaselineAt?: string;
+  pendingExplicitRequest?: boolean;
+  pendingAckNonceHash?: string;
+  pendingAckDispatchRevision?: number;
+  lastAcknowledgedDispatchRevision?: number;
+  lastAcknowledgedAt?: string;
+  lastUserInteractionAt?: string;
+  notificationKey?: string;
+  cooldownUntilAt?: string;
+}
+
 export interface ContinuationRecord {
   schemaVersion: 1;
   id: string;
@@ -59,6 +75,7 @@ export interface ContinuationRecord {
   createdAt: string;
   updatedAt: string;
   lastHeartbeatAt?: string;
+  watchdog?: ContinuationWatchdogRecord;
 }
 
 export const TERMINAL_CONTINUATION_STATES = new Set<ContinuationState>(["completed", "canceled", "error"]);
@@ -139,7 +156,7 @@ const ALLOWED_RECORD_KEYS = new Set([
   "schemaVersion", "id", "workspaceId", "workspaceRoot", "mcpSessionId", "revision", "state", "title", "currentPhase",
   "completedEvidence", "remainingWork", "continuationIntents", "selectedContinuationIntentId", "manualTurnPending", "cancelReason",
   "continuationCount", "outstandingNonce", "lastCheckpointId", "lastRequestId", "createdAt", "updatedAt", "lastHeartbeatAt",
-  "conversationFingerprint", "dispatchAuthorization", "lastDispatchAt"
+  "conversationFingerprint", "dispatchAuthorization", "lastDispatchAt", "watchdog"
 ]);
 
 export function validateContinuationRecord(value: unknown): ContinuationRecord {
@@ -171,6 +188,39 @@ export function validateContinuationRecord(value: unknown): ContinuationRecord {
   const conversationFingerprint = raw.conversationFingerprint === undefined ? undefined : String(raw.conversationFingerprint);
   if (conversationFingerprint && !/^[a-f0-9]{64}$/.test(conversationFingerprint)) throw new Error("Invalid conversation fingerprint.");
   const lastDispatchAt = raw.lastDispatchAt === undefined ? undefined : strictTimestamp(raw.lastDispatchAt, "continuation dispatch timestamp");
+  let watchdog: ContinuationWatchdogRecord | undefined;
+  if (raw.watchdog !== undefined) {
+    if (!raw.watchdog || typeof raw.watchdog !== "object" || Array.isArray(raw.watchdog)) throw new Error("Malformed continuation watchdog state.");
+    const state = raw.watchdog as Record<string, unknown>;
+    const allowed = new Set(["runtimeGenerationId", "transportState", "browserObservationGeneration", "interruptionBaselineAt", "pendingExplicitRequest", "pendingAckNonceHash", "pendingAckDispatchRevision", "lastAcknowledgedDispatchRevision", "lastAcknowledgedAt", "lastUserInteractionAt", "notificationKey", "cooldownUntilAt"]);
+    for (const key of Object.keys(state)) if (!allowed.has(key)) throw new Error(`Unsupported continuation watchdog field: ${key}`);
+    const runtimeGenerationId = strictIdentityText(state.runtimeGenerationId, "Runtime generation id", 160, false);
+    const browserObservationGeneration = strictIdentityText(state.browserObservationGeneration, "Browser observation generation", 160, false);
+    if (runtimeGenerationId && !/^[A-Za-z0-9._:-]{1,160}$/.test(runtimeGenerationId)) throw new Error("Invalid runtime generation id.");
+    if (browserObservationGeneration && !/^[A-Za-z0-9._:-]{1,160}$/.test(browserObservationGeneration)) throw new Error("Invalid browser observation generation.");
+    const transportState = state.transportState === undefined ? undefined : state.transportState;
+    if (transportState !== undefined && transportState !== "ready" && transportState !== "unavailable" && transportState !== "unknown") throw new Error("Invalid continuation transport state.");
+    const pendingExplicitRequest = state.pendingExplicitRequest === undefined ? undefined : state.pendingExplicitRequest;
+    if (pendingExplicitRequest !== undefined && typeof pendingExplicitRequest !== "boolean") throw new Error("Invalid pending explicit continuation flag.");
+    const pendingAckNonceHash = state.pendingAckNonceHash === undefined ? undefined : String(state.pendingAckNonceHash);
+    const notificationKey = state.notificationKey === undefined ? undefined : String(state.notificationKey);
+    if (pendingAckNonceHash && !/^[a-f0-9]{64}$/.test(pendingAckNonceHash)) throw new Error("Invalid continuation acknowledgement verifier.");
+    if (notificationKey && !/^[a-f0-9]{64}$/.test(notificationKey)) throw new Error("Invalid continuation notification key.");
+    const pendingAckDispatchRevision = state.pendingAckDispatchRevision === undefined ? undefined : Number(state.pendingAckDispatchRevision);
+    const lastAcknowledgedDispatchRevision = state.lastAcknowledgedDispatchRevision === undefined ? undefined : Number(state.lastAcknowledgedDispatchRevision);
+    if (pendingAckDispatchRevision !== undefined && (!Number.isInteger(pendingAckDispatchRevision) || pendingAckDispatchRevision < 1)) throw new Error("Invalid pending dispatch acknowledgement revision.");
+    if (lastAcknowledgedDispatchRevision !== undefined && (!Number.isInteger(lastAcknowledgedDispatchRevision) || lastAcknowledgedDispatchRevision < 1)) throw new Error("Invalid acknowledged dispatch revision.");
+    watchdog = {
+      ...(runtimeGenerationId ? { runtimeGenerationId } : {}), ...(transportState ? { transportState } : {}),
+      ...(browserObservationGeneration ? { browserObservationGeneration } : {}),
+      ...(state.interruptionBaselineAt !== undefined ? { interruptionBaselineAt: strictTimestamp(state.interruptionBaselineAt, "continuation interruption baseline") } : {}),
+      ...(pendingExplicitRequest !== undefined ? { pendingExplicitRequest } : {}), ...(pendingAckNonceHash ? { pendingAckNonceHash } : {}),
+      ...(pendingAckDispatchRevision !== undefined ? { pendingAckDispatchRevision } : {}), ...(lastAcknowledgedDispatchRevision !== undefined ? { lastAcknowledgedDispatchRevision } : {}),
+      ...(state.lastAcknowledgedAt !== undefined ? { lastAcknowledgedAt: strictTimestamp(state.lastAcknowledgedAt, "continuation acknowledgement timestamp") } : {}),
+      ...(state.lastUserInteractionAt !== undefined ? { lastUserInteractionAt: strictTimestamp(state.lastUserInteractionAt, "continuation user-interaction timestamp") } : {}),
+      ...(notificationKey ? { notificationKey } : {}), ...(state.cooldownUntilAt !== undefined ? { cooldownUntilAt: strictTimestamp(state.cooldownUntilAt, "continuation cooldown timestamp") } : {})
+    };
+  }
   let dispatchAuthorization: ContinuationDispatchAuthorizationRecord | undefined;
   if (raw.dispatchAuthorization !== undefined) {
     if (!raw.dispatchAuthorization || typeof raw.dispatchAuthorization !== "object" || Array.isArray(raw.dispatchAuthorization)) throw new Error("Malformed dispatch authorization.");
@@ -203,10 +253,12 @@ export function validateContinuationRecord(value: unknown): ContinuationRecord {
     ...(manualTurnPending ? { manualTurnPending } : {}), ...(cancelReason ? { cancelReason } : {}), continuationCount: Number(raw.continuationCount),
     ...(outstandingNonce ? { outstandingNonce } : {}), ...(lastCheckpointId ? { lastCheckpointId } : {}), ...(lastRequestId ? { lastRequestId } : {}),
     ...(conversationFingerprint ? { conversationFingerprint } : {}), ...(dispatchAuthorization ? { dispatchAuthorization } : {}), ...(lastDispatchAt ? { lastDispatchAt } : {}),
-    createdAt, updatedAt, ...(lastHeartbeatAt ? { lastHeartbeatAt } : {})
+    createdAt, updatedAt, ...(lastHeartbeatAt ? { lastHeartbeatAt } : {}), ...(watchdog ? { watchdog } : {})
   };
   if (record.state === "paused_by_user" && !record.manualTurnPending) throw new Error("Paused continuation requires pending manual-turn state.");
-  if (TERMINAL_CONTINUATION_STATES.has(record.state) && (record.outstandingNonce || record.selectedContinuationIntentId || record.manualTurnPending || record.dispatchAuthorization)) throw new Error("Terminal continuation retains active authorization state.");
+  if (record.state === "awaiting_ack" && (!record.watchdog?.pendingAckNonceHash || record.watchdog.pendingAckDispatchRevision !== record.revision)) throw new Error("Awaiting acknowledgement continuation is missing current dispatch evidence.");
+  if (record.state !== "awaiting_ack" && (record.watchdog?.pendingAckNonceHash || record.watchdog?.pendingAckDispatchRevision)) throw new Error("Continuation retains stale pending acknowledgement state.");
+  if (TERMINAL_CONTINUATION_STATES.has(record.state) && (record.outstandingNonce || record.selectedContinuationIntentId || record.manualTurnPending || record.dispatchAuthorization || record.watchdog?.notificationKey || record.watchdog?.pendingExplicitRequest)) throw new Error("Terminal continuation retains active authorization state.");
   const bytes = Buffer.byteLength(JSON.stringify(record), "utf8");
   if (bytes > MAX_RECORD_BYTES) throw new Error("Continuation record exceeds bounded storage limit.");
   return record;
@@ -222,22 +274,25 @@ export function publicContinuationRecord(record: ContinuationRecord): Record<str
     continuation_count: record.continuationCount, manual_turn_pending: Boolean(record.manualTurnPending),
     conversation_bound: Boolean(record.conversationFingerprint), ...(record.conversationFingerprint ? { conversation_fingerprint_suffix: record.conversationFingerprint.slice(-8) } : {}),
     dispatch_authorization_pending: Boolean(record.dispatchAuthorization), ...(record.lastDispatchAt ? { last_dispatch_at: record.lastDispatchAt } : {}),
-    user_action_required: ["continuation_ready", "awaiting_user_send", "paused_by_user", "waiting_for_auth", "blocked_interaction"].includes(record.state),
+    ...(record.watchdog?.notificationKey ? { notification_key: record.watchdog.notificationKey } : {}),
+    user_action_required: ["continuation_ready", "awaiting_user_send", "paused_by_user", "waiting_for_auth", "blocked_interaction", "manual_rearm_required"].includes(record.state),
     created_at: record.createdAt, updated_at: record.updatedAt, ...(record.lastHeartbeatAt ? { last_heartbeat_at: record.lastHeartbeatAt } : {})
   };
 }
 
 const ALLOWED_TRANSITIONS: Record<ContinuationState, ReadonlySet<ContinuationState>> = {
   armed: new Set(["working", "continuation_requested", "paused_by_user", "canceled", "error"]),
-  working: new Set(["continuation_requested", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "completed", "canceled", "error"]),
-  continuation_requested: new Set(["working", "continuation_ready", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "canceled", "error"]),
-  continuation_ready: new Set(["working", "awaiting_user_send", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "canceled", "error"]),
-  awaiting_user_send: new Set(["working", "continuation_ready", "dispatched", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "canceled", "error"]),
-  dispatched: new Set(["working", "waiting_for_transport", "paused_by_user", "canceled", "error"]),
-  waiting_for_auth: new Set(["working", "continuation_requested", "paused_by_user", "canceled", "error"]),
-  waiting_for_transport: new Set(["working", "continuation_requested", "paused_by_user", "canceled", "error"]),
+  working: new Set(["continuation_requested", "continuation_ready", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "manual_rearm_required", "completed", "canceled", "error"]),
+  continuation_requested: new Set(["working", "continuation_ready", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "manual_rearm_required", "canceled", "error"]),
+  continuation_ready: new Set(["working", "awaiting_user_send", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "manual_rearm_required", "canceled", "error"]),
+  awaiting_user_send: new Set(["working", "continuation_ready", "awaiting_ack", "dispatched", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "manual_rearm_required", "canceled", "error"]),
+  awaiting_ack: new Set(["working", "waiting_for_transport", "paused_by_user", "manual_rearm_required", "canceled", "error"]),
+  dispatched: new Set(["working", "awaiting_ack", "waiting_for_transport", "paused_by_user", "manual_rearm_required", "canceled", "error"]),
+  waiting_for_auth: new Set(["working", "continuation_requested", "continuation_ready", "paused_by_user", "manual_rearm_required", "canceled", "error"]),
+  waiting_for_transport: new Set(["working", "continuation_requested", "continuation_ready", "paused_by_user", "manual_rearm_required", "canceled", "error"]),
   paused_by_user: new Set(["working", "canceled"]),
-  blocked_interaction: new Set(["working", "continuation_requested", "paused_by_user", "canceled", "error"]),
+  blocked_interaction: new Set(["working", "continuation_requested", "continuation_ready", "paused_by_user", "manual_rearm_required", "canceled", "error"]),
+  manual_rearm_required: new Set(["canceled", "error"]),
   completed: new Set(), canceled: new Set(), error: new Set()
 };
 
