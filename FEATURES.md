@@ -124,6 +124,8 @@ This is useful when a ChatGPT request may be retried or when several files must 
 | Stop process | `stop_workspace_process` | Stop the workspace-owned process deterministically. |
 | Discover/run checks | `run_checks` | Run trusted project scripts/checks and receive structured test results. |
 | Change-aware verification | `verify_changes` | Select checks from changed paths and return bounded deterministic repair evidence for pass/fail/not-run outcomes. |
+| Async trusted checks | `start_checks` | Start selected discovered checks as a durable `job_*` and return immediately; no arbitrary command input is accepted. |
+| Async change verification | `start_verification` | Reuse the same selection/parsing/repair semantics as `verify_changes`, with per-check durable checkpoints and resumable execution. |
 | Durable structured jobs | `job_status`, `list_jobs`, `read_job_output` | Poll persistent registered structured work without waiting for completion; output is redacted, bounded, and cursor-based. |
 | Job control | `cancel_job`, `resume_job` | Cancel only verified CodexPro-owned workers or resume a producer-declared resumable job. There is no generic arbitrary-command job launcher. |
 

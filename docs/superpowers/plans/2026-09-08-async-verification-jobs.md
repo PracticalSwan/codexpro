@@ -1,6 +1,6 @@
 # Asynchronous Verification Jobs Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Let long test/build verification run locally behind a durable `job_*` handle so ChatGPT never has to keep one MCP invocation open for the whole verification.
 
@@ -30,18 +30,18 @@
 **Interfaces:**
 - Produces a registered `verification` job payload containing workspace identity, selected check IDs or changed paths, mode (`checks` or `verify`), completed phases, and bounded result metadata.
 
-- [ ] **Step 1: Write worker tests first**
+- [x] **Step 1: Write worker tests first**
 
 Create a two-check fixture. Assert the worker persists phase transitions (`discover`, `check:<id>`, `summarize`), stores each completed check before starting the next, and produces the same structured result contract as synchronous verification.
 
 Run: `node scripts/async-verification-smoke.mjs`
 Expected: FAIL because the verification job producer is absent.
 
-- [ ] **Step 2: Implement durable per-check checkpoints**
+- [x] **Step 2: Implement durable per-check checkpoints**
 
 After every completed check, atomically update the job record/result fragment before launching another check. On interruption, `resume_job` restarts at the first incomplete check and reuses completed evidence.
 
-- [ ] **Step 3: Preserve synchronous verification logic**
+- [x] **Step 3: Preserve synchronous verification logic**
 
 Refactor shared selection/parsing into reusable functions only where needed; do not fork a second implementation of trusted check discovery, structured test parsing, or repair metadata.
 
@@ -54,11 +54,11 @@ Refactor shared selection/parsing into reusable functions only where needed; do 
 **Interfaces:**
 - Produces: `start_checks` and `start_verification` MCP tools returning a `job_*` record immediately.
 
-- [ ] **Step 1: Define strict schemas**
+- [x] **Step 1: Define strict schemas**
 
 `start_checks` accepts discovered check IDs plus optional workspace/session fields. `start_verification` accepts changed paths and reuses the same selection logic as `verify_changes`. Neither accepts an arbitrary command string.
 
-- [ ] **Step 2: Return immediately after durable launch**
+- [x] **Step 2: Return immediately after durable launch**
 
 The start tool creates/persists the job, launches the registered worker, and returns `job_id`, state, selected work summary, and the instruction to use `job_status`/`read_job_output`. It does not wait for the first check to finish.
 
@@ -72,11 +72,11 @@ The start tool creates/persists the job, launches the registered worker, and ret
 **Interfaces:**
 - Produces additive routing hints when selected verification is long/high-variance, without changing user-requested check coverage.
 
-- [ ] **Step 1: Add deterministic routing-hint cases**
+- [x] **Step 1: Add deterministic routing-hint cases**
 
 Examples: multiple checks whose aggregate configured timeout reaches the effective async-routing cutoff (75% of `syncCallDeadlineMs`), known stress/integration scripts, or unknown-duration selections return `recommended_execution="async"` and the matching async tool name.
 
-- [ ] **Step 2: Keep routing advisory unless `execution=auto` is explicitly introduced**
+- [x] **Step 2: Keep routing advisory unless `execution=auto` is explicitly introduced**
 
 Do not silently turn an explicitly synchronous call into background work in the first implementation. The host instructions from Plan 26 should choose the async start tool before invoking a risky synchronous call.
 
@@ -87,15 +87,15 @@ Do not silently turn an explicitly synchronous call into background work in the 
 - Modify: `scripts/http-state-continuity-smoke.mjs`
 - Modify: `README.md`, `FEATURES.md`, `docs/agentic/PROJECT_MEMORY.md` after implementation
 
-- [ ] **Step 1: Verify sync/async result parity**
+- [x] **Step 1: Verify sync/async result parity**
 
 Run the same short fixture through `verify_changes` and `start_verification` + `job_status`; compare selected checks, pass/fail interpretation, and repair metadata.
 
-- [ ] **Step 2: Verify a synthetic long job survives MCP call turnover**
+- [x] **Step 2: Verify a synthetic long job survives MCP call turnover**
 
 The start call must return quickly; later status/output calls recover progress and terminal result from durable job state.
 
-- [ ] **Step 3: Run gates**
+- [x] **Step 3: Run gates**
 
 Run: `node scripts/async-verification-smoke.mjs`
 Run: `node scripts/checks-smoke.mjs`
@@ -104,7 +104,7 @@ Run: `npm run stress`
 Run: `git diff --check`
 Expected: PASS.
 
-- [ ] **Step 4: Commit milestone**
+- [x] **Step 4: Commit milestone**
 
 ```bash
 git add src/jobs/verification.ts src/jobs/runner.ts src/checksOps.ts src/server.ts scripts/async-verification-smoke.mjs scripts/checks-smoke.mjs scripts/http-state-continuity-smoke.mjs README.md FEATURES.md docs/agentic/PROJECT_MEMORY.md

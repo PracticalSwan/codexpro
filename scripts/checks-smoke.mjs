@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { loadConfig } from '../dist/config.js';
 import { PathGuard, WorkspaceManager } from '../dist/guard.js';
-import { discoverTrustedChecks, runChecks, verifyChanges } from '../dist/checksOps.js';
+import { discoverTrustedChecks, runChecks, verificationRoutingHint, verifyChanges } from '../dist/checksOps.js';
 import { parseTestOutput } from '../dist/testResultOps.js';
 import { DeadlineBudget, DEFAULT_SYNC_CALL_DEADLINE_MS } from '../dist/deadline.js';
 
@@ -51,6 +51,17 @@ try {
 
   const buildCheck = discovered.find((check) => check.command === 'npm run build');
   assert(buildCheck, 'build check not found');
+  const shortHint = verificationRoutingHint(config, [testCheck], 30_000, 'start_checks');
+  assert.equal(shortHint.recommendedExecution, 'sync');
+  const customRoutingConfig = { ...config, syncCallDeadlineMs: 300_000 };
+  const aggregateHint = verificationRoutingHint(customRoutingConfig, [testCheck, buildCheck], 120_000, 'start_checks');
+  assert.equal(aggregateHint.asyncCutoffMs, 225_000);
+  assert.equal(aggregateHint.aggregateRequestedTimeoutMs, 240_000);
+  assert.equal(aggregateHint.recommendedExecution, 'async');
+  assert.equal(aggregateHint.asyncToolName, 'start_checks');
+  const integrationHint = verificationRoutingHint(config, [{ ...testCheck, command: 'npm run integration' }], 30_000, 'start_verification');
+  assert.equal(integrationHint.recommendedExecution, 'async');
+  assert.equal(integrationHint.asyncToolName, 'start_verification');
   let defaultNowCalls = 0;
   const defaultBudget = new DeadlineBudget('bounded', DEFAULT_SYNC_CALL_DEADLINE_MS, { now: () => [0, 0, 1_141_000][Math.min(defaultNowCalls++, 2)] });
   const defaultPartial = await runChecks({ config, guard, workspace, checkIds: [testCheck.id, buildCheck.id], deadline: defaultBudget });

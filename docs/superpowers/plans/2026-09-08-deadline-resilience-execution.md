@@ -51,10 +51,10 @@ Plan 23 and Plan 24 are architecturally independent after Plan 22, but the seque
 
 ## Milestone 25 — Async verification
 
-- [ ] Register the verification job producer and `start_checks` / `start_verification`.
-- [ ] Persist each completed check before starting another.
-- [ ] Prove sync/async structured-result parity and cross-call recovery.
-- [ ] Verify focused async/check/continuity smokes plus stress, then milestone commit.
+- [x] Register the verification job producer and `start_checks` / `start_verification`.
+- [x] Persist each completed check before starting another.
+- [x] Prove sync/async structured-result parity and cross-call recovery.
+- [x] Verify focused async/check/continuity smokes plus stress, then milestone commit.
 
 ## Milestone 26 — Execution routing without quality loss
 

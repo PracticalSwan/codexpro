@@ -285,9 +285,11 @@ read_workspace_process_output
 stop_workspace_process
 run_checks
 verify_changes
+start_checks
+start_verification
 ```
 
-`verify_changes` also returns bounded deterministic repair metadata (category, likely paths, related tests, and next actions); CodexPro does not run an autonomous repair loop.
+`verify_changes` also returns bounded deterministic repair metadata (category, likely paths, related tests, and next actions); CodexPro does not run an autonomous repair loop. `run_checks` and `verify_changes` additionally return advisory execution-routing metadata. For long/high-variance verification, use `start_checks` or `start_verification` to create a durable `job_*` without reducing check coverage.
 
 Registered structured long operations use persistent `job_*` state outside the workspace. Inspect/control them with `job_status`, `list_jobs`, `read_job_output`, `cancel_job`, and `resume_job`. Output reads are bounded/cursor-based, worker cancellation verifies PID + OS start identity + nonce attestation, and there is deliberately no generic `job_start(command)` interface.
 

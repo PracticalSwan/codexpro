@@ -59,6 +59,8 @@ const port = await freePort();
 const token = "codexpro-http-state-token-1234567890";
 const jobDir = path.join(home, "jobs");
 await fs.writeFile(path.join(root, "seed.txt"), "seed\n", "utf8");
+await fs.writeFile(path.join(root, "package.json"), JSON.stringify({ scripts: { test: "node test.cjs" } }, null, 2), "utf8");
+await fs.writeFile(path.join(root, "test.cjs"), "console.log(\"1 passed\");\n", "utf8");
 const child = spawn(process.execPath, ["dist/http.js"], {
   cwd: path.resolve("."),
   env: {
@@ -85,6 +87,7 @@ try {
   let workspaceId;
   let persistedJobId;
   let staleJobId;
+  let asyncVerificationJobId;
   await withFreshClient(url, token, async (client) => {
     const opened = await callTool(client, "open_current_workspace");
     workspaceId = opened.workspace?.id ?? opened.workspace_id;
@@ -94,6 +97,9 @@ try {
     });
     processId = started.process.id;
     assert.match(processId, /^proc_/);
+    const asyncStarted = await callTool(client, "start_verification", { changed_paths: ["seed.txt"] });
+    asyncVerificationJobId = asyncStarted.job_id;
+    assert.match(asyncVerificationJobId, /^job_/);
     const baseline = await callTool(client, "workspace_events");
     eventCursor = baseline.cursor;
     assert.match(eventCursor, /^evt_/);
@@ -126,6 +132,18 @@ try {
       assert.match(output, /state-ready/);
       await callTool(client, "stop_workspace_process", { process_id: processId });
     } catch (error) { failures.push(`process continuity: ${error instanceof Error ? error.message : error}`); }
+
+    try {
+      let asyncStatus;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        asyncStatus = await callTool(client, "job_status", { job_id: asyncVerificationJobId });
+        if (["completed", "failed", "canceled"].includes(asyncStatus.job.state)) break;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      assert.equal(asyncStatus.job.state, "completed");
+      assert.equal(asyncStatus.job.result.complete, true);
+      assert.equal(asyncStatus.job.result.ok, true);
+    } catch (error) { failures.push(`async verification continuity: ${error instanceof Error ? error.message : error}`); }
 
     try {
       const persisted = await callTool(client, "job_status", { job_id: persistedJobId });

@@ -56,6 +56,7 @@ import { exportWorkspaceFile } from "./exportOps.js";
 import { GoalStore } from "./goals/store.js";
 import { JobStore, publicJobRecord } from "./jobs/store.js";
 import { cancelJob, reconcileJob, resumeJob } from "./jobs/runner.js";
+import { registerVerificationJobProducer, startChecksJob, startVerificationJob } from "./jobs/verification.js";
 import { proposeGoal, approveGoal, startGoal, pauseGoal, resumeGoal, cancelGoal } from "./goals/runner.js";
 import { reviewGoal, projectGoal } from "./goals/projection.js";
 import { goalPlatformStatus } from "./goals/isolation.js";
@@ -398,6 +399,8 @@ const STANDARD_TOOL_NAMES = [
   "workspace_process_status",
   "read_workspace_process_output",
   "stop_workspace_process",
+  "start_checks",
+  "start_verification",
   "job_status",
   "list_jobs",
   "read_job_output",
@@ -473,6 +476,8 @@ const FULL_TOOL_NAMES = [
   "bash",
   "run_checks",
   "verify_changes",
+  "start_checks",
+  "start_verification",
   "start_workspace_process",
   "workspace_process_status",
   "read_workspace_process_output",
@@ -529,6 +534,8 @@ const CONNECTION_TEST_HIDDEN_TOOLS = new Set<string>([
   "bash",
   "run_checks",
   "verify_changes",
+  "start_checks",
+  "start_verification",
   "start_workspace_process",
   "workspace_process_status",
   "read_workspace_process_output",
@@ -549,6 +556,8 @@ const BASH_DEPENDENT_TOOL_NAMES = new Set<string>([
   "bash",
   "run_checks",
   "verify_changes",
+  "start_checks",
+  "start_verification",
   "start_workspace_process",
   "workspace_process_status",
   "read_workspace_process_output",
@@ -1257,6 +1266,7 @@ export function createCodexProServer(
     return store;
   };
   const jobStore = new JobStore({ baseDir: config.jobDir, maxJobs: config.maxOperationReceipts, maxOutputBytes: config.maxOperationBytes, maxReadBytes: config.maxProcessReadBytes });
+  registerVerificationJobProducer();
   const goalStores = new Map<string, GoalStore>();
   const goalStoreFor = (workspace: Workspace): GoalStore => {
     const existing = goalStores.get(workspace.id);
@@ -1681,11 +1691,12 @@ export function createCodexProServer(
   registerCodexTool(config, server, "resume_job", {
     title: "Resume Job",
     description: "Resume an interrupted/paused CodexPro structured job only when its registered producer declares durable resume support. No arbitrary command input is accepted.",
-    inputSchema: { workspace_id: z.string().optional(), job_id: z.string().regex(/^job_[A-Za-z0-9-]{1,80}$/) },
+    inputSchema: { workspace_id: z.string().optional(), job_id: z.string().regex(/^job_[A-Za-z0-9-]{1,80}$/), session_id: z.string().optional() },
     annotations: BASH_ANNOTATIONS
   }, async (args) => {
     const workspace = workspaces.getWorkspace(args.workspace_id);
     const workspaceConfig = configForWorkspace(workspace);
+    assertBashSession(workspaceConfig, args.session_id);
     await jobStore.requireForWorkspace(args.job_id, workspace);
     const record = await resumeJob(workspaceConfig, jobStore, workspace, args.job_id);
     const job = publicJobRecord(record);
@@ -1971,6 +1982,38 @@ export function createCodexProServer(
       );
     }
   );
+
+  registerCodexTool(config, server, "start_checks", {
+    title: "Start Checks",
+    description: "Start selected trusted checks as one durable verification job and return immediately. No arbitrary command input is accepted.",
+    inputSchema: { workspace_id: z.string().optional(), check_ids: z.array(z.string().regex(/^check_[a-f0-9]{16}$/)).min(1).max(16), timeout_ms: z.number().int().min(1000).max(config.maxBashTimeoutMs).optional(), session_id: z.string().optional() },
+    annotations: BASH_ANNOTATIONS
+  }, async (args) => {
+    const workspace = workspaces.getWorkspace(args.workspace_id);
+    const workspaceConfig = configForWorkspace(workspace);
+    assertBashSession(workspaceConfig, args.session_id);
+    const record = await startChecksJob({ config: workspaceConfig, guard, workspace, store: jobStore, checkIds: args.check_ids, timeoutMs: args.timeout_ms });
+    const payload = await jobStore.readPayload(record.id);
+    const selected = Array.isArray(payload.selectedChecks) ? payload.selectedChecks.map((check: any) => check?.id).filter(Boolean) : [];
+    const job = publicJobRecord(record);
+    return textResult(`# Start Checks\n\nJob: ${record.id}\nState: ${record.state}\nSelected checks: ${selected.join(", ") || "none"}\nUse job_status/read_job_output; this call does not wait for verification completion.`, { workspace_id: workspace.id, job_id: record.id, selected_check_ids: selected, job });
+  });
+
+  registerCodexTool(config, server, "start_verification", {
+    title: "Start Verification",
+    description: "Analyze changed paths, select the same trusted checks as verify_changes, start them as a durable job, and return immediately.",
+    inputSchema: { workspace_id: z.string().optional(), changed_paths: z.array(z.string()).min(1).max(128), timeout_ms: z.number().int().min(1000).max(config.maxBashTimeoutMs).optional(), session_id: z.string().optional() },
+    annotations: BASH_ANNOTATIONS
+  }, async (args) => {
+    const workspace = workspaces.getWorkspace(args.workspace_id);
+    const workspaceConfig = configForWorkspace(workspace);
+    assertBashSession(workspaceConfig, args.session_id);
+    const record = await startVerificationJob({ config: workspaceConfig, guard, workspace, store: jobStore, changedPaths: args.changed_paths, timeoutMs: args.timeout_ms });
+    const payload = await jobStore.readPayload(record.id);
+    const selected = Array.isArray(payload.selectedChecks) ? payload.selectedChecks.map((check: any) => check?.id).filter(Boolean) : [];
+    const job = publicJobRecord(record);
+    return textResult(`# Start Verification\n\nJob: ${record.id}\nState: ${record.state}\nSelected checks: ${selected.join(", ") || "none"}\nUse job_status/read_job_output; this call does not wait for verification completion.`, { workspace_id: workspace.id, job_id: record.id, selected_check_ids: selected, job });
+  });
 
   registerCodexTool(
     config,
