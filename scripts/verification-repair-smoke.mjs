@@ -68,6 +68,26 @@ try {
   const passing = await client.callTool({ name: 'verify_changes', arguments: { changed_paths: ['src.ts'], run: true } });
   assert.equal(passing.structuredContent.repair.status, 'passed');
   assert.equal(passing.structuredContent.repair.retryRecommended, false);
+
+  const clockWrapper = path.join(root, 'fake-clock-stdio.mjs');
+  await fs.writeFile(clockWrapper, "import { pathToFileURL } from 'node:url'; let now=0; Date.now=()=>{ now += 400000; return now; }; await import(pathToFileURL(process.env.CODEXPRO_TEST_STDIO_ENTRY).href);\n");
+  const deadlineTransport = new StdioClientTransport({
+    command: process.execPath,
+    args: [clockWrapper, '--root', root, '--allow-root', root, '--bash', 'safe', '--write', 'workspace', '--tool-mode', 'full'],
+    env: { ...process.env, CODEXPRO_ALLOW_NO_HTTP_TOKEN: '1', CODEXPRO_OPERATION_DIR: path.join(root, '.ops-deadline'), CODEXPRO_ACTIVITY_DIR: path.join(root, '.activity-deadline'), CODEXPRO_SYNC_CALL_DEADLINE_MODE: 'bounded', CODEXPRO_SYNC_CALL_DEADLINE_MS: '300000', CODEXPRO_TEST_STDIO_ENTRY: path.resolve('dist/stdio.js') }
+  });
+  const deadlineClient = new Client({ name: 'verification-deadline-smoke', version: '0.1.0' });
+  try {
+    await deadlineClient.connect(deadlineTransport);
+    const partial = await deadlineClient.callTool({ name: 'verify_changes', arguments: { changed_paths: ['src.ts'], run: true } });
+    assert.equal(partial.structuredContent.complete, false);
+    assert.equal(partial.structuredContent.deadlineYielded, true);
+    assert.equal(partial.structuredContent.ok, null);
+    assert(partial.structuredContent.remainingCheckIds.length >= 1);
+    assert.match(partial.content?.[0]?.text ?? '', /Verification incomplete/);
+  } finally {
+    await deadlineClient.close().catch(() => undefined);
+  }
 } finally {
   await client.close().catch(() => undefined);
   await fs.rm(root, { recursive: true, force: true });

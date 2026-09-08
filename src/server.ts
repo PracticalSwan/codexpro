@@ -1320,13 +1320,17 @@ export function createCodexProServer(
     const verificationStatus = structured?.repair?.status;
     const summary = status === "error"
       ? "tool call failed"
-      : kind === "check" && structured?.ok === false
-        ? "verification completed with failures"
-        : kind === "check" && structured?.ok === true
-          ? "verification passed"
-          : kind === "check" && verificationStatus === "not_run"
-            ? "verification not run"
-            : "tool call completed";
+      : kind === "check" && structured?.deadlineYielded === true
+        ? "verification incomplete; required checks remain pending"
+        : kind === "check" && verificationStatus === "not_run"
+          ? "verification not run"
+          : kind === "check" && structured?.complete === false
+            ? "verification incomplete; required checks remain pending"
+            : kind === "check" && structured?.ok === false
+              ? "verification completed with failures"
+              : kind === "check" && structured?.ok === true
+                ? "verification passed"
+                : "tool call completed";
     return { workspaceId: workspace.id, kind, action: name, status,
       ...(operationId ? { operationId: String(operationId) } : {}),
       ...(checkId ? { checkId: String(checkId) } : {}),
@@ -1816,13 +1820,15 @@ export function createCodexProServer(
         (value) => ({
           items: value.results.length,
           durationMs: value.results.reduce((total, result) => total + result.durationMs, 0),
-          note: value.ok ? "checks_passed" : "checks_failed"
+          note: !value.complete ? "checks_incomplete" : value.ok ? "checks_passed" : "checks_failed"
         })
       );
       if (!execution.result) return textResult("# Run Checks\n\nOperation replayed; checks were not repeated.", { operation: execution.receipt, replayed: true });
       const result = execution.result;
       return textResult(
-        `# Run Checks\n\nSelected: ${result.selectedChecks.length}\nPassed: ${result.ok}\nOperation: ${execution.receipt.id}`,
+        result.complete
+          ? `# Run Checks\n\nSelected: ${result.selectedChecks.length}\nPassed: ${result.ok}\nOperation: ${execution.receipt.id}`
+          : `# Run Checks\n\nVerification incomplete: synchronous call budget reached; required checks remain pending.\nCompleted: ${result.results.length}\nRemaining: ${result.remainingCheckIds.join(", ")}\nOperation: ${execution.receipt.id}`,
         { workspace_id: workspace.id, ...result, operation: execution.receipt }
       );
     }
@@ -1870,13 +1876,15 @@ export function createCodexProServer(
         (value) => ({
           items: value.results.length,
           durationMs: value.results.reduce((total, result) => total + result.durationMs, 0),
-          note: value.ok === false ? "verification_failed" : "verification_completed"
+          note: !value.complete ? "verification_incomplete" : value.ok === false ? "verification_failed" : "verification_completed"
         })
       );
       if (!execution.result) return textResult("# Verify Changes\n\nOperation replayed; verification was not repeated.", { operation: execution.receipt, replayed: true });
       const result = execution.result;
       return textResult(
-        `# Verify Changes\n\nSelected: ${result.selectedChecks.length}\nResult: ${result.ok}\nOperation: ${execution.receipt.id}`,
+        result.complete
+          ? `# Verify Changes\n\nSelected: ${result.selectedChecks.length}\nResult: ${result.ok}\nOperation: ${execution.receipt.id}`
+          : `# Verify Changes\n\nVerification incomplete: synchronous call budget reached; required checks remain pending.\nCompleted: ${result.results.length}\nRemaining: ${result.remainingCheckIds.join(", ")}\nOperation: ${execution.receipt.id}`,
         { workspace_id: workspace.id, ...result, executed: true, operation: execution.receipt }
       );
     }

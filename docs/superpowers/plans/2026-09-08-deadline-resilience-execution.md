@@ -37,10 +37,10 @@ Plan 23 and Plan 24 are architecturally independent after Plan 22, but the seque
 
 ## Milestone 23 — Composite verification budgeting
 
-- [ ] Give `run_checks` / `verify_changes` one shared remaining budget.
-- [ ] Add explicit incomplete/deadline-yielded/remaining-check metadata.
-- [ ] Prove a synthetic multi-check call cannot accumulate independent timeouts past the effective configured deadline, including default and shorter custom-budget cases.
-- [ ] Verify focused checks/repair smokes, full smoke, and milestone commit.
+- [x] Give `run_checks` / `verify_changes` one shared remaining budget.
+- [x] Add explicit incomplete/deadline-yielded/remaining-check metadata.
+- [x] Prove a synthetic multi-check call cannot accumulate independent timeouts past the effective configured deadline, including default and shorter custom-budget cases.
+- [x] Verify focused checks/repair smokes, full smoke, and milestone commit.
 
 ## Milestone 24 — Durable structured jobs
 

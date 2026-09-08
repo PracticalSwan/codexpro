@@ -1,6 +1,6 @@
 # Composite Verification Deadline Propagation Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Ensure `run_checks` and `verify_changes` share one effective configured synchronous call budget across all selected checks and return resumable partial state instead of accumulating per-check timeouts past the user's selected transport window.
 
@@ -30,14 +30,14 @@
 - Produces additive `complete`, `deadlineYielded`, and `remainingCheckIds` fields on `CheckRunResult`.
 - Extends `VerificationPlanResult` with the same completion information while preserving existing `ok` semantics.
 
-- [ ] **Step 1: Add failing contract tests**
+- [x] **Step 1: Add failing contract tests**
 
 Create a short synthetic budget and two discovered checks. Assert the first completed check remains in `results`, the second remains in `remainingCheckIds`, `complete=false`, and `deadlineYielded=true`. For `verifyChanges`, assert `ok=null` while incomplete so callers cannot mistake partial evidence for a verified pass.
 
 Run: `node scripts/checks-smoke.mjs`
 Expected: FAIL because completion/deadline fields are absent.
 
-- [ ] **Step 2: Add explicit completion fields**
+- [x] **Step 2: Add explicit completion fields**
 
 Use result shapes equivalent to:
 
@@ -65,11 +65,11 @@ interface CheckRunResult {
 - Consumes: `currentSyncCallDeadline()` / `DeadlineBudget` from Plan 22.
 - Produces: a per-check effective timeout capped by the remaining shared call budget.
 
-- [ ] **Step 1: Add a fast synthetic deadline-yield test**
+- [x] **Step 1: Add a fast synthetic deadline-yield test**
 
 Use an injected/fake short budget. Prove that a check whose requested timeout exceeds the remaining call budget is deadline-limited, its owned subprocess is stopped, and its ID plus later IDs remain pending.
 
-- [ ] **Step 2: Implement remaining-budget calculation**
+- [x] **Step 2: Implement remaining-budget calculation**
 
 Before each check, read the current deadline and calculate:
 
@@ -81,11 +81,11 @@ const effectiveTimeoutMs = deadline
 
 If there is not enough budget to safely start a phase, do not spawn it. If an already-running check reaches a deadline-limited timeout, classify the result as a deadline yield rather than a test assertion failure.
 
-- [ ] **Step 3: Preserve full required-check intent**
+- [x] **Step 3: Preserve full required-check intent**
 
 `remainingCheckIds` must include the deadline-limited current check (if incomplete) followed by every selected check not yet started. Never shorten the list to make the result look complete.
 
-- [ ] **Step 4: Verify module behavior**
+- [x] **Step 4: Verify module behavior**
 
 Run: `node scripts/checks-smoke.mjs`
 Run: `npm run build`
@@ -101,22 +101,22 @@ Expected: PASS.
 **Interfaces:**
 - Produces: structured MCP results that distinguish `complete`, `partial/deadline-yielded`, and true verification failure.
 
-- [ ] **Step 1: Add MCP-level assertions**
+- [x] **Step 1: Add MCP-level assertions**
 
 Assert a partial verification response contains completed evidence plus the exact pending check IDs and does not say verification passed.
 
-- [ ] **Step 2: Keep text summaries unambiguous**
+- [x] **Step 2: Keep text summaries unambiguous**
 
 Use wording such as `Verification incomplete: synchronous call budget reached; required checks remain pending.` Do not label this as PASS or FAIL.
 
-- [ ] **Step 3: Verify shared registration behavior**
+- [x] **Step 3: Verify shared registration behavior**
 
 Run: `node scripts/verification-repair-smoke.mjs`
 Run: `npm run smoke`
 Run: `git diff --check`
 Expected: PASS.
 
-- [ ] **Step 4: Commit milestone**
+- [x] **Step 4: Commit milestone**
 
 ```bash
 git add src/checksOps.ts src/bashOps.ts src/server.ts scripts/checks-smoke.mjs scripts/verification-repair-smoke.mjs scripts/http-state-continuity-smoke.mjs

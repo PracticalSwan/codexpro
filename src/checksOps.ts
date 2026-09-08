@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import type { CodexProConfig } from "./config.js";
+import { currentSyncCallDeadline, type DeadlineBudget } from "./deadline.js";
 import { CodexProError, type PathGuard, type Workspace } from "./guard.js";
 import { runBash } from "./bashOps.js";
 import { discoverVerificationCommands, reviewWorkspaceChanges } from "./analysis/impact.js";
@@ -28,6 +29,9 @@ export interface CheckExecutionResult {
 
 export interface CheckRunResult {
   ok: boolean;
+  complete: boolean;
+  deadlineYielded: boolean;
+  remainingCheckIds: string[];
   selectedChecks: TrustedCheck[];
   results: CheckExecutionResult[];
 }
@@ -91,6 +95,7 @@ export async function runChecks(request: {
   checkIds: string[];
   timeoutMs?: number;
   sessionId?: string;
+  deadline?: DeadlineBudget;
 }): Promise<CheckRunResult> {
   const discovered = await discoverTrustedChecks(request.config, request.guard, request.workspace);
   const byId = new Map(discovered.map((check) => [check.id, check]));
@@ -102,25 +107,33 @@ export async function runChecks(request: {
     return check;
   });
   const results: CheckExecutionResult[] = [];
-  for (const check of selectedChecks) {
-    const result = await runBash(request.config, request.guard, request.workspace, check.command, {
-      timeoutMs: request.timeoutMs,
-      sessionId: request.sessionId
-    });
+  const deadline = request.deadline ?? currentSyncCallDeadline();
+  const requestedTimeoutMs = Math.max(1_000, Math.min(request.timeoutMs ?? 30_000, request.config.maxBashTimeoutMs));
+  let deadlineYielded = false;
+  let remainingCheckIds: string[] = [];
+  for (let index = 0; index < selectedChecks.length; index += 1) {
+    const check = selectedChecks[index];
+    const effectiveTimeoutMs = deadline ? deadline.childTimeoutMs(requestedTimeoutMs, 1_000) : requestedTimeoutMs;
+    if (effectiveTimeoutMs < 1_000) {
+      deadlineYielded = true;
+      remainingCheckIds = selectedChecks.slice(index).map((item) => item.id);
+      break;
+    }
+    const result = await runBash(request.config, request.guard, request.workspace, check.command, { timeoutMs: effectiveTimeoutMs, sessionId: request.sessionId });
+    const deadlineLimitedTimeout = Boolean(deadline && effectiveTimeoutMs < requestedTimeoutMs && result.terminationReason === "timeout");
+    if (deadlineLimitedTimeout) {
+      deadlineYielded = true;
+      remainingCheckIds = selectedChecks.slice(index).map((item) => item.id);
+      break;
+    }
     results.push({
-      check,
-      exitCode: result.exitCode,
-      signal: result.signal,
-      durationMs: result.durationMs,
-      terminationReason: result.terminationReason,
+      check, exitCode: result.exitCode, signal: result.signal, durationMs: result.durationMs, terminationReason: result.terminationReason,
       ok: result.exitCode === 0 && result.terminationReason === "normal",
-      structured: normalizeStructuredFailurePaths(
-        parseTestOutput(check.framework, result.stdout, result.stderr, request.config.maxCheckOutputBytes),
-        request.workspace.root
-      )
+      structured: normalizeStructuredFailurePaths(parseTestOutput(check.framework, result.stdout, result.stderr, request.config.maxCheckOutputBytes), request.workspace.root)
     });
   }
-  return { ok: results.every((result) => result.ok), selectedChecks, results };
+  const complete = remainingCheckIds.length === 0;
+  return { ok: complete && results.every((result) => result.ok), complete, deadlineYielded, remainingCheckIds, selectedChecks, results };
 }
 function chooseVerificationChecks(analysis: ChangeAnalysis, discovered: TrustedCheck[]): TrustedCheck[] {
   const byCommand = new Map(discovered.map((check) => [check.command, check]));
@@ -146,6 +159,9 @@ export interface VerificationPlanResult {
   selectedChecks: TrustedCheck[];
   results: CheckExecutionResult[];
   ok: boolean | null;
+  complete: boolean;
+  deadlineYielded: boolean;
+  remainingCheckIds: string[];
   repair: VerificationRepairContract;
 }
 
@@ -157,6 +173,7 @@ export async function verifyChanges(request: {
   run?: boolean;
   timeoutMs?: number;
   sessionId?: string;
+  deadline?: DeadlineBudget;
 }): Promise<VerificationPlanResult> {
   const analysis = await reviewWorkspaceChanges(request.config, request.guard, request.workspace, {
     changedPaths: request.changedPaths
@@ -164,7 +181,7 @@ export async function verifyChanges(request: {
   const discovered = await discoverTrustedChecks(request.config, request.guard, request.workspace);
   const selectedChecks = chooseVerificationChecks(analysis, discovered);
   if (request.run === false || !selectedChecks.length) {
-    return { analysis, selectedChecks, results: [], ok: selectedChecks.length ? null : true, repair: buildVerificationRepairContract(analysis, []) };
+    return { analysis, selectedChecks, results: [], ok: selectedChecks.length ? null : true, complete: selectedChecks.length === 0, deadlineYielded: false, remainingCheckIds: selectedChecks.map((check) => check.id), repair: buildVerificationRepairContract(analysis, []) };
   }
   const executed = await runChecks({
     config: request.config,
@@ -172,7 +189,10 @@ export async function verifyChanges(request: {
     workspace: request.workspace,
     checkIds: selectedChecks.map((check) => check.id),
     timeoutMs: request.timeoutMs,
-    sessionId: request.sessionId
+    sessionId: request.sessionId,
+    deadline: request.deadline
   });
-  return { analysis, selectedChecks, results: executed.results, ok: executed.ok, repair: buildVerificationRepairContract(analysis, executed.results) };
+  const repair = buildVerificationRepairContract(analysis, executed.results);
+  const incompleteRepair = !executed.complete && repair.status === "passed" ? buildVerificationRepairContract(analysis, []) : repair;
+  return { analysis, selectedChecks, results: executed.results, ok: executed.complete ? executed.ok : null, complete: executed.complete, deadlineYielded: executed.deadlineYielded, remainingCheckIds: executed.remainingCheckIds, repair: incompleteRepair };
 }
