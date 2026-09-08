@@ -79,7 +79,7 @@
 **Revisit only if:** the host platform exposes a reliable negotiated deadline/continuation primitive; even then, the quality-preservation invariant remains.
 
 ## D-020 — Long work uses distinct existing/durable execution roles
-**Decision:** Long shell commands remain owned by `proc_*`; structured long operations may use a bounded persistent `job_*` substrate; expensive in-process scans may use `batch_*` cursors; multi-stage isolated engineering remains owned by Durable Goals. A future job substrate must not become another generic command runner or workflow DSL.
+**Decision:** Long shell commands remain owned by `proc_*`; structured long operations may use a bounded persistent `job_*` substrate; expensive in-process scans may use `batch_*` cursors; multi-stage isolated engineering remains owned by Durable Goals. The `job_*` substrate is restricted to registered structured producers and is not another generic command runner or workflow DSL.
 **Why:** Separating execution roles keeps ownership, cancellation, persistence, policy, and recovery understandable while solving the tool-window problem without duplicating proven process/Goal machinery.
 
 ## D-021 — Browser continuation is human-gated, not a restriction bypass

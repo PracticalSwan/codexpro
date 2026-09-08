@@ -1,6 +1,6 @@
 # Durable Structured Job Core Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add persistent `job_*` state for structured long operations so work can continue locally while ChatGPT uses short status/output calls.
 
@@ -31,14 +31,14 @@
 **Interfaces:**
 - Produces: `JobRecord`, `JobState`, `JobProgress`, `JobStore.create/require/update/list/appendOutput/readOutput`.
 
-- [ ] **Step 1: Write store tests first**
+- [x] **Step 1: Write store tests first**
 
 Cover atomic record creation/update, bounded listing, workspace ownership checks, output truncation/cursors, malformed-record rejection, and sanitized public records.
 
 Run: `node scripts/jobs-smoke.mjs`
 Expected: FAIL because the job modules do not exist.
 
-- [ ] **Step 2: Implement strict record schemas**
+- [x] **Step 2: Implement strict record schemas**
 
 Use a record shape equivalent to:
 
@@ -80,19 +80,19 @@ Persist worker nonces only as hashes in public/state records; raw launch nonce m
 **Interfaces:**
 - Produces: `launchStructuredJob()`, `reconcileJob()`, `cancelJob()`, and `resumeJob()` for registered job kinds only.
 
-- [ ] **Step 1: Add worker-identity tests**
+- [x] **Step 1: Add worker-identity tests**
 
 Test launch metadata, completed-worker reconciliation, dead-worker transition to `interrupted`, and refusal to signal a PID whose process start identity/nonce does not match the recorded CodexPro worker.
 
-- [ ] **Step 2: Implement a registry of approved job producers**
+- [x] **Step 2: Implement a registry of approved job producers**
 
 `runner.ts` should map a bounded job kind to an internal worker entrypoint. Do not accept a model-provided executable or shell string as a job kind. Async verification registers its worker in Plan 25.
 
-- [ ] **Step 3: Implement recovery semantics**
+- [x] **Step 3: Implement recovery semantics**
 
 On status/read/resume, reconcile persisted state with worker ownership. Completed result files win over stale `running` metadata. Missing/dead workers become `interrupted`; they are not silently reported as running.
 
-- [ ] **Step 4: Implement explicit resume**
+- [x] **Step 4: Implement explicit resume**
 
 `resumeJob()` may relaunch only job kinds whose producer supplied durable resume metadata. It must preserve completed phases and never re-run a completed phase merely because an MCP session changed.
 
@@ -106,19 +106,19 @@ On status/read/resume, reconcile persisted state with worker ownership. Complete
 **Interfaces:**
 - Produces MCP tools: `job_status`, `list_jobs`, `read_job_output`, `cancel_job`, `resume_job`.
 
-- [ ] **Step 1: Add MCP contract tests**
+- [x] **Step 1: Add MCP contract tests**
 
 Assert each polling tool returns promptly from persisted state and never waits for the worker. `read_job_output` uses a cursor/byte cap analogous to `read_workspace_process_output`.
 
-- [ ] **Step 2: Register tools with existing policy/mode gates**
+- [x] **Step 2: Register tools with existing policy/mode gates**
 
 These tools are control/read tools, not generic execution. `cancel_job` and `resume_job` remain state-changing and must flow through existing operation/activity/policy hooks where applicable.
 
-- [ ] **Step 3: Add progress heartbeat rules**
+- [x] **Step 3: Add progress heartbeat rules**
 
 Workers update `lastProgressAt` only on material events: phase transition, completed item, bounded new output, or terminal state. A timer-only heartbeat without work is optional diagnostic liveness and must not be treated as task progress.
 
-- [ ] **Step 4: Verify focused and shared behavior**
+- [x] **Step 4: Verify focused and shared behavior**
 
 Run: `node scripts/jobs-smoke.mjs`
 Run: `npm run build`
@@ -131,18 +131,18 @@ Expected: PASS.
 - Modify: `scripts/http-state-continuity-smoke.mjs`
 - Modify: `docs/agentic/PROJECT_MEMORY.md` after verified implementation
 
-- [ ] **Step 1: Add continuity test**
+- [x] **Step 1: Add continuity test**
 
 Create a synthetic structured job, simulate MCP session turnover/runtime state reload, and prove `job_status` reconstructs persisted state without confusing an unrelated PID for the job worker.
 
-- [ ] **Step 2: Run concurrency/recovery gate**
+- [x] **Step 2: Run concurrency/recovery gate**
 
 Run: `node scripts/http-state-continuity-smoke.mjs`
 Run: `npm run stress`
 Run: `git diff --check`
 Expected: PASS.
 
-- [ ] **Step 3: Commit milestone**
+- [x] **Step 3: Commit milestone**
 
 ```bash
 git add src/jobs src/server.ts scripts/jobs-smoke.mjs scripts/http-state-continuity-smoke.mjs docs/agentic/PROJECT_MEMORY.md

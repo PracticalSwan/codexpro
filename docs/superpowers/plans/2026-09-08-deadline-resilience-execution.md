@@ -44,10 +44,10 @@ Plan 23 and Plan 24 are architecturally independent after Plan 22, but the seque
 
 ## Milestone 24 — Durable structured jobs
 
-- [ ] Add bounded persisted `job_*` records, progress/output cursors, worker ownership, recovery, cancel/resume.
-- [ ] Keep public job creation restricted to registered structured producers.
-- [ ] Prove polling calls are short and PID-reuse protections work.
-- [ ] Verify focused jobs/continuity smokes plus stress, then milestone commit.
+- [x] Add bounded persisted `job_*` records, progress/output cursors, worker ownership, recovery, cancel/resume.
+- [x] Keep public job creation restricted to registered structured producers.
+- [x] Prove polling calls are short and PID-reuse protections work.
+- [x] Verify focused jobs/continuity smokes plus stress, then milestone commit.
 
 ## Milestone 25 — Async verification
 

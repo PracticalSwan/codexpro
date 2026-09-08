@@ -54,6 +54,8 @@ import { inspectArchive, extractArchive } from "./archiveOps.js";
 import { readDocument } from "./documentOps.js";
 import { exportWorkspaceFile } from "./exportOps.js";
 import { GoalStore } from "./goals/store.js";
+import { JobStore, publicJobRecord } from "./jobs/store.js";
+import { cancelJob, reconcileJob, resumeJob } from "./jobs/runner.js";
 import { proposeGoal, approveGoal, startGoal, pauseGoal, resumeGoal, cancelGoal } from "./goals/runner.js";
 import { reviewGoal, projectGoal } from "./goals/projection.js";
 import { goalPlatformStatus } from "./goals/isolation.js";
@@ -396,6 +398,11 @@ const STANDARD_TOOL_NAMES = [
   "workspace_process_status",
   "read_workspace_process_output",
   "stop_workspace_process",
+  "job_status",
+  "list_jobs",
+  "read_job_output",
+  "cancel_job",
+  "resume_job",
   "inspect_workspace",
   "tree",
   "search",
@@ -470,6 +477,11 @@ const FULL_TOOL_NAMES = [
   "workspace_process_status",
   "read_workspace_process_output",
   "stop_workspace_process",
+  "job_status",
+  "list_jobs",
+  "read_job_output",
+  "cancel_job",
+  "resume_job",
   "goal_status",
   "list_goals",
   "propose_goal",
@@ -521,6 +533,8 @@ const CONNECTION_TEST_HIDDEN_TOOLS = new Set<string>([
   "workspace_process_status",
   "read_workspace_process_output",
   "stop_workspace_process",
+  "cancel_job",
+  "resume_job",
   "codegraph_sync",
   "git_stage",
   "git_commit",
@@ -538,7 +552,8 @@ const BASH_DEPENDENT_TOOL_NAMES = new Set<string>([
   "start_workspace_process",
   "workspace_process_status",
   "read_workspace_process_output",
-  "stop_workspace_process"
+  "stop_workspace_process",
+  "resume_job"
 ]);
 
 const GOAL_TOOL_NAMES = new Set<string>([
@@ -1241,6 +1256,7 @@ export function createCodexProServer(
     taskStores.set(workspace.id, store);
     return store;
   };
+  const jobStore = new JobStore({ baseDir: config.jobDir, maxJobs: config.maxOperationReceipts, maxOutputBytes: config.maxOperationBytes, maxReadBytes: config.maxProcessReadBytes });
   const goalStores = new Map<string, GoalStore>();
   const goalStoreFor = (workspace: Workspace): GoalStore => {
     const existing = goalStores.get(workspace.id);
@@ -1308,10 +1324,12 @@ export function createCodexProServer(
     const operationId = structured?.operation?.id ?? structured?.operation_id;
     const checkId = structured?.check_id ?? structured?.check?.id ?? args?.check_id;
     const processId = structured?.process_id ?? structured?.process?.id ?? args?.process_id;
+    const jobId = structured?.job_id ?? structured?.job?.id ?? args?.job_id;
     const goalId = structured?.goal_id ?? structured?.goal?.id ?? args?.goal_id;
     const rawPaths = Array.isArray(structured?.paths) ? structured.paths : typeof structured?.path === "string" ? [structured.path] : [];
     let kind: ActivityKind = "tool";
     if (goalId || name.includes("goal")) kind = "goal";
+    else if (jobId || name.includes("job")) kind = "job";
     else if (processId || name.includes("process")) kind = "process";
     else if (checkId || name.includes("check") || name === "verify_changes") kind = "check";
     else if (operationId) kind = "operation";
@@ -1335,6 +1353,7 @@ export function createCodexProServer(
       ...(operationId ? { operationId: String(operationId) } : {}),
       ...(checkId ? { checkId: String(checkId) } : {}),
       ...(processId ? { processId: String(processId) } : {}),
+      ...(jobId ? { jobId: String(jobId) } : {}),
       ...(goalId ? { goalId: String(goalId) } : {}),
       ...(rawPaths.length ? { relativePaths: rawPaths.map(String) } : {}),
       summary
@@ -1609,6 +1628,69 @@ export function createCodexProServer(
       return textResult(`# Operation Status\n\n${JSON.stringify(receipt, null, 2)}`, { found: true, operation: receipt });
     }
   );
+
+  registerCodexTool(config, server, "job_status", {
+    title: "Job Status",
+    description: "Return current persisted state for one CodexPro structured job. Reconciles terminal/dead-worker truth without waiting for job completion.",
+    inputSchema: { workspace_id: z.string().optional(), job_id: z.string().regex(/^job_[A-Za-z0-9-]{1,80}$/) },
+    annotations: READ_ONLY_ANNOTATIONS
+  }, async (args) => {
+    const workspace = workspaces.getWorkspace(args.workspace_id);
+    await jobStore.requireForWorkspace(args.job_id, workspace);
+    const record = await reconcileJob(jobStore, args.job_id);
+    const job = publicJobRecord(record);
+    return textResult(`# Job Status\n\n${JSON.stringify(job, null, 2)}`, { workspace_id: workspace.id, job_id: record.id, job });
+  });
+
+  registerCodexTool(config, server, "list_jobs", {
+    title: "List Jobs",
+    description: "List bounded persisted CodexPro structured jobs for the selected workspace. Does not wait for workers.",
+    inputSchema: { workspace_id: z.string().optional() },
+    annotations: READ_ONLY_ANNOTATIONS
+  }, async (args) => {
+    const workspace = workspaces.getWorkspace(args.workspace_id);
+    const jobs = (await jobStore.list(workspace.id)).map(publicJobRecord);
+    return textResult(`# Jobs\n\n${JSON.stringify(jobs, null, 2)}`, { workspace_id: workspace.id, jobs, count: jobs.length });
+  });
+
+  registerCodexTool(config, server, "read_job_output", {
+    title: "Read Job Output",
+    description: "Read a bounded redacted byte range from a CodexPro structured job output log using an opaque byte cursor.",
+    inputSchema: { workspace_id: z.string().optional(), job_id: z.string().regex(/^job_[A-Za-z0-9-]{1,80}$/), cursor: z.number().int().min(0).optional(), max_bytes: z.number().int().min(1).max(config.maxProcessReadBytes).optional() },
+    annotations: READ_ONLY_ANNOTATIONS
+  }, async (args) => {
+    const workspace = workspaces.getWorkspace(args.workspace_id);
+    const record = await jobStore.requireForWorkspace(args.job_id, workspace);
+    const output = await jobStore.readOutput(record.id, args.cursor ?? 0, args.max_bytes ?? config.maxProcessReadBytes);
+    return textResult(`# Job Output\n\n${output.text}`, { workspace_id: workspace.id, job_id: record.id, state: record.state, ...output });
+  });
+
+  registerCodexTool(config, server, "cancel_job", {
+    title: "Cancel Job",
+    description: "Cancel one CodexPro structured job. A running worker is signaled only after PID, OS start identity, and worker nonce attestation all match.",
+    inputSchema: { workspace_id: z.string().optional(), job_id: z.string().regex(/^job_[A-Za-z0-9-]{1,80}$/) },
+    annotations: LOCAL_WRITE_ANNOTATIONS
+  }, async (args) => {
+    const workspace = workspaces.getWorkspace(args.workspace_id);
+    await jobStore.requireForWorkspace(args.job_id, workspace);
+    const record = await cancelJob(jobStore, args.job_id);
+    const job = publicJobRecord(record);
+    return textResult(`# Cancel Job\n\nState: ${record.state}`, { workspace_id: workspace.id, job_id: record.id, job });
+  });
+
+  registerCodexTool(config, server, "resume_job", {
+    title: "Resume Job",
+    description: "Resume an interrupted/paused CodexPro structured job only when its registered producer declares durable resume support. No arbitrary command input is accepted.",
+    inputSchema: { workspace_id: z.string().optional(), job_id: z.string().regex(/^job_[A-Za-z0-9-]{1,80}$/) },
+    annotations: BASH_ANNOTATIONS
+  }, async (args) => {
+    const workspace = workspaces.getWorkspace(args.workspace_id);
+    const workspaceConfig = configForWorkspace(workspace);
+    await jobStore.requireForWorkspace(args.job_id, workspace);
+    const record = await resumeJob(workspaceConfig, jobStore, workspace, args.job_id);
+    const job = publicJobRecord(record);
+    return textResult(`# Resume Job\n\nState: ${record.state}`, { workspace_id: workspace.id, job_id: record.id, job });
+  });
 
   registerCodexTool(config, server, "read_many", {
     title: "Read Many", description: "Read multiple guarded text files with isolated per-item failures and one aggregate byte budget.",

@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { Client } from "@modelcontextprotocol/client";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { JobStore } from "../dist/jobs/store.js";
 
 async function freePort() {
   return new Promise((resolve, reject) => {
@@ -56,6 +57,7 @@ const root = await fs.mkdtemp(path.join(os.tmpdir(), "codexpro-http-state-"));
 const home = await fs.mkdtemp(path.join(os.tmpdir(), "codexpro-http-state-home-"));
 const port = await freePort();
 const token = "codexpro-http-state-token-1234567890";
+const jobDir = path.join(home, "jobs");
 await fs.writeFile(path.join(root, "seed.txt"), "seed\n", "utf8");
 const child = spawn(process.execPath, ["dist/http.js"], {
   cwd: path.resolve("."),
@@ -69,7 +71,8 @@ const child = spawn(process.execPath, ["dist/http.js"], {
     CODEXPRO_BASH_MODE: "full",
     CODEXPRO_WRITE_MODE: "workspace",
     CODEXPRO_TOOL_MODE: "full",
-    CODEXPRO_HOME: home
+    CODEXPRO_HOME: home,
+    CODEXPRO_JOB_DIR: jobDir
   },
   stdio: ["ignore", "pipe", "pipe"]
 });
@@ -79,7 +82,13 @@ try {
   const url = `http://127.0.0.1:${port}/mcp`;
   let processId;
   let eventCursor;
+  let workspaceId;
+  let persistedJobId;
+  let staleJobId;
   await withFreshClient(url, token, async (client) => {
+    const opened = await callTool(client, "open_current_workspace");
+    workspaceId = opened.workspace?.id ?? opened.workspace_id;
+    assert(workspaceId, "workspace id missing for job continuity");
     const started = await callTool(client, "start_workspace_process", {
       command: `node -e "console.log('state-ready'); setTimeout(()=>{},10000)"`
     });
@@ -88,6 +97,18 @@ try {
     const baseline = await callTool(client, "workspace_events");
     eventCursor = baseline.cursor;
     assert.match(eventCursor, /^evt_/);
+  });
+  const persistedStore = new JobStore({ baseDir: jobDir });
+  const workspace = { id: workspaceId, root };
+  const persistedJob = await persistedStore.create({ workspace, kind: "verification" });
+  persistedJobId = persistedJob.id;
+  await persistedStore.appendOutput(persistedJob.id, "persisted-across-client\n");
+  const staleJob = await persistedStore.create({ workspace, kind: "verification" });
+  staleJobId = staleJob.id;
+  await persistedStore.update(staleJob.id, (record) => {
+    record.state = "running";
+    record.worker = { pid: process.pid, startedAt: new Date().toISOString(), nonceHash: "a".repeat(64), startKey: "unrelated-process-start" };
+    return record;
   });
   await fs.writeFile(path.join(root, "created-after-cursor.txt"), "created\n", "utf8");
   const failures = [];
@@ -105,6 +126,17 @@ try {
       assert.match(output, /state-ready/);
       await callTool(client, "stop_workspace_process", { process_id: processId });
     } catch (error) { failures.push(`process continuity: ${error instanceof Error ? error.message : error}`); }
+
+    try {
+      const persisted = await callTool(client, "job_status", { job_id: persistedJobId });
+      assert.equal(persisted.job.id, persistedJobId);
+      assert.equal(persisted.job.state, "queued");
+      const output = await callTool(client, "read_job_output", { job_id: persistedJobId, cursor: 0, max_bytes: 2048 });
+      assert.match(output.text, /persisted-across-client/);
+      const stale = await callTool(client, "job_status", { job_id: staleJobId });
+      assert.equal(stale.job.state, "interrupted");
+      assert.match(stale.job.error, /no longer live|identity/i);
+    } catch (error) { failures.push(`job continuity: ${error instanceof Error ? error.message : error}`); }
 
     try {
       const events = await callTool(client, "workspace_events", { cursor: eventCursor });
