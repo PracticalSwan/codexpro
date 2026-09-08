@@ -41,6 +41,7 @@ Usage:
   codexpro start
   codexpro start --root /path/to/repo
   codexpro start --tunnel openai --openai-tunnel-id tunnel_...
+  codexpro continuation browser pair --profile default
   codexpro settings
   codexpro doctor
   codexpro connection-test --root /path/to/repo
@@ -660,7 +661,38 @@ function codexProHome() {
   const customHome = process.env.CODEXPRO_HOME;
   return customHome ? path.resolve(expandHome(customHome)) : path.join(os.homedir(), '.codexpro');
 }
-
+async function runContinuationCommand(argv) {
+  const continuationEnabled = process.env.CODEXPRO_CONTINUATION_ENABLED === "1";
+  if (!continuationEnabled) throw new Error("continuation_disabled: enable task continuation before browser pairing.");
+  if (argv[0] !== "browser" || argv[1] !== "pair") {
+    throw new Error("Supported continuation command: codexpro continuation browser pair --profile <label>");
+  }
+  let profile = "default";
+  for (let index = 2; index < argv.length; index += 1) {
+    if (argv[index] === "--profile") { profile = argv[++index] ?? ""; continue; }
+    if (argv[index] === "--help" || argv[index] === "-h") {
+      console.log("Usage: codexpro continuation browser pair --profile <label>"); return;
+    }
+    throw new Error(`Unknown continuation browser pair option: ${argv[index]}`);
+  }
+  const moduleUrl = pathToFileURL(path.join(projectRoot, "dist", "continuation", "browserAuth.js")).href;
+  const { BrowserPairingStore } = await import(moduleUrl);
+  const baseDir = path.join(codexProHome(), "continuation", "browser");
+  const pairing = await new BrowserPairingStore(baseDir).createPairing(profile);
+  let bridge = "not running";
+  try {
+    const runtime = JSON.parse(fs.readFileSync(path.join(baseDir, "runtime.json"), "utf8"));
+    if (typeof runtime.url === "string" && /^http:\/\/127\.0\.0\.1:\d+$/.test(runtime.url)) bridge = runtime.url;
+  } catch {}
+  console.log("CodexPro browser continuation pairing");
+  console.log(`Profile: ${pairing.profileLabel}`);
+  console.log(`Pairing code: ${pairing.code}`);
+  console.log(`Expires: ${pairing.expiresAt}`);
+  console.log(`Bridge: ${bridge}`);
+  console.log(`Extension: ${path.join(projectRoot, "browser-extension")}`);
+  console.log("Load the unpacked extension manually in the dedicated managed browser profile, then enter this code in the extension popup.");
+  console.log("The browser credential is generated only during local extension exchange and is never printed here.");
+}
 function profileDir() {
   return path.join(codexProHome(), 'profiles');
 }
@@ -4172,6 +4204,10 @@ async function main() {
   }
   if (subcommand === 'settings' || subcommand === 'config') {
     await runSettings(argv.slice(1));
+    return;
+  }
+  if (subcommand === 'continuation') {
+    await runContinuationCommand(argv.slice(1));
     return;
   }
   if (subcommand === 'execute-handoff' || subcommand === 'execute' || subcommand === 'run-handoff') {

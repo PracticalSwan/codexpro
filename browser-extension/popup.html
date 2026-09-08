@@ -1,0 +1,15 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <main>
+    <h1>CodexPro continuation</h1>
+    <p id="status">Loading…</p>
+    <label>Bridge URL <input id="bridge" placeholder="http://127.0.0.1:PORT"></label>
+    <label>Profile <input id="profile" value="default" maxlength="64"></label>
+    <label>Pairing code <input id="code" maxlength="8" autocomplete="off"></label>
+    <button id="pair">Pair</button>
+    <section id="task" hidden><p id="taskSummary"></p><button id="bind">Bind this chat</button><button id="continue">Continue task</button></section>
+    <p id="error" role="status"></p>
+  </main>
+  <script src="popup.js"></script>
+</body></html>

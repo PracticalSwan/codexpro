@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { timingSafeEqual } from "node:crypto";
 import path from "node:path";
+import fsp from "node:fs/promises";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { createHttpTransportCompat, isInitializeRequestCompat } from "./mcpCompat.js";
@@ -24,6 +25,10 @@ import { TelemetryRegistry } from "./telemetry.js";
 import { JobStore } from "./jobs/store.js";
 import { diagnosticsSnapshot } from "./diagnosticsOps.js";
 import { WorkspaceRegistry } from "./guard.js";
+import { BrowserPairingStore } from "./continuation/browserAuth.js";
+import { startBrowserContinuationBridge } from "./continuation/browserBridge.js";
+import { ContinuationStore } from "./continuation/store.js";
+import { publicContinuationRecord, TERMINAL_CONTINUATION_STATES } from "./continuation/types.js";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -2038,6 +2043,24 @@ async function main(): Promise<void> {
     next(error);
   });
 
+  const continuationEnabled = (config as CodexProConfig & { continuationEnabled?: boolean }).continuationEnabled === true || process.env.CODEXPRO_CONTINUATION_ENABLED === "1";
+  const continuationRoot = path.join(path.dirname(config.operationDir), "continuation");
+  const browserRuntimeFile = path.join(continuationRoot, "browser", "runtime.json");
+  let browserBridge: Awaited<ReturnType<typeof startBrowserContinuationBridge>> | undefined;
+  if (continuationEnabled) {
+    const browserStore = new BrowserPairingStore(path.join(continuationRoot, "browser"));
+    const continuationStore = new ContinuationStore(continuationRoot, config.maxOperationReceipts);
+    browserBridge = await startBrowserContinuationBridge({
+      store: browserStore,
+      statusProvider: async () => {
+        const task = (await continuationStore.list()).find((record) => !TERMINAL_CONTINUATION_STATES.has(record.state));
+        return { continuation_enabled: true, task: task ? publicContinuationRecord(task) : null };
+      }
+    });
+    await fsp.mkdir(path.dirname(browserRuntimeFile), { recursive: true, mode: 0o700 });
+    await fsp.writeFile(browserRuntimeFile, `${JSON.stringify({ schemaVersion: 1, pid: process.pid, url: browserBridge.url, startedAt: new Date().toISOString() })}\n`, { encoding: "utf8", mode: 0o600 });
+    console.error(`[CodexPro] continuation bridge listening on ${browserBridge.url}`);
+  }
   const httpServer = app.listen(config.port, config.host, () => {
     console.error(`[CodexPro] HTTP MCP listening on http://${config.host}:${config.port}/mcp`);
     console.error(`[CodexPro] defaultRoot=${config.defaultRoot}`);
@@ -2054,6 +2077,10 @@ async function main(): Promise<void> {
     clearInterval(pruneTimer);
     for (const record of transports.values()) closeTransport(record);
     transports.clear();
+    if (browserBridge) {
+      await new Promise<void>((resolve) => browserBridge!.server.close(() => resolve()));
+      await fsp.rm(browserRuntimeFile, { force: true }).catch(() => undefined);
+    }
     await runtimeState.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
   };

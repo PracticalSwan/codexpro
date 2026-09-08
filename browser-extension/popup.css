@@ -1,0 +1,10 @@
+body { font: 13px/1.4 system-ui, sans-serif; margin: 0; min-width: 320px; }
+main { padding: 14px; display: grid; gap: 10px; }
+h1 { font-size: 16px; margin: 0; }
+label { display: grid; gap: 4px; }
+input, button { font: inherit; padding: 7px 9px; }
+button { cursor: pointer; }
+button:disabled { cursor: default; opacity: .55; }
+#task { border-top: 1px solid #bbb; padding-top: 10px; display: grid; gap: 8px; }
+#task[hidden] { display: none; }
+#error { min-height: 1.4em; margin: 0; }

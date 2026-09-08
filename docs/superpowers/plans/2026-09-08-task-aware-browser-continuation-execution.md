@@ -38,11 +38,11 @@ Plan 35 assumes relevant Plans 22–28 are implemented because it integrates the
 
 ## Milestone 30 — Browser companion and pairing
 
-- [ ] Add separate loopback continuation bridge credential/pairing.
-- [ ] Add narrow Manifest V3 extension and popup/background/content skeleton.
-- [ ] Prove tunnel/MCP privilege isolation and permission minimization.
-- [ ] Verify extension packaging excludes state.
-- [ ] Make Plan 30 milestone commit.
+- [x] Add separate loopback continuation bridge credential/pairing.
+- [x] Add narrow Manifest V3 extension and popup/background/content skeleton.
+- [x] Prove tunnel/MCP privilege isolation and permission minimization.
+- [x] Verify extension packaging excludes state.
+- [x] Make Plan 30 milestone commit.
 
 ## Milestone 31 — Managed browser/auth state
 

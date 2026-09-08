@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "CodexPro Task Continuation",
+  "version": "0.1.0",
+  "description": "Human-gated CodexPro continuation companion for one managed ChatGPT browser profile.",
+  "permissions": ["storage", "tabs", "notifications"],
+  "host_permissions": ["https://chatgpt.com/*", "http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html", "default_title": "CodexPro continuation" },
+  "content_scripts": [{
+    "matches": ["https://chatgpt.com/*"],
+    "js": ["content.js"],
+    "run_at": "document_idle"
+  }]
+}
