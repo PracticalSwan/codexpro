@@ -21,6 +21,7 @@ import { redactSensitiveText, redactStructured } from "./redact.js";
 import { createCodexProServer, registeredToolNames, toolNamesForMode } from "./server.js";
 import { CodexProRuntimeState } from "./runtimeState.js";
 import { TelemetryRegistry } from "./telemetry.js";
+import { JobStore } from "./jobs/store.js";
 import { diagnosticsSnapshot } from "./diagnosticsOps.js";
 import { WorkspaceRegistry } from "./guard.js";
 
@@ -1886,13 +1887,13 @@ async function main(): Promise<void> {
     });
   });
 
-  app.get("/admin/diagnostics", (_req, res) => {
+  app.get("/admin/diagnostics", async (_req, res) => {
+    const saved = profileValues(config, readWorkspaceProfile(config.defaultRoot));
+    const jobs = await new JobStore({ baseDir: config.jobDir, maxJobs: config.maxOperationReceipts, maxOutputBytes: config.maxOperationBytes, maxReadBytes: config.maxProcessReadBytes }).list();
+    const activeStructuredJobs = jobs.filter((job) => ["queued", "running", "paused"].includes(job.state)).length;
     res.json(diagnosticsSnapshot(
-      config,
-      telemetry.snapshot(),
-      latestRegisteredTools,
-      toolNamesForMode(config),
-      transports.size
+      config, telemetry.snapshot(), latestRegisteredTools, toolNamesForMode(config), transports.size,
+      { savedDeadlineMode: saved.syncCallDeadlineMode, savedDeadlineMs: saved.syncCallDeadlineMinutes * 60_000, activeStructuredJobs }
     ));
   });
 

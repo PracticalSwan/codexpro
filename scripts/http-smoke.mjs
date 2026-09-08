@@ -330,6 +330,10 @@ try {
   if (JSON.stringify(initialDiagnosticsJson).includes(token)) {
     throw new Error('admin diagnostics leaked the raw auth token');
   }
+  if (initialDiagnosticsJson.operator?.current_effective_deadline?.ms !== 1_200_000 || initialDiagnosticsJson.operator?.current_effective_deadline?.mode !== 'bounded') throw new Error('admin diagnostics omitted current effective deadline');
+  if (!Number.isFinite(initialDiagnosticsJson.operator?.saved_next_run_deadline?.ms)) throw new Error('admin diagnostics omitted saved next-run deadline');
+  if (!Number.isInteger(initialDiagnosticsJson.operator?.active_structured_jobs) || initialDiagnosticsJson.operator.active_structured_jobs < 0) throw new Error('admin diagnostics omitted active structured job count');
+  if (initialDiagnosticsJson.operator?.recent_deadline_yield !== false) throw new Error('fresh diagnostics incorrectly reported a recent deadline yield');
 
   const badAdminJson = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
     method: 'POST',
@@ -623,6 +627,7 @@ try {
   const mcpUrl = `${baseUrl}/mcp?codexpro_token=${encodeURIComponent(token)}`;
   await withClient(mcpUrl, async (diagnosticClient) => {
     const connection = await callTool(diagnosticClient, 'connection_diagnostics');
+    if (connection.structuredContent.deadline?.sync_call_deadline_ms !== 1_200_000 || connection.structuredContent.capabilities?.structured_jobs !== 'available') throw new Error(`connection_diagnostics omitted deadline/capabilities: ${JSON.stringify(connection.structuredContent)}`);
     if (!['healthy', 'degraded'].includes(connection.structuredContent.state)) {
       throw new Error(`connection_diagnostics did not observe live MCP traffic: ${JSON.stringify(connection.structuredContent)}`);
     }

@@ -50,6 +50,7 @@ export interface CheckRunResult {
   ok: boolean;
   complete: boolean;
   deadlineYielded: boolean;
+  deadlineLimitedChild: boolean;
   remainingCheckIds: string[];
   selectedChecks: TrustedCheck[];
   results: CheckExecutionResult[];
@@ -135,6 +136,7 @@ export async function runChecks(request: {
   const deadline = request.deadline ?? currentSyncCallDeadline();
   const requestedTimeoutMs = Math.max(1_000, Math.min(request.timeoutMs ?? 30_000, request.config.maxBashTimeoutMs));
   let deadlineYielded = false;
+  let deadlineLimitedChild = false;
   let remainingCheckIds: string[] = [];
   for (let index = 0; index < selectedChecks.length; index += 1) {
     const check = selectedChecks[index];
@@ -148,6 +150,7 @@ export async function runChecks(request: {
     const deadlineLimitedTimeout = Boolean(deadline && effectiveTimeoutMs < requestedTimeoutMs && result.terminationReason === "timeout");
     if (deadlineLimitedTimeout) {
       deadlineYielded = true;
+      deadlineLimitedChild = true;
       remainingCheckIds = selectedChecks.slice(index).map((item) => item.id);
       break;
     }
@@ -159,7 +162,7 @@ export async function runChecks(request: {
   }
   const complete = remainingCheckIds.length === 0;
   const routing = verificationRoutingHint(request.config, selectedChecks, request.timeoutMs, "start_checks");
-  return { ok: complete && results.every((result) => result.ok), complete, deadlineYielded, remainingCheckIds, selectedChecks, results, routing, execution_hint: routing.executionHint };
+  return { ok: complete && results.every((result) => result.ok), complete, deadlineYielded, deadlineLimitedChild, remainingCheckIds, selectedChecks, results, routing, execution_hint: routing.executionHint };
 }
 export function selectVerificationChecks(analysis: ChangeAnalysis, discovered: TrustedCheck[]): TrustedCheck[] {
   const byCommand = new Map(discovered.map((check) => [check.command, check]));
@@ -193,16 +196,17 @@ export interface VerificationPlanResult {
   ok: boolean | null;
   complete: boolean;
   deadlineYielded: boolean;
+  deadlineLimitedChild: boolean;
   remainingCheckIds: string[];
   repair: VerificationRepairContract;
   routing: VerificationRoutingHint;
   execution_hint: Record<string, unknown>;
 }
 
-export function finalizeVerificationResult(analysis: ChangeAnalysis, selectedChecks: TrustedCheck[], results: CheckExecutionResult[], state: { complete: boolean; deadlineYielded?: boolean; remainingCheckIds?: string[] }, routing: VerificationRoutingHint): VerificationPlanResult {
+export function finalizeVerificationResult(analysis: ChangeAnalysis, selectedChecks: TrustedCheck[], results: CheckExecutionResult[], state: { complete: boolean; deadlineYielded?: boolean; deadlineLimitedChild?: boolean; remainingCheckIds?: string[] }, routing: VerificationRoutingHint): VerificationPlanResult {
   const repair = buildVerificationRepairContract(analysis, results);
   const effectiveRepair = !state.complete && repair.status === "passed" ? buildVerificationRepairContract(analysis, []) : repair;
-  return { analysis, selectedChecks, results, ok: state.complete ? results.every((result) => result.ok) : null, complete: state.complete, deadlineYielded: Boolean(state.deadlineYielded), remainingCheckIds: state.remainingCheckIds ?? [], repair: effectiveRepair, routing, execution_hint: routing.executionHint };
+  return { analysis, selectedChecks, results, ok: state.complete ? results.every((result) => result.ok) : null, complete: state.complete, deadlineYielded: Boolean(state.deadlineYielded), deadlineLimitedChild: Boolean(state.deadlineLimitedChild), remainingCheckIds: state.remainingCheckIds ?? [], repair: effectiveRepair, routing, execution_hint: routing.executionHint };
 }
 
 export async function verifyChanges(request: {
@@ -218,7 +222,7 @@ export async function verifyChanges(request: {
   const { analysis, selectedChecks } = await prepareVerification({ config: request.config, guard: request.guard, workspace: request.workspace, changedPaths: request.changedPaths });
   if (request.run === false || !selectedChecks.length) {
     const routing = verificationRoutingHint(request.config, selectedChecks, request.timeoutMs, "start_verification");
-    return { analysis, selectedChecks, results: [], ok: selectedChecks.length ? null : true, complete: selectedChecks.length === 0, deadlineYielded: false, remainingCheckIds: selectedChecks.map((check) => check.id), repair: buildVerificationRepairContract(analysis, []), routing, execution_hint: routing.executionHint };
+    return { analysis, selectedChecks, results: [], ok: selectedChecks.length ? null : true, complete: selectedChecks.length === 0, deadlineYielded: false, deadlineLimitedChild: false, remainingCheckIds: selectedChecks.map((check) => check.id), repair: buildVerificationRepairContract(analysis, []), routing, execution_hint: routing.executionHint };
   }
   const executed = await runChecks({
     config: request.config,
@@ -229,5 +233,5 @@ export async function verifyChanges(request: {
     sessionId: request.sessionId,
     deadline: request.deadline
   });
-  return finalizeVerificationResult(analysis, selectedChecks, executed.results, { complete: executed.complete, deadlineYielded: executed.deadlineYielded, remainingCheckIds: executed.remainingCheckIds }, verificationRoutingHint(request.config, selectedChecks, request.timeoutMs, "start_verification"));
+  return finalizeVerificationResult(analysis, selectedChecks, executed.results, { complete: executed.complete, deadlineYielded: executed.deadlineYielded, deadlineLimitedChild: executed.deadlineLimitedChild, remainingCheckIds: executed.remainingCheckIds }, verificationRoutingHint(request.config, selectedChecks, request.timeoutMs, "start_verification"));
 }

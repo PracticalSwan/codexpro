@@ -1,0 +1,21 @@
+import assert from 'node:assert/strict';
+import { loadConfig } from '../dist/config.js';
+import { runToolTimeProbe } from '../dist/diagnosticsOps.js';
+
+const base = loadConfig(['--root', process.cwd(), '--allow-root', process.cwd()]);
+await assert.rejects(() => runToolTimeProbe(base, { maxMinutes: 1, sleep: async () => {} }), /observe/i);
+let now = 0;
+let sleeps = 0;
+const observe = { ...base, syncCallDeadlineMode: 'observe', syncCallDeadlineMs: 1_200_000 };
+const done = await runToolTimeProbe(observe, { maxMinutes: 1, now: () => now, sleep: async (ms) => { sleeps += 1; now += ms; } });
+assert.equal(done.status, 'completed');
+assert.equal(done.elapsed_ms, 60_000);
+assert(sleeps > 0);
+assert.equal(done.saved_deadline_changed, false);
+assert.match(done.guidance, /UI|host|manually/i);
+const controller = new AbortController();
+let abortNow = 0;
+const aborted = await runToolTimeProbe(observe, { maxMinutes: 2, now: () => abortNow, signal: controller.signal, sleep: async (ms) => { abortNow += ms; if (abortNow >= 2_000) controller.abort(); } });
+assert.equal(aborted.status, 'aborted');
+assert(aborted.elapsed_ms >= 2_000 && aborted.elapsed_ms < 120_000);
+assert.equal(aborted.saved_deadline_changed, false);

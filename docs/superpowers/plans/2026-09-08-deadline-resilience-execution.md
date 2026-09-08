@@ -73,18 +73,18 @@ Plan 23 and Plan 24 are architecturally independent after Plan 22, but the seque
 
 ## Milestone 28 — Observability and diagnostics
 
-- [ ] Add bounded/redacted deadline/job/batch lifecycle telemetry.
-- [ ] Expose current effective/default/min/max deadline values and continuation capability state through existing diagnostics.
-- [ ] Add timeout-risk inventory, current-runtime versus saved-next-run mode/deadline display, and the mutation-free `tool_time_probe` used only for host-window discovery; reuse Plan 22 for editing rather than creating a second settings control.
-- [ ] Verify diagnostics/full smoke and stress if shared concurrency instrumentation changed.
-- [ ] Make the final subsystem milestone commit.
+- [x] Add bounded/redacted deadline/job/batch lifecycle telemetry.
+- [x] Expose current effective/default/min/max deadline values and continuation capability state through existing diagnostics.
+- [x] Add timeout-risk inventory, current-runtime versus saved-next-run mode/deadline display, and the mutation-free `tool_time_probe` used only for host-window discovery; reuse Plan 22 for editing rather than creating a second settings control.
+- [x] Verify diagnostics/full smoke and stress if shared concurrency instrumentation changed.
+- [x] Make the final subsystem milestone commit.
 
 ## Final Cumulative Review
 
-- [ ] Spec-compliance review: map every recommendation in the design table to implemented evidence.
-- [ ] Quality review: confirm no path reduces requested scope/test coverage/review depth to fit the deadline.
-- [ ] Safety review: policy/PathGuard/hooks/redaction/process ownership remain authoritative.
-- [ ] Portability review: Windows first-class; macOS/Linux semantics covered by unit/smoke evidence and live checks where required.
+- [x] Spec-compliance review: map every recommendation in the design table to implemented evidence.
+- [x] Quality review: confirm no path reduces requested scope/test coverage/review depth to fit the deadline.
+- [x] Safety review: policy/PathGuard/hooks/redaction/process ownership remain authoritative.
+- [x] Portability review: Windows first-class; macOS/Linux semantics covered by unit/smoke evidence and live checks where required.
 
 ## Final Verification Gate
 

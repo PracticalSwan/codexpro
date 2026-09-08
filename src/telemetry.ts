@@ -1,6 +1,6 @@
 import { redactSensitiveText } from "./redact.js";
 
-export type TelemetryStage = "request_arrival" | "dispatch" | "completion" | "response" | "backend";
+export type TelemetryStage = "request_arrival" | "dispatch" | "completion" | "response" | "backend" | "resilience";
 export type TelemetryStatus = "ok" | "error" | "timeout" | "degraded";
 
 export interface TelemetryEvent {
@@ -12,6 +12,9 @@ export interface TelemetryEvent {
   backend?: string;
   errorBoundary?: string;
   sessionState?: string;
+  event?: string;
+  reason?: string;
+  entityId?: string;
 }
 
 export interface TelemetryRecord extends TelemetryEvent {
@@ -59,6 +62,9 @@ export class TelemetryRegistry {
     const tool = cleanName(event.tool);
     const backend = cleanName(event.backend);
     const sessionState = cleanName(event.sessionState);
+    const resilienceEvent = cleanName(event.event);
+    const reason = cleanBoundary(event.reason);
+    const entityId = cleanName(event.entityId, 120);
     const record: TelemetryRecord = {
       sequence: ++this.sequence,
       timestamp: new Date().toISOString(),
@@ -69,7 +75,10 @@ export class TelemetryRegistry {
       ...(Number.isFinite(event.resultBytes) ? { resultBytes: Math.max(0, Math.floor(event.resultBytes!)) } : {}),
       ...(backend ? { backend } : {}),
       ...(cleanBoundary(event.errorBoundary) ? { errorBoundary: cleanBoundary(event.errorBoundary) } : {}),
-      ...(sessionState ? { sessionState } : {})
+      ...(sessionState ? { sessionState } : {}),
+      ...(resilienceEvent ? { event: resilienceEvent } : {}),
+      ...(reason ? { reason } : {}),
+      ...(entityId ? { entityId } : {})
     };
     this.events.push(record);
     if (this.events.length > this.maxEvents) this.events.splice(0, this.events.length - this.maxEvents);
@@ -79,6 +88,7 @@ export class TelemetryRegistry {
     if (tool) this.bump(`tool:${tool}`);
     if (tool) this.bump(`tool:${tool}:${status}`);
     if (backend) this.bump(`backend:${backend}:${status}`);
+    if (resilienceEvent) this.bump(`event:${resilienceEvent}`);
   }
 
   snapshot(): TelemetrySnapshot {

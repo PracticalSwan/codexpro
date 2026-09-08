@@ -37,7 +37,7 @@ import { TelemetryRegistry } from "./telemetry.js";
 import { ActivityStore } from "./activity/store.js";
 import { ActivityRegistry } from "./activity/registry.js";
 import type { ActivityKind, ActivityStatus } from "./activity/types.js";
-import { connectionDiagnostics, toolSurfaceDiagnostics } from "./diagnosticsOps.js";
+import { connectionDiagnostics, toolSurfaceDiagnostics, runToolTimeProbe } from "./diagnosticsOps.js";
 import { WorkspaceProcessManager } from "./processOps.js";
 import { discoverTrustedChecks, runChecks, verifyChanges } from "./checksOps.js";
 import { readMany, searchMany, gatherContextV2, prepareSubtaskContext } from "./contextOps.js";
@@ -283,6 +283,7 @@ const SUPERTOOL_ACTION_ALIASES: Record<string, string> = {
 const registeredToolHandlersByServer = new WeakMap<object, Map<string, CodexToolHandler>>();
 const workspaceToolPolicyByServer = new WeakMap<object, (name: string, args: any) => void>();
 const telemetryByServer = new WeakMap<object, TelemetryRegistry>();
+const resilienceStateByServer = new WeakMap<object, Map<string, string>>();
 interface ToolLifecycle {
   before(name: string, args: Record<string, any>): Promise<void>;
   after(name: string, args: Record<string, any>, result?: any, error?: unknown): Promise<void>;
@@ -323,6 +324,31 @@ function assertWriteToolAllowed(config: CodexProConfig, relPath: string): void {
     );
   }
   throw new CodexProError("write/edit/apply_patch tools are disabled because CODEXPRO_WRITE_MODE=off. handoff_to_agent and handoff_to_codex are still available for planning.");
+}
+
+function recordResilienceTelemetry(server: McpServer, name: string, args: any, result: any): void {
+  const telemetry = telemetryByServer.get(server as object);
+  if (!telemetry) return;
+  const structured = result?.structuredContent;
+  if (!structured || typeof structured !== "object" || Array.isArray(structured)) return;
+  if (structured.deadlineYielded === true) telemetry.record({ stage: "resilience", status: "degraded", event: "deadline_yield", tool: name, reason: "shared synchronous deadline yielded before all required work completed" });
+  if (structured.deadlineLimitedChild === true) telemetry.record({ stage: "resilience", status: "degraded", event: "deadline_limited_child", tool: name, reason: "owned child timeout was limited by the remaining synchronous deadline" });
+  if (structured.execution_hint?.class === "async_preferred" || structured.routing?.recommendedExecution === "async") telemetry.record({ stage: "resilience", status: "ok", event: "async_routed", tool: name, reason: "deterministic execution guidance prefers a durable async primitive" });
+  const batch = structured.batch;
+  if (typeof args?.continuation_token === "string" && batch && typeof batch === "object") telemetry.record({ stage: "resilience", status: "ok", event: "batch_continued", tool: name, entityId: String(batch.id ?? args.continuation_token), reason: "foreground batch continuation advanced" });
+  const job = structured.job;
+  const jobId = typeof structured.job_id === "string" ? structured.job_id : (job && typeof job === "object" && typeof job.id === "string" ? job.id : undefined);
+  const jobState = job && typeof job === "object" && typeof job.state === "string" ? job.state : undefined;
+  if (!jobId || !jobState) return;
+  const states = resilienceStateByServer.get(server as object) ?? new Map<string, string>();
+  if (!resilienceStateByServer.has(server as object)) resilienceStateByServer.set(server as object, states);
+  const previous = states.get(jobId);
+  if ((name === "start_checks" || name === "start_verification") && !previous) telemetry.record({ stage: "resilience", status: "ok", event: "job_started", tool: name, entityId: jobId, reason: "registered structured verification job started" });
+  if (jobState !== previous) {
+    if (jobState === "completed") telemetry.record({ stage: "resilience", status: "ok", event: "job_completed", tool: name, entityId: jobId, reason: "structured job reached completed state" });
+    if (jobState === "interrupted") telemetry.record({ stage: "resilience", status: "degraded", event: "job_interrupted", tool: name, entityId: jobId, reason: "structured job reached interrupted state" });
+    states.set(jobId, jobState);
+  }
 }
 
 function registerWrappedToolCompat(
@@ -373,6 +399,7 @@ const MINIMAL_TOOL_NAMES = [
   "effective_policy",
   "connection_diagnostics",
   "tool_surface_diagnostics",
+  "tool_time_probe",
   "local_telemetry",
   "activity_log",
   "operation_status",
@@ -439,6 +466,7 @@ const FULL_TOOL_NAMES = [
   "effective_policy",
   "connection_diagnostics",
   "tool_surface_diagnostics",
+  "tool_time_probe",
   "local_telemetry",
   "activity_log",
   "operation_status",
@@ -2046,8 +2074,11 @@ export function createCodexProServer(
       annotations: READ_ONLY_ANNOTATIONS
     },
     async () => {
-      const result = connectionDiagnostics(telemetry.snapshot(), options.activeSessionCount?.() ?? 0);
-      return textResult(`# Connection Diagnostics\n\n${JSON.stringify(result, null, 2)}`, { ...result });
+      const snapshot = telemetry.snapshot();
+      const result = connectionDiagnostics(snapshot, options.activeSessionCount?.() ?? 0);
+      const resilience = toolSurfaceDiagnostics(config, registeredToolNames(server), toolNamesForMode(config), snapshot);
+      const combined = { ...result, deadline: resilience.deadline, capabilities: resilience.capabilities, resilience: resilience.resilience };
+      return textResult(`# Connection Diagnostics\n\n${JSON.stringify(combined, null, 2)}`, combined);
     }
   );
 
@@ -2064,8 +2095,24 @@ export function createCodexProServer(
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
       const effective = configForWorkspace(workspace);
-      const result = toolSurfaceDiagnostics(effective, registeredToolNames(server), toolNamesForMode(effective));
+      const result = toolSurfaceDiagnostics(effective, registeredToolNames(server), toolNamesForMode(effective), telemetry.snapshot());
       return textResult(`# Tool Surface Diagnostics\n\n${JSON.stringify(result, null, 2)}`, { ...result });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "tool_time_probe",
+    {
+      title: "Tool Time Probe",
+      description: "Harmless observe-mode-only host-window discovery probe. It waits and measures only; it does not read or mutate workspace, Git, process, browser, or network state and never changes saved deadline settings.",
+      inputSchema: { max_minutes: z.number().int().min(1).max(120).optional().describe("Diagnostic wait ceiling in minutes. Use only in a disposable chat while runtime deadline mode is Unlimited/observe.") },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const result = await runToolTimeProbe(config, { maxMinutes: args.max_minutes });
+      return textResult(`# Tool Time Probe\n\nStatus: ${result.status}\nElapsed: ${result.elapsed_ms} ms\n\n${result.guidance}`, result);
     }
   );
 

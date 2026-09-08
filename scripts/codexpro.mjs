@@ -83,6 +83,7 @@ Options:
   --bash <off|safe|full>    Bash mode. Default: safe.
   --sync-call-deadline-minutes <5-60|unlimited>
                              Tool-call transport deadline. Default: 20 minutes. Unlimited is observe-only discovery mode; it does not extend ChatGPT tool access or reduce task-quality requirements.
+                             Discovery: in a disposable chat, manually start an Unlimited/observe runtime, call only tool_time_probe, record the UI cutoff, then restore a bounded value with safety margin.
   --no-bash                 Shortcut for --bash off.
   --bash-transcript <compact|full>
                              Chat transcript for bash results. Default: compact.
