@@ -1,6 +1,6 @@
 # Durable Continuation Lifecycle and MCP API Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add bounded durable task-continuation state that ChatGPT can arm, checkpoint, request, complete, cancel, and recover across MCP calls.
 
@@ -29,14 +29,14 @@
 
 **Interfaces:**
 - Produces `ContinuationRecord`, `ContinuationState`, `ContinuationStore.create/require/update/list`, and validated transition helpers.
-- [ ] **Step 1: Write failing store/transition tests**
+- [x] **Step 1: Write failing store/transition tests**
 
 Cover atomic create/update, schema version, workspace/session binding, monotonic record revision, allowed state transitions, restart recovery, bounded lists, and rejection of invalid terminal-state rewrites. Add a terminal-race case proving stale browser/watchdog writes cannot revive a completed/canceled task.
 
 Run: `node scripts/continuation-state-smoke.mjs`
 Expected: FAIL because the continuation modules do not exist.
 
-- [ ] **Step 2: Implement the bounded record**
+- [x] **Step 2: Implement the bounded record**
 
 Use fields equivalent to:
 
@@ -66,7 +66,7 @@ interface ContinuationRecord {
 
 Cap title/phase strings, evidence/work arrays, individual entry lengths, and total serialized record size. Use atomic temp-write + rename semantics consistent with other durable stores.
 
-- [ ] **Step 3: Run focused state smoke**
+- [x] **Step 3: Run focused state smoke**
 
 Run: `node scripts/continuation-state-smoke.mjs`
 Expected: PASS.
@@ -79,15 +79,15 @@ Expected: PASS.
 **Interfaces:**
 - Produces `armContinuation`, `checkpointContinuation`, `requestContinuation`, `completeContinuation`, `cancelContinuation`, `reconcileContinuationManualTurn`, `continuationStatus`, and `heartbeatContinuation`.
 
-- [ ] **Step 1: Add failing operation tests**
+- [x] **Step 1: Add failing operation tests**
 
 Assert `arm` fails with `continuation_disabled` when the feature is off; otherwise it creates one active task per workspace/session unless an explicit ID is supplied. Checkpoint replaces bounded phase/evidence/work metadata and may register at most four bounded intents; request creates a fresh nonce; manual user interaction atomically clears nonce/intent selection and records `manualTurnPending` without text; complete clears continuation state; cancel is terminal; and heartbeat changes only liveness fields.
 
-- [ ] **Step 2: Implement transition-checked operations**
+- [x] **Step 2: Implement transition-checked operations**
 
 Every operation must load the current record, validate the expected state/revision and caller workspace/session, then persist one atomic update with `revision + 1`. Continuation intents are server-side semantic references only: labels are short/sanitized, focus references may point only to already-recorded remaining work, and no intent stores an arbitrary ChatGPT prompt body. `reconcileContinuationManualTurn` accepts only `resume | redirect | supersede | cancel`: resume clears the pause and preserves remaining work; redirect requires bounded replacement phase/remaining-work/intents and invalidates old authorization; supersede terminally cancels with `superseded_by_user` and never auto-arms a replacement; cancel terminally cancels with `user_canceled`. The operation never receives/stores the user's raw prompt. `complete` requires `remainingWork` to be empty or an explicit verified-complete flag supplied by the semantic controller. `completed`/`canceled` atomically clear outstanding nonce/readiness/intent/manual-turn fields and reject later non-status transitions. Do not persist a deadline value as task timing authority.
 
-- [ ] **Step 3: Verify recovery/idempotency**
+- [x] **Step 3: Verify recovery/idempotency**
 
 Repeat the same checkpoint/request IDs and prove duplicate delivery cannot create multiple nonces or increment continuation count.
 
@@ -100,15 +100,15 @@ Repeat the same checkpoint/request IDs and prove duplicate delivery cannot creat
 **Interfaces:**
 - Adds `continuation_arm`, `continuation_checkpoint`, `continuation_request`, `continuation_status`, `continuation_reconcile`, `continuation_complete`, and `continuation_cancel`.
 
-- [ ] **Step 1: Add MCP registration assertions**
+- [x] **Step 1: Add MCP registration assertions**
 
 Verify tool schemas enforce workspace/session binding, bounded arrays/strings, feature-enabled state, and do not expose browser pairing secrets or full stored files. `continuation_reconcile` exposes only the four disposition enums plus bounded replacement metadata needed for redirect; it accepts no raw prompt/transcript field.
 
-- [ ] **Step 2: Wire registration to `ops.ts`**
+- [x] **Step 2: Wire registration to `ops.ts`**
 
 Keep `server.ts` registration-only. Return task ID, public state, current phase, bounded remaining work, continuation count, and whether user/browser action is required.
 
-- [ ] **Step 3: Run focused + shared gates**
+- [x] **Step 3: Run focused + shared gates**
 
 Run: `node scripts/continuation-state-smoke.mjs`
 Run: `npm run build`
@@ -120,16 +120,16 @@ Expected: PASS.
 - Modify: `docs/agentic/DECISIONS.md`
 - Modify: `docs/agentic/PROJECT_MEMORY.md` after verified implementation
 
-- [ ] **Step 1: Record durable-state boundaries**
+- [x] **Step 1: Record durable-state boundaries**
 
 Document that continuation records hold bounded execution facts only and that only the semantic controller may mark a task complete.
 
-- [ ] **Step 2: Run diff gate**
+- [x] **Step 2: Run diff gate**
 
 Run: `git diff --check`
 Expected: PASS.
 
-- [ ] **Step 3: Commit milestone**
+- [x] **Step 3: Commit milestone**
 
 ```bash
 git add src/continuation scripts/continuation-state-smoke.mjs src/server.ts docs/agentic/DECISIONS.md docs/agentic/PROJECT_MEMORY.md

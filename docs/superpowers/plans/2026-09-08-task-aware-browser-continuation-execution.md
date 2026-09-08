@@ -30,11 +30,11 @@
 Plan 35 assumes relevant Plans 22–28 are implemented because it integrates their runtime state. Plan 37 adds the optional Telegram authorization surface after the source-neutral dispatch contract exists. Plan 36 remains the final security/live/package/fresh-session gate and therefore depends on Plan 37 when Telegram is in the authorized implementation scope.
 ## Milestone 29 — Durable continuation lifecycle
 
-- [ ] Implement bounded atomic continuation records and legal state transitions.
-- [ ] Register semantic MCP lifecycle tools.
-- [ ] Prove restart/idempotency/session isolation plus terminal revision precedence so completed/canceled tasks cannot be revived by stale browser/watchdog writes.
-- [ ] Review no hidden reasoning/secrets in durable records.
-- [ ] Make Plan 29 milestone commit.
+- [x] Implement bounded atomic continuation records and legal state transitions.
+- [x] Register semantic MCP lifecycle tools.
+- [x] Prove restart/idempotency/session isolation plus terminal revision precedence so completed/canceled tasks cannot be revived by stale browser/watchdog writes.
+- [x] Review no hidden reasoning/secrets in durable records.
+- [x] Make Plan 29 milestone commit.
 
 ## Milestone 30 — Browser companion and pairing
 

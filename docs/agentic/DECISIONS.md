@@ -117,3 +117,7 @@
 ## D-029 — Manual user turns outrank prepared continuation
 **Decision:** An ordinary user message or Stop-generating action in the bound chat invalidates prepared browser/Telegram authorization without reading message text. The continuation task pauses until the host model reconciles the current user prompt as resume, redirect within the same task, supersede with a new task, or cancel; ambiguity remains paused.
 **Why:** A user's new prompt can intentionally continue, redirect, or replace prior work. Treating it as either automatic cancellation or automatic continuation would violate user intent and can create duplicate turns.
+
+## D-030 — Continuation lifecycle state is semantic, bounded, and revision-authoritative
+**Decision:** Durable continuation records store only bounded task facts, evidence, remaining-work references, intent metadata, liveness, and opaque authorization state. They never store raw prompts, transcripts, browser cookies/credentials, or chain-of-thought. Record revision plus workspace/session binding is the stale-action authority; completed/canceled states are terminal, and only semantic-controller operations may mark completion.
+**Why:** Browser/watchdog/remote authorization needs durable coordination without becoming a second source of semantic task truth or a store for private conversation content.
