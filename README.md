@@ -143,6 +143,8 @@ codexpro settings set --analysis on --artifact-export on --goals on --codegraph 
 
 Tool-time awareness is enabled independently of browser continuation. The normal synchronous transport boundary is 20 minutes; save another bounded value from 5–60 minutes with `codexpro settings set --sync-call-deadline-minutes 12`, or temporarily select `unlimited` for observe-only host-window discovery. Unlimited disables CodexPro's cooperative cutoff but does not extend ChatGPT tool access, lower quality requirements, or make long mutating calls advisable. Saved changes apply on the next launch.
 
+Routing is advisory and derives from the finite deadline reference `D`: `sync_preferred = min(5 minutes, 25% of D)` and `async_preferred = 75% of D`. Never reduce task scope, review depth, verification, or safety to fit one call. Route long model training/rendering or other shell work through `proc_*`, long trusted verification through `job_*`, and substantial dependency/review/projection engineering through `goal_*`.
+
 Use a narrower profile for untrusted repositories.
 
 ## Daily workflow

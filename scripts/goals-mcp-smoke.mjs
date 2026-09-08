@@ -36,7 +36,7 @@ try {
   for(const name of ["goal_status","list_goals","propose_goal","approve_goal","start_goal","pause_goal","resume_goal","cancel_goal","review_goal","project_goal"]) assert(tools.includes(name),`missing ${name}`);
   const cfg=await first.request("tools/call",{name:"server_config",arguments:{}});assert.equal(cfg.structuredContent.goalsEnabled,true);assert.equal(cfg.structuredContent.goalPlatform.available,true);
   const proposed=await first.request("tools/call",{name:"propose_goal",arguments:{title:"MCP durable goal",max_workers:1,tasks:[{id:"write",title:"write file",kind:"command",command:'node -e "require(\'node:fs\').writeFileSync(\'mcp-goal.txt\',\'mcp goal\')"'}]}});
-  assert(!proposed.isError);const id=proposed.structuredContent.id;const fingerprint=proposed.structuredContent.fingerprint;
+  assert(!proposed.isError);assert.equal(proposed.structuredContent.execution_hint?.class,"durable_goal_candidate");assert.equal(proposed.structuredContent.execution_hint?.recommended_primitive,"durable_goal");const id=proposed.structuredContent.id;const fingerprint=proposed.structuredContent.fingerprint;
   const approved=await first.request("tools/call",{name:"approve_goal",arguments:{goal_id:id,fingerprint}});assert.equal(approved.structuredContent.state,"approved");
   const started=await first.request("tools/call",{name:"start_goal",arguments:{goal_id:id}});assert.equal(started.structuredContent.state,"running");
   first.close();

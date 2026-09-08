@@ -93,7 +93,8 @@ export async function executeVerificationJob(context: StructuredJobWorkerContext
     remainingCheckIds: [],
     selectedChecks: payload.selectedChecks,
     results,
-    routing: verificationRoutingHint(context.config, payload.selectedChecks, payload.timeoutMs, "start_checks")
+    routing: verificationRoutingHint(context.config, payload.selectedChecks, payload.timeoutMs, "start_checks"),
+    execution_hint: verificationRoutingHint(context.config, payload.selectedChecks, payload.timeoutMs, "start_checks").executionHint
   };
 }
 

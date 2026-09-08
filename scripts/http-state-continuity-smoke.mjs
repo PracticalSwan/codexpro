@@ -97,6 +97,8 @@ try {
     });
     processId = started.process.id;
     assert.match(processId, /^proc_/);
+    assert.equal(started.execution_hint?.class, "async_preferred");
+    assert.equal(started.execution_hint?.recommended_primitive, "start_workspace_process");
     const asyncStarted = await callTool(client, "start_verification", { changed_paths: ["seed.txt"] });
     asyncVerificationJobId = asyncStarted.job_id;
     assert.match(asyncVerificationJobId, /^job_/);

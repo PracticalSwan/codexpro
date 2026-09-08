@@ -18,6 +18,9 @@ CODEXPRO_MAX_GOAL_WORKERS=4
 ```
 
 A workspace policy can disable Goals or lower these ceilings; it cannot enable or broaden them.
+
+Use a Durable Goal for substantial multi-stage engineering with dependencies plus an isolation/review/projection boundary. A single long shell command belongs in `proc_*`; a long trusted verification suite belongs in `job_*`. Choosing a durable execution primitive changes transport/lifecycle only and never authorizes automatic commit, push, deploy, or publication.
+
 ## Lifecycle
 
 1. `propose_goal` persists a bounded DAG and returns its SHA-256 proposal fingerprint.

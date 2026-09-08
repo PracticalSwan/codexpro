@@ -58,11 +58,11 @@ Plan 23 and Plan 24 are architecturally independent after Plan 22, but the seque
 
 ## Milestone 26 — Execution routing without quality loss
 
-- [ ] Add deterministic execution hints and server guidance for sync / `proc_*` / `job_*` / `goal_*`.
-- [ ] State explicitly that the configured deadline (20 minutes by default) is never a quality/completeness target.
-- [ ] Require material persisted progress across continued calls and condition-based polling.
-- [ ] Update ChatGPT/operator/developer instructions only to advertise capabilities already present.
-- [ ] Verify routing/instruction smoke, full smoke, and milestone commit.
+- [x] Add deterministic execution hints and server guidance for sync / `proc_*` / `job_*` / `goal_*`.
+- [x] State explicitly that the configured deadline (20 minutes by default) is never a quality/completeness target.
+- [x] Require material persisted progress across continued calls and condition-based polling.
+- [x] Update ChatGPT/operator/developer instructions only to advertise capabilities already present.
+- [x] Verify routing/instruction smoke, full smoke, and milestone commit.
 
 ## Milestone 27 — Resumable non-process batches
 

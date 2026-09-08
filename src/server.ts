@@ -13,6 +13,7 @@ import { runHooks } from "./hooks/runner.js";
 import { z } from "zod";
 import type { CodexProConfig } from "./config.js";
 import { withSyncCallDeadline } from "./deadline.js";
+import { classifyExecutionHint, executionHintPublic, executionThresholds } from "./executionGuidance.js";
 import { WorkspaceManager, PathGuard, CodexProError, type Workspace, type WorkspaceRegistry } from "./guard.js";
 import { repoTree, readTextFile, writeTextFile, editTextFile, ensureAiBridge, withFileWriteLocks } from "./fsOps.js";
 import { viewWorkspaceImage } from "./imageOps.js";
@@ -682,7 +683,7 @@ function registerCodexTool(
   rememberRegisteredToolHandler(server, name, validatedHandler);
 }
 
-function serverInstructions(config: CodexProConfig): string {
+export function serverInstructions(config: CodexProConfig): string {
   const editInstruction =
     config.connectionTest
       ? "4. Connection test mode is read-only. Write, patch, export, and handoff-writing tools are unavailable."
@@ -697,6 +698,13 @@ function serverInstructions(config: CodexProConfig): string {
       : config.bashMode === "full"
         ? "5. Full Bash access is enabled for this explicitly trusted local workspace. CodexPro's safe-Bash allowlist and command-shape restrictions do not apply. Use shell commands needed for the user's request, including project scripts, Git operations, and local developer CLIs, while respecting user, project, and platform safety/authorization boundaries. Prefer dedicated CodexPro tools when they provide the same operation more precisely."
         : "5. Bash is in safe mode. Use it only for meaningful allowlisted verification commands such as npm test, npm run build, lint, typecheck, or an existing project script.";
+  const routingThresholds = executionThresholds(config.syncCallDeadlineMs);
+  const referenceMinutes = Number((config.syncCallDeadlineMs / 60_000).toFixed(2));
+  const deadlineInstruction = config.syncCallDeadlineMode === "observe"
+    ? `Deadline routing: Tool-time awareness is Unlimited/observe for host-window discovery. Keep elapsed-time awareness and conservative long-work routing from the ${referenceMinutes} minute finite reference; observe mode is discovery-only, not permission to keep ordinary mutating calls open indefinitely.`
+    : `Deadline routing: Tool-time awareness is bounded at ${referenceMinutes} minutes (${config.syncCallDeadlineMs} ms). This is a transport boundary for one blocking tool call, never a task-quality target.`;
+  const routingInstruction = `Execution routing: Never rush, omit required work, reduce scope/review/tests/safety, or claim completion to fit one call. Routing cutoffs are sync-preferred <= ${Number((routingThresholds.syncPreferredMs / 60_000).toFixed(2))} minutes and async-preferred >= ${Number((routingThresholds.asyncPreferredMs / 60_000).toFixed(2))} minutes. Use start_workspace_process for long shell commands, start_checks/start_verification for long verification, and Durable Goals for substantial multi-stage work with dependency, isolation, review, or projection needs.`;
+  const progressInstruction = "Continuation discipline: When work spans calls, preserve the full goal, complete one coherent phase, persist material progress/evidence, then continue. Poll status only when a condition may have changed; use condition-based purposeful polling rather than rapid busy-wait loops.";
   const inspectionInstruction =
     config.bashMode === "full"
       ? "3. Inspect with tree, search, read, and dedicated Git tools when they are more precise. Full Bash may also be used for inspection when the user's task benefits from shell or local CLI behavior."
@@ -711,6 +719,9 @@ function serverInstructions(config: CodexProConfig): string {
     inspectionInstruction,
     editInstruction,
     bashInstruction,
+    deadlineInstruction,
+    routingInstruction,
+    progressInstruction,
     "6. Keep tool calls minimal. Prefer one targeted search plus show_changes instead of repeated broad inspection calls.",
     config.codexSessions !== "off"
       ? `7. Codex session history access is enabled in ${config.codexSessions} mode. Use it only when the user asks for local Codex session history.`
@@ -1544,6 +1555,7 @@ export function createCodexProServer(
         connectionTest: config.connectionTest,
         syncCallDeadlineMode: config.syncCallDeadlineMode,
         syncCallDeadlineMs: config.syncCallDeadlineMs,
+        executionRouting: executionThresholds(config.syncCallDeadlineMs),
         allowGitPush: config.allowGitPush,
         codeGraphEnabled: config.codeGraphEnabled,
         codeGraphConfigured: Boolean(config.codeGraphExecutable || resolveCommand("codegraph")),
@@ -1800,6 +1812,8 @@ export function createCodexProServer(
     },
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
+      const workspaceConfig = configForWorkspace(workspace);
+      const executionHint = executionHintPublic(classifyExecutionHint({ deadlineMs: workspaceConfig.syncCallDeadlineMs, category: "shell", highVariance: true }));
       const processRecord = await processManagerFor(workspace).start({
         command: String(args.command ?? ""),
         cwd: args.cwd,
@@ -1807,7 +1821,7 @@ export function createCodexProServer(
       });
       return textResult(
         `# Workspace Process Started\n\nProcess: ${processRecord.id}\nState: ${processRecord.state}\nCWD: ${processRecord.cwd}\nOperation: ${processRecord.operationId}`,
-        { workspace_id: workspace.id, process: processRecord }
+        { workspace_id: workspace.id, process: processRecord, execution_hint: executionHint }
       );
     }
   );
@@ -3411,7 +3425,8 @@ export function createCodexProServer(
         tasks: args.tasks.map((task: any) => ({ id: task.id, title: task.title, kind: task.kind, command: task.command, checkId: task.check_id, dependsOn: task.depends_on ?? [] }))
       }, { maxTasks: workspaceConfig.maxGoalTasks, maxWorkers: workspaceConfig.maxGoalWorkers });
       const result = publicGoalRecord(record);
-      return textResult(`# Goal Proposed\n\nID: ${record.id}\nFingerprint: ${record.fingerprint}\nTasks: ${record.tasks.length}\n\nApprove this exact fingerprint before execution.`, result);
+      const executionHint = executionHintPublic(classifyExecutionHint({ deadlineMs: workspaceConfig.syncCallDeadlineMs, category: "multi_stage", hasDependencyGraph: record.tasks.length > 1 || record.tasks.some((task) => task.dependsOn.length > 0), requiresReviewProjection: true }));
+      return textResult(`# Goal Proposed\n\nID: ${record.id}\nFingerprint: ${record.fingerprint}\nTasks: ${record.tasks.length}\n\nApprove this exact fingerprint before execution.`, { ...result, execution_hint: executionHint });
     }
   );
 

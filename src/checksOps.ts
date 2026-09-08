@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import type { CodexProConfig } from "./config.js";
 import { currentSyncCallDeadline, type DeadlineBudget } from "./deadline.js";
+import { classifyExecutionHint, executionHintPublic } from "./executionGuidance.js";
 import { CodexProError, type PathGuard, type Workspace } from "./guard.js";
 import { runBash } from "./bashOps.js";
 import { discoverVerificationCommands, reviewWorkspaceChanges } from "./analysis/impact.js";
@@ -33,16 +34,16 @@ export interface VerificationRoutingHint {
   asyncCutoffMs: number;
   aggregateRequestedTimeoutMs: number;
   reasons: string[];
+  executionHint: Record<string, unknown>;
 }
 
 export function verificationRoutingHint(config: CodexProConfig, selectedChecks: TrustedCheck[], timeoutMs: number | undefined, asyncToolName: VerificationRoutingHint["asyncToolName"]): VerificationRoutingHint {
   const perCheckMs = Math.max(1_000, Math.min(timeoutMs ?? 30_000, config.maxBashTimeoutMs));
   const aggregateRequestedTimeoutMs = perCheckMs * selectedChecks.length;
-  const asyncCutoffMs = Math.max(1, Math.floor(config.syncCallDeadlineMs * 0.75));
-  const reasons: string[] = [];
-  if (aggregateRequestedTimeoutMs >= asyncCutoffMs) reasons.push("aggregate configured check timeout reaches the async-routing cutoff");
-  if (selectedChecks.some((check) => /(?:stress|integration|e2e|end[- ]to[- ]end|acceptance)/i.test(check.command))) reasons.push("selected verification includes a high-variance integration/stress check");
-  return { recommendedExecution: reasons.length ? "async" : "sync", asyncToolName, asyncCutoffMs, aggregateRequestedTimeoutMs, reasons };
+  const highVariance = selectedChecks.some((check) => /(?:stress|integration|e2e|end[- ]to[- ]end|acceptance)/i.test(check.command));
+  const hint = classifyExecutionHint({ deadlineMs: config.syncCallDeadlineMs, expectedDurationMs: aggregateRequestedTimeoutMs, category: "verification", highVariance });
+  const reasons = [...hint.reasons];
+  return { recommendedExecution: hint.executionClass === "async_preferred" ? "async" : "sync", asyncToolName, asyncCutoffMs: hint.thresholds.asyncPreferredMs, aggregateRequestedTimeoutMs, reasons, executionHint: executionHintPublic(hint) };
 }
 
 export interface CheckRunResult {
@@ -53,6 +54,7 @@ export interface CheckRunResult {
   selectedChecks: TrustedCheck[];
   results: CheckExecutionResult[];
   routing: VerificationRoutingHint;
+  execution_hint: Record<string, unknown>;
 }
 
 function checkId(source: string, command: string): string {
@@ -157,7 +159,7 @@ export async function runChecks(request: {
   }
   const complete = remainingCheckIds.length === 0;
   const routing = verificationRoutingHint(request.config, selectedChecks, request.timeoutMs, "start_checks");
-  return { ok: complete && results.every((result) => result.ok), complete, deadlineYielded, remainingCheckIds, selectedChecks, results, routing };
+  return { ok: complete && results.every((result) => result.ok), complete, deadlineYielded, remainingCheckIds, selectedChecks, results, routing, execution_hint: routing.executionHint };
 }
 export function selectVerificationChecks(analysis: ChangeAnalysis, discovered: TrustedCheck[]): TrustedCheck[] {
   const byCommand = new Map(discovered.map((check) => [check.command, check]));
@@ -194,12 +196,13 @@ export interface VerificationPlanResult {
   remainingCheckIds: string[];
   repair: VerificationRepairContract;
   routing: VerificationRoutingHint;
+  execution_hint: Record<string, unknown>;
 }
 
 export function finalizeVerificationResult(analysis: ChangeAnalysis, selectedChecks: TrustedCheck[], results: CheckExecutionResult[], state: { complete: boolean; deadlineYielded?: boolean; remainingCheckIds?: string[] }, routing: VerificationRoutingHint): VerificationPlanResult {
   const repair = buildVerificationRepairContract(analysis, results);
   const effectiveRepair = !state.complete && repair.status === "passed" ? buildVerificationRepairContract(analysis, []) : repair;
-  return { analysis, selectedChecks, results, ok: state.complete ? results.every((result) => result.ok) : null, complete: state.complete, deadlineYielded: Boolean(state.deadlineYielded), remainingCheckIds: state.remainingCheckIds ?? [], repair: effectiveRepair, routing };
+  return { analysis, selectedChecks, results, ok: state.complete ? results.every((result) => result.ok) : null, complete: state.complete, deadlineYielded: Boolean(state.deadlineYielded), remainingCheckIds: state.remainingCheckIds ?? [], repair: effectiveRepair, routing, execution_hint: routing.executionHint };
 }
 
 export async function verifyChanges(request: {
@@ -215,7 +218,7 @@ export async function verifyChanges(request: {
   const { analysis, selectedChecks } = await prepareVerification({ config: request.config, guard: request.guard, workspace: request.workspace, changedPaths: request.changedPaths });
   if (request.run === false || !selectedChecks.length) {
     const routing = verificationRoutingHint(request.config, selectedChecks, request.timeoutMs, "start_verification");
-    return { analysis, selectedChecks, results: [], ok: selectedChecks.length ? null : true, complete: selectedChecks.length === 0, deadlineYielded: false, remainingCheckIds: selectedChecks.map((check) => check.id), repair: buildVerificationRepairContract(analysis, []), routing };
+    return { analysis, selectedChecks, results: [], ok: selectedChecks.length ? null : true, complete: selectedChecks.length === 0, deadlineYielded: false, remainingCheckIds: selectedChecks.map((check) => check.id), repair: buildVerificationRepairContract(analysis, []), routing, execution_hint: routing.executionHint };
   }
   const executed = await runChecks({
     config: request.config,
