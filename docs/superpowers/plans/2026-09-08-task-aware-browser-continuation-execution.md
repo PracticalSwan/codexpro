@@ -78,11 +78,11 @@ Plan 35 assumes relevant Plans 22–28 are implemented because it integrates the
 
 ## Milestone 35 — Runtime integration/instructions
 
-- [ ] Integrate heartbeat with MCP dispatch plus launcher runtime snapshot (`runtimeGenerationId`, current effective deadline, transport readiness); never use saved/default deadline as current watchdog timing.
-- [ ] Integrate canonical proc/job/batch/Goal status without duplicating stores.
-- [ ] Teach ChatGPT to keep tool-time awareness regardless of continuation setting; when continuation is enabled, arm/checkpoint/request/recover/complete without rushing and reconcile manual prompts as resume/redirect/supersede/cancel.
-- [ ] Add bounded activity/diagnostic state.
-- [ ] Run shared smoke/stress and make Plan 35 milestone commit.
+- [x] Integrate heartbeat with MCP dispatch plus launcher runtime snapshot (`runtimeGenerationId`, current effective deadline, transport readiness); never use saved/default deadline as current watchdog timing.
+- [x] Integrate canonical proc/job/batch/Goal status without duplicating stores.
+- [x] Teach ChatGPT to keep tool-time awareness regardless of continuation setting; when continuation is enabled, arm/checkpoint/request/recover/complete without rushing and reconcile manual prompts as resume/redirect/supersede/cancel.
+- [x] Add bounded activity/diagnostic state.
+- [x] Run shared smoke/stress and make Plan 35 milestone commit.
 
 ## Milestone 37 — Telegram remote continuation authorization
 

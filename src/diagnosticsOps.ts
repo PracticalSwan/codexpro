@@ -108,11 +108,29 @@ export function diagnosticsSnapshot(
   registeredTools: string[],
   expectedTools: string[],
   activeSessions = 0,
-  operator: { savedDeadlineMode?: string; savedDeadlineMs?: number; activeStructuredJobs?: number } = {}
+  operator: {
+    savedDeadlineMode?: string; savedDeadlineMs?: number; activeStructuredJobs?: number;
+    continuationFeatureEnabled?: boolean; browserPaired?: boolean; browserAuthState?: string;
+    activeContinuationTasks?: number; userActionRequired?: boolean;
+    runtimeGenerationId?: string; runtimeDeadlineMode?: string; runtimeDeadlineMs?: number; runtimeTransportState?: string;
+  } = {}
 ): Record<string, unknown> {
   return {
     connection: connectionDiagnostics(telemetry, activeSessions),
     operator: { current_effective_deadline: { mode: config.syncCallDeadlineMode, ms: config.syncCallDeadlineMs }, saved_next_run_deadline: { mode: operator.savedDeadlineMode ?? config.syncCallDeadlineMode, ms: operator.savedDeadlineMs ?? config.syncCallDeadlineMs }, active_structured_jobs: Math.max(0, Math.floor(operator.activeStructuredJobs ?? 0)), recent_deadline_yield: (telemetry.counters["event:deadline_yield"] ?? 0) > 0 },
+    continuation: {
+      enabled: operator.continuationFeatureEnabled ?? config.continuationEnabled,
+      browser: { paired: operator.browserPaired === true, auth_state: operator.browserAuthState ?? "unknown" },
+      active_task_count: Math.max(0, Math.floor(operator.activeContinuationTasks ?? 0)),
+      user_action_required: operator.userActionRequired === true,
+      current_runtime: {
+        generation_id: operator.runtimeGenerationId ?? null,
+        deadline_mode: operator.runtimeDeadlineMode ?? config.syncCallDeadlineMode,
+        deadline_ms: operator.runtimeDeadlineMs ?? config.syncCallDeadlineMs,
+        transport: operator.runtimeTransportState ?? "unknown"
+      },
+      saved_next_run_deadline: { mode: operator.savedDeadlineMode ?? config.syncCallDeadlineMode, ms: operator.savedDeadlineMs ?? config.syncCallDeadlineMs }
+    },
     tool_surface: toolSurfaceDiagnostics(config, registeredTools, expectedTools, telemetry),
     telemetry: {
       counters: telemetry.counters,

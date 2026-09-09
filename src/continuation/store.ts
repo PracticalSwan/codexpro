@@ -152,6 +152,47 @@ export class ContinuationStore {
     });
   }
 
+  async touchHeartbeat(id: string, binding: ContinuationBinding, options: { expectedRevision?: number; at?: string } = {}): Promise<ContinuationRecord> {
+    return this.withLock(id, async () => {
+      const current = await this.requireForBinding(id, binding);
+      if (options.expectedRevision !== undefined && current.revision !== options.expectedRevision) {
+        throw new Error(`stale_continuation_revision: expected ${options.expectedRevision}, current ${current.revision}`);
+      }
+      if (TERMINAL_CONTINUATION_STATES.has(current.state)) return current;
+      const draft = structuredClone(current);
+      draft.lastHeartbeatAt = options.at ?? new Date().toISOString();
+      const validated = validateContinuationRecord(draft);
+      await this.atomicWrite(validated);
+      return validated;
+    });
+  }
+
+  async reassociateSession(id: string, workspace: Pick<Workspace, "id" | "root">, sessionId: string): Promise<ContinuationRecord> {
+    const targetSession = sessionId.trim();
+    if (!targetSession || targetSession.length > 160 || !/^[A-Za-z0-9._:-]+$/.test(targetSession)) throw new Error("Invalid continuation MCP session id.");
+    const targetBinding: ContinuationBinding = { workspace, sessionId: targetSession };
+    return this.withNamedLock(this.bindingLockName(targetBinding), async () => {
+      const existing = (await this.list({ workspaceId: workspace.id, sessionId: targetSession }))
+        .find((record) => record.id !== id && !TERMINAL_CONTINUATION_STATES.has(record.state));
+      if (existing) throw new Error(`continuation_active_exists: ${existing.id}`);
+      return this.withLock(id, async () => {
+        const current = await this.require(id);
+        if (current.workspaceId !== workspace.id || !samePath(current.workspaceRoot, workspace.root)) {
+          throw new Error("Continuation does not belong to the selected workspace.");
+        }
+        if (TERMINAL_CONTINUATION_STATES.has(current.state)) throw new Error(`Continuation is terminal: ${current.state}.`);
+        if (current.mcpSessionId === targetSession) return current;
+        const draft = structuredClone(current);
+        draft.mcpSessionId = targetSession;
+        draft.revision = current.revision + 1;
+        draft.updatedAt = new Date().toISOString();
+        const validated = validateContinuationRecord(draft);
+        await this.atomicWrite(validated);
+        return validated;
+      });
+    });
+  }
+
   private async withLock<T>(id: string, task: () => Promise<T>): Promise<T> { return this.withNamedLock(safeId(id), task); }
 
   private async withNamedLock<T>(name: string, task: () => Promise<T>): Promise<T> {

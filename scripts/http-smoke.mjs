@@ -410,10 +410,13 @@ try {
   if (!homeText.includes('Authorization: "Bearer " + connectorToken') || homeText.includes('fetch("/admin/profile" + window.location.search')) {
     throw new Error('onboarding profile save did not reuse the captured token as a Bearer credential');
   }
-  for (const fieldName of ['tunnelName', 'ngrokConfig', 'cloudflareConfig', 'cloudflareTokenFile', 'toolCards', 'syncCallDeadlineMode', 'syncCallDeadlineMinutes', 'bashTranscript', 'widgetDomain', 'analysisEnabled', 'artifactExportEnabled', 'goalsEnabled', 'codeGraphEnabled', 'codeGraphExecutable', 'codeGraphArgs', 'lspEnabled', 'lspExecutable', 'lspArgs', 'allowGitPush', 'inheritEnv', 'connectionTest', 'noInstallCloudflared']) {
+  for (const fieldName of ['tunnelName', 'ngrokConfig', 'cloudflareConfig', 'cloudflareTokenFile', 'toolCards', 'syncCallDeadlineObserve', 'syncCallDeadlineMinutes', 'bashTranscript', 'widgetDomain', 'analysisEnabled', 'artifactExportEnabled', 'goalsEnabled', 'codeGraphEnabled', 'codeGraphExecutable', 'codeGraphArgs', 'lspEnabled', 'lspExecutable', 'lspArgs', 'allowGitPush', 'inheritEnv', 'connectionTest', 'noInstallCloudflared']) {
     if (!homeText.includes(`name="${fieldName}"`)) {
       throw new Error(`onboarding page did not include profile field ${fieldName}`);
     }
+  }
+  if (!homeText.includes('Tool access window (minutes)') || !homeText.includes('type="number" min="5" max="60" step="1"') || homeText.includes('<select name="syncCallDeadlineMode"')) {
+    throw new Error('tool access window must be a typed numeric field, not a predefined deadline selector');
   }
   if (homeText.includes(token)) {
     throw new Error('onboarding page leaked the raw auth token');

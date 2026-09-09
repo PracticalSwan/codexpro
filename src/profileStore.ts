@@ -85,6 +85,8 @@ export interface RuntimeConnection {
   toolCards?: boolean;
   syncCallDeadlineMode?: SyncCallDeadlineMode;
   syncCallDeadlineMs?: number;
+  runtimeGenerationId?: string;
+  transportState?: "ready" | "unavailable" | "unknown";
   continuationEnabled?: boolean;
   continuationBrowser?: ContinuationBrowser;
   continuationProfile?: string;

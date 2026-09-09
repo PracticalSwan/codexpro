@@ -1,13 +1,16 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
+import { Client, StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { ContinuationStore } from '../dist/continuation/store.js';
 import {
   armContinuation, checkpointContinuation, requestContinuation,
   bindContinuationConversation, authorizeContinuationDispatch,
-  completeContinuationDispatch, cancelContinuation
+  completeContinuationDispatch, cancelContinuation, reassociateContinuationSession
 } from '../dist/continuation/ops.js';
 import {
   DEFAULT_CONTINUATION_COOLDOWN_MS,
@@ -17,6 +20,7 @@ import {
   recordContinuationHeartbeat,
   recordContinuationUserInteraction
 } from '../dist/continuation/watchdog.js';
+import { classifyDurableContinuationWork } from '../dist/continuation/runtimeIntegration.js';
 
 const base = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-cont-watchdog-'));
 const root = path.join(base, 'workspace'); await fs.mkdir(root);
@@ -51,8 +55,56 @@ async function evaluate(record, overrides = {}) {
     expectedRevision: record.revision, runtime: runtime(), browser: browser(), durableWork: [],
     unexpectedInterruptionGraceMs: 30_000, now, ...overrides });
 }
+async function freePort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address();
+      server.close(() => typeof address === 'object' && address ? resolve(address.port) : reject(new Error('no free port')));
+    });
+    server.on('error', reject);
+  });
+}
+async function waitForHttp(child) {
+  return new Promise((resolve, reject) => {
+    let stderr = '';
+    const timer = setTimeout(() => reject(new Error(`HTTP continuation test server did not start\n${stderr}`)), 15_000);
+    child.stderr.on('data', (chunk) => {
+      stderr += String(chunk);
+      if (stderr.includes('HTTP MCP listening')) { clearTimeout(timer); resolve(); }
+    });
+    child.once('exit', (code) => { clearTimeout(timer); reject(new Error(`HTTP continuation test server exited early: ${code}\n${stderr}`)); });
+  });
+}
+function httpClient(url, token, name) {
+  const client = new Client({ name, version: '0.1.0' });
+  const transport = new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { Authorization: `Bearer ${token}` } } });
+  return { client, transport };
+}
+async function tool(client, name, args = {}) {
+  const result = await client.callTool({ name, arguments: args });
+  if (result.isError) throw new Error(result.content?.find?.((part) => part.type === 'text')?.text ?? JSON.stringify(result.structuredContent));
+  return result.structuredContent;
+}
 
 try {
+  const reassociateOld = { workspace: binding.workspace, sessionId: 'sess-reassociate-old' };
+  const reassociateNew = { workspace: binding.workspace, sessionId: 'sess-reassociate-new' };
+  let reassociated = await armContinuation({ enabled: true, store, binding: reassociateOld, title: 'Session reassociation' });
+  reassociated = await checkpointContinuation({ enabled: true, store, binding: reassociateOld, continuationId: reassociated.id,
+    expectedRevision: reassociated.revision, checkpointId: 'cp-reassociate', completedEvidence: ['old session work'], remainingWork: ['resume after reconnect'] });
+  await assert.rejects(() => reassociateContinuationSession({ enabled: true, store, workspace: binding.workspace,
+    continuationId: reassociated.id, newSessionId: reassociateNew.sessionId, previousSessionActive: true }), /previous.*session.*active/i);
+  const moved = await reassociateContinuationSession({ enabled: true, store, workspace: binding.workspace,
+    continuationId: reassociated.id, newSessionId: reassociateNew.sessionId, previousSessionActive: false });
+  assert.equal(moved.revision, reassociated.revision + 1, 'session reassociation did not create one semantic revision');
+  assert.equal(moved.mcpSessionId, reassociateNew.sessionId);
+  await assert.rejects(() => store.requireForBinding(moved.id, reassociateOld), /selected MCP session/i);
+  assert.equal((await store.requireForBinding(moved.id, reassociateNew)).id, moved.id);
+  await assert.rejects(() => reassociateContinuationSession({ enabled: true, store, workspace: { id: 'wrong-workspace', root },
+    continuationId: moved.id, newSessionId: 'sess-wrong', previousSessionActive: false }), /selected workspace/i);
+  await cancelContinuation({ store, binding: reassociateNew, continuationId: moved.id, expectedRevision: moved.revision });
+
   let explicit = await requestedTask('Explicit readiness');
   assert.equal(explicit.continuationCount, 0, 'request incremented successful-dispatch counter');
   explicit = await evaluate(explicit);
@@ -101,7 +153,15 @@ try {
     expectedRevision: awaitingAck.revision, now: now + 1 });
   assert.equal(heartbeatAck.state, 'working');
   assert.equal(heartbeatAck.watchdog?.lastAcknowledgedDispatchRevision, awaitingAck.revision);
-  await cancelContinuation({ store, binding, continuationId: heartbeatAck.id, expectedRevision: heartbeatAck.revision });
+  const semanticRevision = heartbeatAck.revision;
+  const ordinaryHeartbeat = await recordContinuationHeartbeat({ enabled: true, store, binding, continuationId: heartbeatAck.id,
+    expectedRevision: semanticRevision, now: now + 2 });
+  assert.equal(ordinaryHeartbeat.revision, semanticRevision, 'ordinary activity heartbeat changed semantic task revision');
+  assert.equal(ordinaryHeartbeat.state, heartbeatAck.state, 'ordinary activity heartbeat changed task state');
+  assert.equal(ordinaryHeartbeat.currentPhase, heartbeatAck.currentPhase, 'ordinary activity heartbeat changed current phase');
+  assert.deepEqual(ordinaryHeartbeat.remainingWork, heartbeatAck.remainingWork, 'ordinary activity heartbeat changed remaining work');
+  assert.equal(Date.parse(ordinaryHeartbeat.lastHeartbeatAt), now + 2, 'ordinary activity heartbeat did not refresh receive time');
+  await cancelContinuation({ store, binding, continuationId: ordinaryHeartbeat.id, expectedRevision: ordinaryHeartbeat.revision });
 
   for (const deadlineMs of [300_000, 720_000, 1_200_000, 3_600_000]) {
     let inferred = await workingTask(`Inferred ${deadlineMs}`);
@@ -152,6 +212,32 @@ try {
   assert.equal(checkpointReset.outstandingNonce, undefined);
   assert.equal(checkpointReset.watchdog?.pendingExplicitRequest, undefined, 'checkpoint retained stale explicit request');
   await cancelContinuation({ store, binding, continuationId: checkpointReset.id, expectedRevision: checkpointReset.revision });
+
+  for (const [label, deadlineMs] of [['5m', 300_000], ['12m', 720_000], ['20m', 1_200_000], ['60m', 3_600_000]]) {
+    let deadlineTask = await workingTask(`Current runtime deadline ${label}`);
+    deadlineTask = await recordContinuationHeartbeat({ enabled: true, store, binding, continuationId: deadlineTask.id,
+      expectedRevision: deadlineTask.revision, now });
+    deadlineTask = await evaluate(deadlineTask, { runtime: runtime(deadlineMs, 'bounded', `runtime-${label}`) });
+    now += deadlineMs + 29_999;
+    deadlineTask = await evaluate(deadlineTask, { runtime: runtime(deadlineMs, 'bounded', `runtime-${label}`) });
+    assert.equal(deadlineTask.state, 'working', `${label} runtime deadline inferred continuation too early`);
+    now += 2;
+    deadlineTask = await evaluate(deadlineTask, { runtime: runtime(deadlineMs, 'bounded', `runtime-${label}`) });
+    assert.equal(deadlineTask.state, 'continuation_ready', `${label} current runtime deadline was not used`);
+    await cancelContinuation({ store, binding, continuationId: deadlineTask.id, expectedRevision: deadlineTask.revision });
+  }
+
+  const durableMatrix = classifyDurableContinuationWork({
+    processes: [{ state: 'running' }, { state: 'exited' }],
+    jobs: [{ state: 'running' }, { state: 'completed' }, { state: 'failed' }],
+    goals: [{ state: 'running' }, { state: 'awaiting_review' }, { state: 'projected' }],
+    batches: [{ state: 'active' }, { state: 'completed' }]
+  });
+  const classified = (kind, active, modelAttentionRequired) => durableMatrix.some((item) => item.kind === kind && item.active === active && item.modelAttentionRequired === modelAttentionRequired);
+  assert(classified('process', true, false)); assert(classified('process', false, true));
+  assert(classified('job', true, false)); assert(classified('job', false, true));
+  assert(classified('goal', true, false)); assert(classified('goal', true, true));
+  assert(classified('batch', true, true)); assert(classified('batch', false, true));
 
   let durable = await workingTask('Durable work suppression');
   durable = await recordContinuationHeartbeat({ enabled: true, store, binding, continuationId: durable.id,
@@ -232,6 +318,72 @@ try {
   assert.notEqual(disconnectedResult.state, 'continuation_ready');
   assert.equal(disconnectedResult.watchdog?.notificationKey, undefined);
   await cancelContinuation({ store, binding, continuationId: disconnectedResult.id, expectedRevision: disconnectedResult.revision });
+
+  const httpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-cont-http-root-'));
+  const httpHome = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-cont-http-home-'));
+  const httpPort = await freePort();
+  const httpToken = 'codexpro-continuation-http-token-1234567890';
+  const httpChild = spawn(process.execPath, ['dist/http.js'], {
+    cwd: path.resolve('.'),
+    env: {
+      ...process.env, CODEXPRO_ROOT: httpRoot, CODEXPRO_ALLOWED_ROOTS: httpRoot,
+      CODEXPRO_HOST: '127.0.0.1', CODEXPRO_PORT: String(httpPort), CODEXPRO_HTTP_TOKEN: httpToken,
+      CODEXPRO_HOME: httpHome, CODEXPRO_OPERATION_DIR: path.join(httpHome, 'operations'),
+      CODEXPRO_BASH_MODE: 'off', CODEXPRO_WRITE_MODE: 'workspace', CODEXPRO_TOOL_MODE: 'full',
+      CODEXPRO_CONTINUATION_ENABLED: '1'
+    },
+    stdio: ['ignore', 'pipe', 'pipe']
+  });
+  try {
+    await waitForHttp(httpChild);
+    const url = `http://127.0.0.1:${httpPort}/mcp`;
+    const a = httpClient(url, httpToken, 'continuation-http-a');
+    const b = httpClient(url, httpToken, 'continuation-http-b');
+    await a.client.connect(a.transport); await b.client.connect(b.transport);
+    try {
+      const armed = await tool(a.client, 'continuation_arm', { title: 'HTTP transport binding' });
+      const taskId = armed.task.id;
+      const working = await tool(a.client, 'continuation_checkpoint', {
+        continuation_id: taskId, expected_revision: armed.task.revision, checkpoint_id: 'http-transport-cp',
+        completed_evidence: ['armed on transport A'], remaining_work: ['resume on a later transport']
+      });
+      const httpStore = new ContinuationStore(path.join(httpHome, 'continuation'));
+      let raw = await httpStore.require(taskId);
+      assert(raw.mcpSessionId, 'HTTP continuation task was not bound to the authoritative transport session');
+      const sessionA = raw.mcpSessionId;
+      const semanticRevision = working.task.revision;
+      const beforeHeartbeat = raw.lastHeartbeatAt;
+      await tool(b.client, 'server_config');
+      raw = await httpStore.require(taskId);
+      assert.equal(raw.lastHeartbeatAt, beforeHeartbeat, 'unrelated HTTP transport refreshed another continuation heartbeat');
+      await tool(a.client, 'server_config');
+      raw = await httpStore.require(taskId);
+      assert.equal(raw.revision, semanticRevision, 'automatic heartbeat changed semantic task revision');
+      assert(raw.lastHeartbeatAt && raw.lastHeartbeatAt !== beforeHeartbeat, 'associated HTTP transport did not refresh continuation heartbeat');
+      const activeOldSession = await b.client.callTool({ name: 'continuation_status', arguments: { continuation_id: taskId } });
+      assert.equal(activeOldSession.isError, true, 'second live transport stole an active continuation session');
+      assert.match(JSON.stringify(activeOldSession), /previous.*session.*active|MCP session/i);
+      await a.transport.terminateSession();
+      await a.client.close();
+      let recovered;
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        recovered = await b.client.callTool({ name: 'continuation_status', arguments: { continuation_id: taskId } });
+        if (!recovered.isError) break;
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.equal(recovered?.isError, undefined, `inactive transport could not recover continuation: ${JSON.stringify(recovered)}`);
+      const movedRecord = await httpStore.require(taskId);
+      assert.notEqual(movedRecord.mcpSessionId, sessionA, 'recovered continuation retained the inactive transport session');
+      assert.equal(movedRecord.revision, semanticRevision + 1, 'transport reassociation did not advance semantic revision exactly once');
+    } finally {
+      await a.client.close().catch(() => undefined); await b.client.close().catch(() => undefined);
+    }
+  } finally {
+    httpChild.kill('SIGTERM');
+    await new Promise((resolve) => httpChild.once('exit', resolve));
+    await fs.rm(httpRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+    await fs.rm(httpHome, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  }
 
   console.log('continuation watchdog smoke passed');
 } finally {

@@ -9,7 +9,7 @@ const LOOPBACK_HOST = /^(?:127\.0\.0\.1|localhost)(?::\d{1,5})?$/i;
 const LOOPBACK_REMOTE = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 
 export type BrowserBridgeEvent =
-  | { type: "page_state"; clientId: string; authState: "signed_in" | "signed_out" | "authentication_required" | "ambiguous" | "unknown"; composerAvailable: boolean; streaming: boolean; blockingInteraction: boolean }
+  | { type: "page_state"; clientId: string; authState: "signed_in" | "signed_out" | "authentication_required" | "ambiguous" | "unknown"; composerAvailable: boolean; streaming: boolean; platformState: "idle" | "busy" | "error" | "blocked" | "unknown"; blockingInteraction: boolean; recentUserInput: boolean; conversationBound: boolean; observationGenerationId: string; longObservationGap: boolean }
   | { type: "bind_requested"; clientId: string; taskId: string; revision: number }
   | { type: "dispatch_authorized"; clientId: string; taskId: string; revision: number };
 
@@ -64,7 +64,11 @@ const PairBody = z.object({
 }).strict();
 const PageStateBody = z.object({
   auth_state: z.enum(["signed_in", "signed_out", "authentication_required", "ambiguous", "unknown"]),
-  composer_available: z.boolean(), streaming: z.boolean(), blocking_interaction: z.boolean()
+  composer_available: z.boolean(), streaming: z.boolean(),
+  platform_state: z.enum(["idle", "busy", "error", "blocked", "unknown"]),
+  blocking_interaction: z.boolean(), recent_user_input: z.boolean(), conversation_bound: z.boolean(),
+  observation_generation_id: z.string().regex(/^[A-Za-z0-9._:-]{1,160}$/),
+  long_observation_gap: z.boolean().optional()
 }).strict();
 const TaskEventBody = z.object({
   task_id: z.string().regex(/^continuation_[A-Za-z0-9-]{1,80}$/),
@@ -120,7 +124,13 @@ export function createBrowserBridgeApp(options: BrowserBridgeOptions) {
   app.post("/continuation/v1/page-state", async (req, res) => {
     const parsed = PageStateBody.safeParse(req.body);
     if (!parsed.success) { jsonError(res, 400, "invalid_request", "Invalid page-state payload."); return; }
-    await options.onEvent?.({ type: "page_state", clientId: String(res.locals.browserClientId), authState: parsed.data.auth_state, composerAvailable: parsed.data.composer_available, streaming: parsed.data.streaming, blockingInteraction: parsed.data.blocking_interaction });
+    await options.onEvent?.({
+      type: "page_state", clientId: String(res.locals.browserClientId), authState: parsed.data.auth_state,
+      composerAvailable: parsed.data.composer_available, streaming: parsed.data.streaming, platformState: parsed.data.platform_state,
+      blockingInteraction: parsed.data.blocking_interaction, recentUserInput: parsed.data.recent_user_input,
+      conversationBound: parsed.data.conversation_bound, observationGenerationId: parsed.data.observation_generation_id,
+      longObservationGap: Boolean(parsed.data.long_observation_gap)
+    });
     res.status(204).end();
   });
   app.post("/continuation/v1/events/bind", async (req, res) => {

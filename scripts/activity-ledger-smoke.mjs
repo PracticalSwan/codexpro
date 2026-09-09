@@ -40,8 +40,8 @@ await fs.writeFile(path.join(mcpRoot, 'visible.txt'), 'visible\n');
 await fs.writeFile(path.join(mcpRoot, 'package.json'), JSON.stringify({ scripts: { test: 'node -e \"process.exit(1)\"' } }, null, 2));
 const transport = new StdioClientTransport({
   command: process.execPath,
-  args: ['dist/stdio.js', '--root', mcpRoot, '--allow-root', mcpRoot, '--bash', 'safe', '--write', 'off', '--tool-mode', 'minimal'],
-  env: { ...process.env, CODEXPRO_ACTIVITY_DIR: mcpActivity, CODEXPRO_ALLOW_NO_HTTP_TOKEN: '1' }
+  args: ['dist/stdio.js', '--root', mcpRoot, '--allow-root', mcpRoot, '--bash', 'safe', '--write', 'off', '--tool-mode', 'full'],
+  env: { ...process.env, CODEXPRO_ACTIVITY_DIR: mcpActivity, CODEXPRO_ALLOW_NO_HTTP_TOKEN: '1', CODEXPRO_CONTINUATION_ENABLED: '1' }
 });
 const client = new Client({ name: 'activity-ledger-smoke', version: '0.1.0' });
 await client.connect(transport);
@@ -57,7 +57,22 @@ assert.ok(checkId, 'npm test check was not discovered');
 const failedCheck = await client.callTool({ name: 'run_checks', arguments: { workspace_id: ws, check_ids: [checkId] } });
 assert.equal(failedCheck.isError, undefined);
 assert.equal(failedCheck.structuredContent.ok, false);
-const logged = await client.callTool({ name: 'activity_log', arguments: { workspace_id: ws, limit: 20 } });
+const armedContinuation = await client.callTool({ name: 'continuation_arm', arguments: { workspace_id: ws, title: 'bounded lifecycle test' } });
+const continuationId = armedContinuation.structuredContent.task.id;
+let continuationRevision = armedContinuation.structuredContent.task.revision;
+const checkpointedContinuation = await client.callTool({ name: 'continuation_checkpoint', arguments: {
+  workspace_id: ws, continuation_id: continuationId, expected_revision: continuationRevision,
+  checkpoint_id: 'activity-cp', completed_evidence: ['phase complete'], remaining_work: ['next phase']
+} });
+continuationRevision = checkpointedContinuation.structuredContent.task.revision;
+const requestedContinuation = await client.callTool({ name: 'continuation_request', arguments: {
+  workspace_id: ws, continuation_id: continuationId, expected_revision: continuationRevision, request_id: 'activity-request'
+} });
+continuationRevision = requestedContinuation.structuredContent.task.revision;
+await client.callTool({ name: 'continuation_cancel', arguments: { workspace_id: ws, continuation_id: continuationId, expected_revision: continuationRevision } });
+const completedContinuation = await client.callTool({ name: 'continuation_arm', arguments: { workspace_id: ws, title: 'completed lifecycle test' } });
+await client.callTool({ name: 'continuation_complete', arguments: { workspace_id: ws, continuation_id: completedContinuation.structuredContent.task.id, expected_revision: completedContinuation.structuredContent.task.revision } });
+const logged = await client.callTool({ name: 'activity_log', arguments: { workspace_id: ws, limit: 40 } });
 assert.notEqual(logged.isError, true);
 const readRecords = logged.structuredContent.records.filter((record) => record.action === 'read');
 assert.ok(readRecords.some((record) => record.status === 'ok'));
@@ -65,6 +80,14 @@ assert.ok(readRecords.some((record) => record.status === 'error'));
 const failedCheckRecord = logged.structuredContent.records.find((record) => record.action === 'run_checks' && record.status === 'ok' && record.operationId);
 assert.ok(failedCheckRecord, 'failed check invocation was not recorded as a completed tool call');
 assert.match(failedCheckRecord.summary ?? '', /fail/i, 'activity summary must distinguish a completed failing check from a passing check');
+const continuationRecords = logged.structuredContent.records.filter((record) => record.kind === 'continuation');
+assert.deepEqual(continuationRecords.map((record) => record.action), ['arm', 'checkpoint', 'request', 'canceled', 'arm', 'completed']);
+const firstShort = continuationId.replace(/^continuation_/, '').slice(0, 8);
+const secondShort = completedContinuation.structuredContent.task.id.replace(/^continuation_/, '').slice(0, 8);
+assert(continuationRecords.every((record) => /^[A-Za-z0-9-]{1,8}$/.test(String(record.continuationId || ''))), 'continuation lifecycle record omitted bounded task short id');
+assert(continuationRecords.slice(0, 4).every((record) => record.continuationId === firstShort), 'first continuation lifecycle records changed task identity');
+assert(continuationRecords.slice(4).every((record) => record.continuationId === secondShort), 'completed continuation lifecycle records changed task identity');
+assert(continuationRecords.every((record) => !String(record.summary ?? '').includes('bounded lifecycle test')), 'continuation lifecycle record retained task title');
 assert.ok(!JSON.stringify(logged.structuredContent).includes('visible\n'));
 const beforeSelfReadSequence = logged.structuredContent.nextSequence;
 const selfRead = await client.callTool({ name: 'activity_log', arguments: { workspace_id: ws, after_sequence: beforeSelfReadSequence, limit: 20 } });

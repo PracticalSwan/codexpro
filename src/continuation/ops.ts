@@ -164,6 +164,19 @@ export async function armContinuation(input: {
   return input.store.createActive({ ...input.binding, title: input.title, ...(input.continuationId ? { id: input.continuationId } : {}) });
 }
 
+export async function reassociateContinuationSession(input: {
+  enabled: boolean;
+  store: ContinuationStore;
+  workspace: ContinuationBinding["workspace"];
+  continuationId: string;
+  newSessionId: string;
+  previousSessionActive: boolean;
+}): Promise<ContinuationRecord> {
+  requireEnabled(input.enabled);
+  if (input.previousSessionActive) throw new Error("continuation_previous_session_active: previous MCP session is still active.");
+  return input.store.reassociateSession(input.continuationId, input.workspace, input.newSessionId);
+}
+
 export async function checkpointContinuation(input: {
   enabled: boolean; store: ContinuationStore; binding: ContinuationBinding; continuationId: string; expectedRevision: number;
   checkpointId: string; currentPhase?: string; completedEvidence: string[]; remainingWork: string[]; intents?: ContinuationIntentDraft[];

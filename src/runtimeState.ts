@@ -40,6 +40,10 @@ export class CodexProRuntimeState {
     this.contextCaches.get(workspaceId)?.clear();
   }
 
+  processRecords(workspaceId: string) {
+    return this.processManagers.get(workspaceId)?.list() ?? [];
+  }
+
   async close(): Promise<void> {
     if (this.closing) return;
     this.closing = true;

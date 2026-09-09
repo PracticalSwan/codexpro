@@ -181,6 +181,10 @@ export class WorkspaceProcessManager {
     return publicRecord(this.requireEntry(id));
   }
 
+  list(): WorkspaceProcessRecord[] {
+    return [...this.entries.values()].map((entry) => publicRecord(entry));
+  }
+
   readOutput(id: string, options: { cursor?: number; maxBytes?: number } = {}): ProcessOutputPage {
     const entry = this.requireEntry(id);
     const requestedCursor = options.cursor ?? entry.droppedBefore;

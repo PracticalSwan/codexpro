@@ -93,7 +93,7 @@ try {
 
   const pageState = await fetch(`${base}/continuation/v1/page-state`, {
     method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' },
-    body: JSON.stringify({ auth_state: 'signed_in', composer_available: true, streaming: false, blocking_interaction: false })
+    body: JSON.stringify({ auth_state: 'signed_in', composer_available: true, streaming: false, platform_state: 'idle', blocking_interaction: false, recent_user_input: false, conversation_bound: true, observation_generation_id: 'browser-smoke-1', long_observation_gap: false })
   });
   assert.equal(pageState.status, 204);
   assert.equal(events.at(-1)?.type, 'page_state');

@@ -32,7 +32,7 @@ export interface BrowserContinuationSnapshot {
   recentUserInput: boolean;
 }
 export interface DurableContinuationWorkSnapshot {
-  kind: "process" | "job" | "goal";
+  kind: "process" | "job" | "goal" | "batch";
   active: boolean;
   modelAttentionRequired: boolean;
 }
@@ -138,11 +138,12 @@ export async function recordContinuationHeartbeat(input: {
   const current = await input.store.requireForBinding(input.continuationId, input.binding);
   if (TERMINAL_CONTINUATION_STATES.has(current.state)) return current;
   const now = input.now ?? Date.now();
+  if (current.state !== "awaiting_ack" || !current.watchdog?.pendingAckDispatchRevision) {
+    return input.store.touchHeartbeat(input.continuationId, input.binding, { expectedRevision: input.expectedRevision, at: timestamp(now) });
+  }
   return input.store.update(input.continuationId, input.binding, { expectedRevision: input.expectedRevision }, (record) => {
     record.lastHeartbeatAt = timestamp(now);
-    if (record.state === "awaiting_ack" && record.watchdog?.pendingAckDispatchRevision) {
-      acknowledgeDraft(record, record.watchdog.pendingAckDispatchRevision, now, input.maxDispatches ?? DEFAULT_MAX_CONTINUATION_DISPATCHES);
-    }
+    acknowledgeDraft(record, record.watchdog!.pendingAckDispatchRevision!, now, input.maxDispatches ?? DEFAULT_MAX_CONTINUATION_DISPATCHES);
     return record;
   });
 }

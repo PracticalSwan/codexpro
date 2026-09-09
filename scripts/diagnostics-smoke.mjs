@@ -1,5 +1,5 @@
 import { TelemetryRegistry } from '../dist/telemetry.js';
-import { connectionDiagnostics, toolSurfaceDiagnostics } from '../dist/diagnosticsOps.js';
+import { connectionDiagnostics, diagnosticsSnapshot, toolSurfaceDiagnostics } from '../dist/diagnosticsOps.js';
 import { loadConfig } from '../dist/config.js';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -40,5 +40,26 @@ assert(surface.unexpected_tools.includes('unexpected_tool'), 'tool diagnostics d
 assert(surface.configured.tool_mode === 'full' && surface.configured.write_mode === 'workspace', 'tool diagnostics omitted configured modes');
 const surfaceText = JSON.stringify(surface);
 assert(!surfaceText.includes(root), 'tool diagnostics leaked absolute workspace path');
+
+const continuationDiag = diagnosticsSnapshot(
+  { ...config, continuationEnabled: true }, telemetry.snapshot(), ['read'], ['read'], 2,
+  {
+    savedDeadlineMode: 'bounded', savedDeadlineMs: 720_000, activeStructuredJobs: 1,
+    continuationFeatureEnabled: true, browserPaired: true, browserAuthState: 'signed_in',
+    activeContinuationTasks: 1, userActionRequired: true,
+    runtimeGenerationId: 'runtime-test-generation', runtimeDeadlineMode: 'bounded', runtimeDeadlineMs: 1_200_000,
+    runtimeTransportState: 'ready'
+  }
+);
+assert(continuationDiag.continuation?.enabled === true, 'diagnostics omitted continuation enabled state');
+assert(continuationDiag.continuation?.browser?.paired === true && continuationDiag.continuation?.browser?.auth_state === 'signed_in', 'diagnostics omitted coarse browser state');
+assert(continuationDiag.continuation?.active_task_count === 1 && continuationDiag.continuation?.user_action_required === true, 'diagnostics omitted continuation task/action state');
+assert(continuationDiag.continuation?.current_runtime?.generation_id === 'runtime-test-generation', 'diagnostics omitted current runtime generation');
+assert(continuationDiag.continuation?.current_runtime?.deadline_ms === 1_200_000 && continuationDiag.continuation?.current_runtime?.transport === 'ready', 'diagnostics omitted current runtime deadline/transport');
+assert(continuationDiag.continuation?.saved_next_run_deadline?.ms === 720_000, 'diagnostics did not separately label saved-next-run deadline');
+const continuationDiagText = JSON.stringify(continuationDiag);
+for (const forbidden of ['conversation_route', 'route_fingerprint', 'browser_credential', 'authorization_token']) {
+  assert(!continuationDiagText.includes(forbidden), `diagnostics exposed private continuation field: ${forbidden}`);
+}
 
 console.log('✓ diagnostics smoke test passed');

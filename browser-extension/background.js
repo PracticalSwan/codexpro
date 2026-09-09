@@ -3,7 +3,9 @@ const DEFAULT_PAGE = { auth_state: 'unknown', conversation_route_present: false,
 const DEFAULT_STATE = { paired: false, available: false, profileLabel: 'default', bridgeUrl: '', clientId: '', task: null, pageState: DEFAULT_PAGE };
 const NOTIFICATION_PREFIX = 'codexpro-continuation-';
 const NOTIFICATION_ICON = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="%23222222"/><path d="M18 32h28M34 20l12 12-12 12" fill="none" stroke="white" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const OBSERVATION_GENERATION_ID = `browser-${crypto.randomUUID()}`;
 let pollTimer = null;
+let lastPageStateAt = 0;
 
 function loopbackBridgeUrl(value) {
   try {
@@ -224,9 +226,18 @@ async function sendPageState(pageState, sender) {
   await saveUi({ pageState: nextPageState });
   const binding = current.task?.id ? await bindingFor(current.task.id) : null;
   const routeInvalidated = Boolean(binding && sender?.tab?.id === binding.tabId && binding.routeKey !== nextPageState.conversation_route_key);
+  const conversationBound = Boolean(binding && sender?.tab?.id === binding.tabId && binding.routeKey === nextPageState.conversation_route_key);
   const unsafe = nextPageState.auth_state !== 'signed_in' || routeInvalidated || Boolean(nextPageState.streaming) || Boolean(nextPageState.blocking_interaction) || Boolean(nextPageState.recent_user_input) || nextPageState.platform_state !== 'idle';
   if (unsafe) await clearReadyNotification(); else if (current.task) await syncReadyNotification(current.task);
-  const coarse = { auth_state: nextPageState.auth_state, composer_available: Boolean(nextPageState.composer_ready ?? nextPageState.composer_available), streaming: Boolean(nextPageState.streaming), blocking_interaction: Boolean(nextPageState.blocking_interaction) };
+  const now = Date.now();
+  const coarse = {
+    auth_state: nextPageState.auth_state, composer_available: Boolean(nextPageState.composer_ready ?? nextPageState.composer_available),
+    streaming: Boolean(nextPageState.streaming), platform_state: nextPageState.platform_state || 'unknown',
+    blocking_interaction: Boolean(nextPageState.blocking_interaction), recent_user_input: Boolean(nextPageState.recent_user_input),
+    conversation_bound: conversationBound, observation_generation_id: OBSERVATION_GENERATION_ID,
+    long_observation_gap: lastPageStateAt > 0 && now - lastPageStateAt > 60_000
+  };
+  lastPageStateAt = now;
   try {
     await bridgeFetch('/continuation/v1/page-state', { method: 'POST', body: JSON.stringify(coarse) });
     await saveUi({ available: true });

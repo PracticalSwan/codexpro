@@ -76,6 +76,19 @@ export class BatchStore {
     return record;
   }
 
+  async list(workspaceId?: string): Promise<BatchRecord[]> {
+    const entries = await fsp.readdir(this.baseDir, { withFileTypes: true }).catch(() => [] as import("node:fs").Dirent[]);
+    const records: BatchRecord[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !entry.name.startsWith("batch_")) continue;
+      try {
+        const record = await this.require(entry.name);
+        if (!workspaceId || record.workspaceId === workspaceId) records.push(record);
+      } catch {}
+    }
+    return records.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, this.maxRecords);
+  }
+
   async update(id: string, mutate: (record: BatchRecord) => BatchRecord | void): Promise<BatchRecord> {
     const record = await this.require(id);
     const next = mutate({ ...record }) ?? record;

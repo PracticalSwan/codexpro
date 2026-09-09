@@ -1,4 +1,4 @@
-export type ActivityKind = "tool" | "operation" | "check" | "process" | "job" | "goal" | "git";
+export type ActivityKind = "tool" | "operation" | "check" | "process" | "job" | "goal" | "continuation" | "git";
 export type ActivityStatus = "started" | "ok" | "error" | "cancelled";
 
 export interface ActivityRecord {
@@ -14,6 +14,7 @@ export interface ActivityRecord {
   processId?: string;
   jobId?: string;
   goalId?: string;
+  continuationId?: string;
   relativePaths?: string[];
   summary?: string;
 }

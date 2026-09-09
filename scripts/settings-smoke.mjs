@@ -603,16 +603,20 @@ run([
   '--port',
   String(runtimePort),
   '--tool-cards',
-  'on'
+  'on',
+  '--sync-call-deadline-minutes',
+  '12'
 ], env);
+let firstRuntimeGeneration;
 await withStartedCodexPro([
   '--root',
   runtimeRoot
 ], env, async (child) => {
-  const runtime = await waitForJson(runtimePath, (data) => data.toolCards === true && data.syncCallDeadlineMode === 'bounded' && data.syncCallDeadlineMs === 1_200_000 && data.pid === child.pid, 'tool-cards runtime status');
-  if (runtime.toolCards !== true || runtime.syncCallDeadlineMode !== 'bounded' || runtime.syncCallDeadlineMs !== 1_200_000 || runtime.pid !== child.pid) {
-    throw new Error(`runtime status did not persist toolCards: ${JSON.stringify(runtime)}`);
+  const runtime = await waitForJson(runtimePath, (data) => data.toolCards === true && data.syncCallDeadlineMode === 'bounded' && data.syncCallDeadlineMs === 720_000 && data.transportState === 'ready' && typeof data.runtimeGenerationId === 'string' && data.runtimeGenerationId.length >= 32 && data.pid === child.pid, 'tool-cards runtime status');
+  if (runtime.toolCards !== true || runtime.syncCallDeadlineMode !== 'bounded' || runtime.syncCallDeadlineMs !== 720_000 || runtime.transportState !== 'ready' || !/^[a-f0-9]{32,64}$/.test(runtime.runtimeGenerationId) || runtime.pid !== child.pid) {
+    throw new Error(`runtime status did not persist current generation/deadline/transport truth: ${JSON.stringify(runtime)}`);
   }
+  firstRuntimeGeneration = runtime.runtimeGenerationId;
 }, { forceKill: true });
 const previousCodexProHome = process.env.CODEXPRO_HOME;
 process.env.CODEXPRO_HOME = home;
@@ -632,6 +636,18 @@ try {
 } catch (error) {
   if (error?.code !== 'ENOENT') throw error;
 }
+await withStartedCodexPro([
+  '--root',
+  runtimeRoot
+], env, async (child) => {
+  const restartedRuntime = await waitForJson(runtimePath, (data) => data.pid === child.pid && data.transportState === 'ready' && typeof data.runtimeGenerationId === 'string', 'restarted runtime generation');
+  if (restartedRuntime.runtimeGenerationId === firstRuntimeGeneration) {
+    throw new Error(`runtime restart reused generation id: ${restartedRuntime.runtimeGenerationId}`);
+  }
+  if (restartedRuntime.syncCallDeadlineMs !== 720_000) {
+    throw new Error(`runtime restart lost current configured deadline: ${JSON.stringify(restartedRuntime)}`);
+  }
+}, { forceKill: true });
 
 const headlessRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-settings-headless-'));
 const headlessPort = await getFreePort();

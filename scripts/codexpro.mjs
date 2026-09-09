@@ -992,6 +992,8 @@ function saveRuntimeConnection(root, details, options = {}) {
     toolCards: Boolean(options.toolCards),
     syncCallDeadlineMode: options.syncCallDeadlineMode ?? 'bounded',
     syncCallDeadlineMs: options.syncCallDeadlineMs ?? DEFAULT_SYNC_CALL_DEADLINE_MS,
+    runtimeGenerationId: options.runtimeGenerationId ?? '',
+    transportState: options.transportState ?? 'ready',
     continuationEnabled: Boolean(options.continuationEnabled),
     continuationBrowser: options.continuationBrowser ?? 'chrome',
     continuationProfile: options.continuationProfile ?? 'default',
@@ -4714,6 +4716,8 @@ async function main() {
   const runtimeOptions = {
     localBase,
     tunnel,
+    runtimeGenerationId: randomBytes(16).toString('hex'),
+    transportState: 'ready',
     mode,
     toolMode,
     write,

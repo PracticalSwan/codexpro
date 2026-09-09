@@ -22,7 +22,11 @@ import { redactSensitiveText, redactStructured } from "./redact.js";
 import { createCodexProServer, registeredToolNames, toolNamesForMode } from "./server.js";
 import { CodexProRuntimeState } from "./runtimeState.js";
 import { TelemetryRegistry } from "./telemetry.js";
+import { ActivityStore } from "./activity/store.js";
+import { ActivityRegistry } from "./activity/registry.js";
 import { JobStore } from "./jobs/store.js";
+import { GoalStore } from "./goals/store.js";
+import { BatchStore } from "./batches/store.js";
 import { diagnosticsSnapshot } from "./diagnosticsOps.js";
 import { WorkspaceRegistry } from "./guard.js";
 import { BrowserPairingStore } from "./continuation/browserAuth.js";
@@ -33,6 +37,8 @@ import { normalizeContinuationSettings } from "./continuation/settings.js";
 import { ContinuationStore } from "./continuation/store.js";
 import { publicContinuationRecord, TERMINAL_CONTINUATION_STATES, validateContinuationRecord, type ContinuationRecord } from "./continuation/types.js";
 import { bindContinuationConversation, authorizeContinuationDispatch, completeContinuationDispatch, releaseContinuationDispatch, observeContinuationManualTurn, cancelContinuation } from "./continuation/ops.js";
+import { evaluateContinuationReadiness, type BrowserContinuationSnapshot, type RuntimeContinuationSnapshot } from "./continuation/watchdog.js";
+import { classifyDurableContinuationWork } from "./continuation/runtimeIntegration.js";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -437,9 +443,9 @@ function profileForm(config: CodexProConfig): string {
             <label><span>Codex directory</span><input name="codexDir" value="${escapeHtml(values.codexDir)}"></label>
             <label><span>Bash session</span><input name="bashSession" value="${escapeHtml(values.bashSession)}"></label>
             <label><span>Widget origin</span><input name="widgetDomain" value="${escapeHtml(values.widgetDomain)}"></label>
-            <label><span>Synchronous tool deadline</span><select name="syncCallDeadlineMode">${selectOptions(DEADLINE_MODES, values.syncCallDeadlineMode)}</select></label>
-            <label><span>Bounded minutes</span><input name="syncCallDeadlineMinutes" type="number" min="5" max="60" step="1" value="${escapeHtml(values.syncCallDeadlineMinutes)}"></label>
+            <label><span>Tool access window (minutes)</span><input name="syncCallDeadlineMinutes" type="number" min="5" max="60" step="1" value="${escapeHtml(values.syncCallDeadlineMinutes)}"></label>
           </div>
+          <label class="check-row"><input name="syncCallDeadlineObserve" type="checkbox" value="true"${values.syncCallDeadlineMode === "observe" ? " checked" : ""}><span>Unlimited / observe mode <small>Temporary host-window discovery only</small></span></label>
           <p class="field-help">Current runtime: ${escapeHtml(config.syncCallDeadlineMode === "observe" ? "Unlimited / observe only" : `${config.syncCallDeadlineMs / 60_000} minutes bounded`)}. Saved changes apply only on the next launch. Unlimited keeps elapsed-time diagnostics but disables CodexPro's cooperative cutoff; use it temporarily with the harmless tool-time probe, then restore a bounded value below your observed host cutoff. Deadline settings never reduce task scope, review, verification, or safety requirements.</p>
           <label class="check-row"><input name="toolCards" type="checkbox" value="true"${values.toolCards ? " checked" : ""}><span>Enable ChatGPT tool cards</span></label>
           <label class="check-row"><input name="requireBashSession" type="checkbox" value="true"${values.requireBashSession ? " checked" : ""}><span>Require matching bash session id</span></label>
@@ -649,6 +655,7 @@ async function continuationAdminResponse(config: CodexProConfig): Promise<Record
   records.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
   const active = records.filter((record) => sameResolvedPath(record.workspaceRoot, config.defaultRoot) && !TERMINAL_CONTINUATION_STATES.has(record.state));
   const task = active[0] ?? null;
+  const currentRuntime = readRuntimeConnection(config.defaultRoot);
 
   const browserProfileLabel = config.continuationEnabled ? config.continuationProfile : saved.continuationProfile;
   let browser: Record<string, unknown> = {
@@ -688,8 +695,12 @@ async function continuationAdminResponse(config: CodexProConfig): Promise<Record
     },
     runtime: {
       enabled: config.continuationEnabled,
-      transport: "ready",
-      deadline: { mode: config.syncCallDeadlineMode, ms: config.syncCallDeadlineMs }
+      generation_id: typeof currentRuntime.runtimeGenerationId === "string" ? currentRuntime.runtimeGenerationId : null,
+      transport: currentRuntime.transportState === "unavailable" || currentRuntime.transportState === "unknown" ? currentRuntime.transportState : "ready",
+      deadline: {
+        mode: currentRuntime.syncCallDeadlineMode === "observe" || currentRuntime.syncCallDeadlineMode === "bounded" ? currentRuntime.syncCallDeadlineMode : config.syncCallDeadlineMode,
+        ms: Number.isInteger(currentRuntime.syncCallDeadlineMs) ? Number(currentRuntime.syncCallDeadlineMs) : config.syncCallDeadlineMs
+      }
     },
     browser,
     task: task ? {
@@ -1831,7 +1842,7 @@ function onboardingPage(config: CodexProConfig): string {
           write: data.write,
           toolMode: data.toolMode,
           toolCards: Boolean(form.elements.toolCards?.checked),
-          syncCallDeadlineMode: data.syncCallDeadlineMode,
+          syncCallDeadlineMode: form.elements.syncCallDeadlineObserve?.checked ? "observe" : "bounded",
           syncCallDeadlineMinutes: Number(data.syncCallDeadlineMinutes),
           continuationEnabled: Boolean(form.elements.continuationEnabled?.checked),
           continuationBrowser: form.elements.continuationBrowser?.value || "chrome",
@@ -2064,6 +2075,9 @@ async function main(): Promise<void> {
   const transports = new Map<string, TransportRecord>();
   const workspaceRegistry = new WorkspaceRegistry();
   const runtimeState = new CodexProRuntimeState();
+  const activityRegistry = new ActivityRegistry(new ActivityStore({
+    baseDir: config.activityDir, maxRecords: config.maxActivityRecords, maxBytes: config.maxActivityBytes
+  }));
   const sessionIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   function requestSessionId(req: Request): string | undefined {
@@ -2149,9 +2163,23 @@ async function main(): Promise<void> {
     const saved = profileValues(config, readWorkspaceProfile(config.defaultRoot));
     const jobs = await new JobStore({ baseDir: config.jobDir, maxJobs: config.maxOperationReceipts, maxOutputBytes: config.maxOperationBytes, maxReadBytes: config.maxProcessReadBytes }).list();
     const activeStructuredJobs = jobs.filter((job) => ["queued", "running", "paused"].includes(job.state)).length;
+    const continuation = await continuationAdminResponse(config) as any;
+    const continuationTaskCount = Number.isInteger(continuation.ambiguous_active_tasks) ? Number(continuation.ambiguous_active_tasks) : continuation.task ? 1 : 0;
+    const continuationState = String(continuation.task?.state ?? "");
     res.json(diagnosticsSnapshot(
       config, telemetry.snapshot(), latestRegisteredTools, toolNamesForMode(config), transports.size,
-      { savedDeadlineMode: saved.syncCallDeadlineMode, savedDeadlineMs: saved.syncCallDeadlineMinutes * 60_000, activeStructuredJobs }
+      {
+        savedDeadlineMode: saved.syncCallDeadlineMode, savedDeadlineMs: saved.syncCallDeadlineMinutes * 60_000, activeStructuredJobs,
+        continuationFeatureEnabled: config.continuationEnabled,
+        browserPaired: continuation.browser?.paired === true,
+        browserAuthState: String(continuation.browser?.auth_state ?? "unknown"),
+        activeContinuationTasks: continuationTaskCount,
+        userActionRequired: continuation.task?.continuation_ready === true || ["waiting_for_auth", "paused_by_user", "manual_rearm_required"].includes(continuationState),
+        runtimeGenerationId: typeof continuation.runtime?.generation_id === "string" ? continuation.runtime.generation_id : undefined,
+        runtimeDeadlineMode: String(continuation.runtime?.deadline?.mode ?? config.syncCallDeadlineMode),
+        runtimeDeadlineMs: Number(continuation.runtime?.deadline?.ms ?? config.syncCallDeadlineMs),
+        runtimeTransportState: String(continuation.runtime?.transport ?? "unknown")
+      }
     ));
   });
 
@@ -2265,8 +2293,11 @@ async function main(): Promise<void> {
         const server = createCodexProServer(config, {
           workspaceRegistry,
           telemetryRegistry: telemetry,
+          activityRegistry,
           activeSessionCount: () => transports.size,
-          runtimeState
+          runtimeState,
+          transportSessionId: () => (transport as any).sessionId || undefined,
+          isTransportSessionActive: (id) => transports.has(id)
         });
         latestRegisteredTools = registeredToolNames(server);
         await server.connect(transport);
@@ -2303,6 +2334,7 @@ async function main(): Promise<void> {
     telemetry.record({ stage: "dispatch", status: "ok", backend: "http" });
     try {
       await transport.handleRequest(req, res);
+      if (req.method === "DELETE" && sessionId) transports.delete(sessionId);
       telemetry.record({ stage: "completion", status: "ok", backend: "http", durationMs: Date.now() - dispatchStarted });
     } catch (error) {
       telemetry.record({ stage: "completion", status: "error", backend: "http", errorBoundary: error instanceof Error ? error.message : String(error) });
@@ -2354,11 +2386,54 @@ async function main(): Promise<void> {
   if (continuationEnabled) {
     const browserStore = new BrowserPairingStore(path.join(continuationRoot, "browser"));
     const continuationStore = new ContinuationStore(continuationRoot, config.maxOperationReceipts);
+    const continuationJobStore = new JobStore({ baseDir: config.jobDir, maxJobs: config.maxOperationReceipts, maxOutputBytes: config.maxOperationBytes, maxReadBytes: config.maxProcessReadBytes });
+    const continuationBatchStore = new BatchStore(config.batchDir, Math.max(config.maxOperationBytes, 64 * 1024), config.maxOperationReceipts);
+    const browserObservations = new Map<string, BrowserContinuationSnapshot>();
     const bindingForRecord = (record: ContinuationRecord) => ({ workspace: { id: record.workspaceId, root: record.workspaceRoot }, ...(record.mcpSessionId ? { sessionId: record.mcpSessionId } : {}) });
+    const runtimeSnapshot = (): RuntimeContinuationSnapshot => {
+      const current = readRuntimeConnection(config.defaultRoot);
+      return {
+        runtimeGenerationId: typeof current.runtimeGenerationId === "string" && current.runtimeGenerationId ? current.runtimeGenerationId : `http-${process.pid}`,
+        syncCallDeadlineMode: current.syncCallDeadlineMode === "observe" ? "observe" : current.syncCallDeadlineMode === "bounded" ? "bounded" : config.syncCallDeadlineMode,
+        syncCallDeadlineMs: Number.isInteger(current.syncCallDeadlineMs) ? Number(current.syncCallDeadlineMs) : config.syncCallDeadlineMs,
+        transportState: current.transportState === "unavailable" || current.transportState === "unknown" ? current.transportState : "ready",
+        observedAt: typeof current.updatedAt === "string" ? current.updatedAt : new Date().toISOString()
+      };
+    };
+    const durableWorkFor = async (record: ContinuationRecord) => classifyDurableContinuationWork({
+      processes: runtimeState.processRecords(record.workspaceId),
+      jobs: await continuationJobStore.list(record.workspaceId),
+      goals: await new GoalStore({ baseDir: path.join(config.goalDir, record.workspaceId), maxGoals: config.maxGoals }).list(record.workspaceId),
+      batches: await continuationBatchStore.list(record.workspaceId)
+    });
+    const appendContinuationEvent = async (record: ContinuationRecord, action: string, reason?: string) => activityRegistry.appendBestEffort({
+      workspaceId: record.workspaceId, kind: "continuation", action, status: "ok",
+      continuationId: record.id.replace(/^continuation_/, "").slice(0, 8),
+      summary: `state=${record.state}${reason ? ` reason=${reason}` : ""}`
+    });
+    const evaluateRecord = async (record: ContinuationRecord, browser: BrowserContinuationSnapshot) => {
+      const beforeState = record.state;
+      const evaluated = await evaluateContinuationReadiness({
+        enabled: true, store: continuationStore, binding: bindingForRecord(record), continuationId: record.id, expectedRevision: record.revision,
+        runtime: runtimeSnapshot(), browser, durableWork: await durableWorkFor(record), unexpectedInterruptionGraceMs: config.continuationUnexpectedGraceMs,
+        cooldownMs: config.continuationCooldownMs, maxDispatches: config.continuationMaxDispatches
+      });
+      if (evaluated.state !== beforeState) {
+        if (evaluated.state === "continuation_ready") await appendContinuationEvent(evaluated, "ready", "watchdog");
+        else if (evaluated.state === "waiting_for_auth") await appendContinuationEvent(evaluated, "auth_required", "browser_auth");
+      }
+      return evaluated;
+    };
     browserBridge = await startBrowserContinuationBridge({
       store: browserStore,
-      statusProvider: async () => {
+      statusProvider: async (clientId) => {
         const active = (await continuationStore.list()).filter((record) => !TERMINAL_CONTINUATION_STATES.has(record.state));
+        if (active.length === 1) {
+          const browser = browserObservations.get(clientId);
+          if (browser) {
+            try { active[0] = await evaluateRecord(active[0], browser); } catch {}
+          }
+        }
         return { continuation_enabled: true, task: active.length === 1 ? publicContinuationRecord(active[0]) : null, ...(active.length > 1 ? { ambiguous_active_tasks: active.length } : {}) };
       },
       bindConversation: async ({ taskId, revision, conversationFingerprint }) => {
@@ -2374,6 +2449,7 @@ async function main(): Promise<void> {
       completeDispatch: async ({ taskId, revision, conversationFingerprint, authorizationToken }) => {
         const current = await continuationStore.require(taskId);
         const record = await completeContinuationDispatch({ store: continuationStore, binding: bindingForRecord(current), continuationId: taskId, expectedRevision: revision, conversationFingerprint, token: authorizationToken });
+        await appendContinuationEvent(record, "dispatched", "browser_user_authorized");
         return { task: publicContinuationRecord(record) };
       },
       releaseDispatch: async ({ taskId, revision, authorizationToken }) => {
@@ -2389,6 +2465,23 @@ async function main(): Promise<void> {
       },
       onEvent: async (event) => {
         if (event.type !== "page_state") return;
+        const browser: BrowserContinuationSnapshot = {
+          observationGenerationId: event.observationGenerationId,
+          connected: true,
+          longObservationGap: event.longObservationGap,
+          authState: event.authState,
+          conversationBound: event.conversationBound,
+          composerReady: event.composerAvailable,
+          streaming: event.streaming,
+          platformState: event.platformState,
+          blockingInteraction: event.blockingInteraction,
+          recentUserInput: event.recentUserInput
+        };
+        browserObservations.set(event.clientId, browser);
+        const active = (await continuationStore.list()).filter((record) => !TERMINAL_CONTINUATION_STATES.has(record.state));
+        if (active.length === 1) {
+          try { await evaluateRecord(active[0], browser); } catch {}
+        }
         const client = (await browserStore.listPublicClients()).find((entry) => entry.client_id === event.clientId && entry.active === true);
         const label = typeof client?.profile_label === "string" ? client.profile_label : undefined;
         if (!label) return;
