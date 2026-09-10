@@ -1,7 +1,7 @@
 ﻿import fsp from "node:fs/promises";
 import path from "node:path";
 import { randomBytes } from "node:crypto";
-import { redactSensitiveText } from "../redact.js";
+import { containsPrivateMetadataText, redactSensitiveText } from "../redact.js";
 import type { ActivityRecord, ActivityPage, ActivityQuery } from "./types.js";
 
 export interface ActivityStoreOptions { baseDir: string; maxRecords: number; maxBytes: number; }
@@ -15,7 +15,7 @@ function cleanSummary(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
   let text = String(value).replace(/[\r\n\0]+/g, " ").trim();
   if (!text) return undefined;
-  if (/(?:authorization|api[_-]?key|token|secret|password)\s*[:=]/i.test(text)) return "[redacted summary]";
+  if (containsPrivateMetadataText(text) || /(?:authorization|api[_-]?key|token|secret|password)\s*[:=]/i.test(text)) return "[redacted summary]";
   text = text.replace(/[A-Za-z]:[\\/][^\s"']+/g, "[path omitted]")
     .replace(/(^|\s)\/(?:[^\s"']+\/)*[^\s"']+/g, "$1[path omitted]");
   return redactSensitiveText(text).slice(0, 320);

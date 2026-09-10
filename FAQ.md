@@ -361,6 +361,11 @@ When a task is genuinely continuation-ready, CodexPro can send one privacy-safe 
 
 Use `codexpro continuation telegram doctor` for sanitized health, `telegram test` for a fixed test notification, `telegram disable` to stop new Telegram authorizations while preserving browser Continue, and `telegram revoke` to invalidate the paired private identity and outstanding Telegram actions without canceling the continuation task. A webhook conflict, blocked bot, or Telegram outage fails closed and leaves the browser path available without automatic sending.
 
+## Does task continuation scrape or autonomously drive ChatGPT?
+
+No. Task continuation observes only coarse page/auth/composer capability state in a dedicated CodexPro-managed browser profile. It does not read conversation output, execute arbitrary DOM scripts, use your ordinary browser profile, automate login/2FA/passkeys, click approvals or safety controls, switch models, auto-Retry, or attempt to bypass rate limits/tool windows. Every continuation send remains a fixed product message authorized by a current browser or exactly paired Telegram user action and revalidated against the current task revision, route, runtime transport, and page-safety state.
+
+For release/operator validation, use `scripts/continuation-live-checklist.md`. After the intended build is installed, use `scripts/continuation-fresh-session-checklist.md` from a new ChatGPT conversation and copy back only its sanitized report fields. Do not include bot/browser tokens, Telegram numeric IDs, cookies/storage, account email, full private conversation URLs, prompt/output text, or secret-bearing commands.
 ## Can I keep the same ChatGPT connection every day?
 
 Yes. With the default OpenAI Secure MCP Tunnel path, keep the same Platform tunnel ID assigned to the same ChatGPT workspace and save that non-secret ID in the CodexPro workspace profile. Daily startup remains:

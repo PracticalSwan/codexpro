@@ -85,6 +85,7 @@
 ## D-021 — Browser continuation is human-gated, not a restriction bypass
 **Decision:** A future continuation companion may maintain task-aware readiness and bind/focus one ChatGPT conversation, but continuation is optional/default-off and version 1 may submit only after a contemporaneous explicit user authorization from the browser **Continue task** button or the exactly paired Telegram inline action. It may not scrape ChatGPT output, auto-submit, click approvals/login/safety controls, or attempt to bypass host tool/session restrictions.
 **Why:** Conversation resumption must preserve user control and product/security boundaries rather than converting a transport limit into an autonomous browser loop.
+**Security shorthand:** human-gated, no output scraping, no automatic submission, and manual authentication for login/reauthentication.
 
 ## D-022 — ChatGPT authentication state belongs to a dedicated browser profile
 **Decision:** Browser continuation uses a CodexPro-managed dedicated Chrome/Edge profile by default. Passwords, cookies, 2FA/passkeys, and provider authentication remain browser/user-controlled; CodexPro stores only coarse auth health and profile metadata. Implementation and live QA must STOP for user authentication and resume only after the user sends `continue`.

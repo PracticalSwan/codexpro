@@ -1,6 +1,9 @@
 # Changelog
 
 ## Unreleased
+- Hardened task-aware continuation telemetry, diagnostics, activity summaries, and Telegram error paths against private-looking browser/Telegram/account metadata, with synthetic security regressions for the public/reporting boundaries.
+- Added strict continuation release guards for the managed-browser extension permission/host allowlists, private browser/session artifact paths, private ChatGPT routes, Telegram credentials/callbacks, and packaged textual state.
+- Added formal continuation threat-model documentation plus sanitized live and fresh-ChatGPT-session acceptance checklists; browser continuation remains human-gated and does not scrape conversation output or automate login, Retry, model switching, approvals, safety controls, or restriction circumvention.
 - Fixed `activity_log` self-recording so reading the evidence ledger is observational and does not advance its own sequence.
 - Fixed Durable Goal `isolation_active` reporting so projected Goals no longer report active isolation after their worktree has been removed, while retained isolation metadata remains durable provenance.
 - Fixed workspace-policy v2 write-family enforcement so a `write` resource rule also governs the mutation tools `edit`, `apply_patch`, and `apply_change_set`; non-mutating `prepare_change_set` can be governed independently, while application rechecks every prepared target and denies the entire transaction when any member is denied.

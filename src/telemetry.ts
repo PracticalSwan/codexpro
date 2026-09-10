@@ -1,4 +1,4 @@
-import { redactSensitiveText } from "./redact.js";
+import { containsPrivateMetadataText, redactSensitiveText } from "./redact.js";
 
 export type TelemetryStage = "request_arrival" | "dispatch" | "completion" | "response" | "backend" | "resilience";
 export type TelemetryStatus = "ok" | "error" | "timeout" | "degraded";
@@ -31,14 +31,16 @@ export interface TelemetrySnapshot {
 function cleanName(value: unknown, max = 80): string | undefined {
   if (value === undefined || value === null) return undefined;
   const text = String(value).replace(/[\r\n\0]+/g, " ").trim();
-  return text ? text.replace(/[^A-Za-z0-9._:/ -]+/g, "_").slice(0, max) : undefined;
+  if (!text) return undefined;
+  if (containsPrivateMetadataText(text)) return "redacted";
+  return text.replace(/[^A-Za-z0-9._:/ -]+/g, "_").slice(0, max);
 }
 
 function cleanBoundary(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
   const text = String(value).replace(/[\r\n\0]+/g, " ").trim();
   if (!text) return undefined;
-  if (/(?:authorization|api[_-]?key|token|secret|password)\s*[:=]/i.test(text)) return "[redacted failure boundary]";
+  if (containsPrivateMetadataText(text) || /(?:authorization|api[_-]?key|token|secret|password)\s*[:=]/i.test(text)) return "[redacted failure boundary]";
   const withoutPaths = text
     .replace(/[A-Za-z]:[\\/][^\s"']+/g, "[path omitted]")
     .replace(/(^|\s)\/(?:[^\s"']+\/)*[^\s"']+/g, "$1[path omitted]");

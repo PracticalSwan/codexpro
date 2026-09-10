@@ -1,5 +1,6 @@
 import type { CodexProConfig } from "./config.js";
 import type { TelemetrySnapshot } from "./telemetry.js";
+import { containsPrivateMetadataText } from "./redact.js";
 import { DEFAULT_SYNC_CALL_DEADLINE_MS, MIN_SYNC_CALL_DEADLINE_MS, MAX_SYNC_CALL_DEADLINE_MS } from "./deadline.js";
 
 export interface ConnectionDiagnostics {
@@ -14,6 +15,31 @@ export interface ConnectionDiagnostics {
   last_event_at?: string;
 }
 
+const BROWSER_AUTH_STATES = new Set(["unknown", "signed_out", "signed_in", "authentication_required", "ambiguous"]);
+const TELEGRAM_WORKER_STATES = new Set(["not_running", "running", "error"]);
+const RUNTIME_DEADLINE_MODES = new Set(["bounded", "observe"]);
+const RUNTIME_TRANSPORT_STATES = new Set(["ready", "unavailable", "unknown"]);
+
+function safeDiagnosticEnum(value: unknown, allowed: Set<string>, fallback: string): string {
+  const text = String(value ?? "");
+  return allowed.has(text) ? text : fallback;
+}
+
+function safeTelegramBot(value: unknown): string | null {
+  const text = String(value ?? "");
+  return /^@[A-Za-z0-9_]{5,32}$/.test(text) ? text : null;
+}
+
+function safeIsoTimestamp(value: unknown): string | null {
+  const text = String(value ?? "");
+  return text && Number.isFinite(Date.parse(text)) ? text : null;
+}
+
+function safeRuntimeGenerationId(value: unknown): string | null {
+  const text = String(value ?? "").trim();
+  if (!text || text.length > 160 || containsPrivateMetadataText(text)) return null;
+  return /^[A-Za-z0-9._:-]+$/.test(text) ? text : null;
+}
 function count(snapshot: TelemetrySnapshot, key: string): number {
   return snapshot.counters[key] ?? 0;
 }
@@ -122,24 +148,24 @@ export function diagnosticsSnapshot(
     operator: { current_effective_deadline: { mode: config.syncCallDeadlineMode, ms: config.syncCallDeadlineMs }, saved_next_run_deadline: { mode: operator.savedDeadlineMode ?? config.syncCallDeadlineMode, ms: operator.savedDeadlineMs ?? config.syncCallDeadlineMs }, active_structured_jobs: Math.max(0, Math.floor(operator.activeStructuredJobs ?? 0)), recent_deadline_yield: (telemetry.counters["event:deadline_yield"] ?? 0) > 0 },
     continuation: {
       enabled: operator.continuationFeatureEnabled ?? config.continuationEnabled,
-      browser: { paired: operator.browserPaired === true, auth_state: operator.browserAuthState ?? "unknown" },
+      browser: { paired: operator.browserPaired === true, auth_state: safeDiagnosticEnum(operator.browserAuthState, BROWSER_AUTH_STATES, "unknown") },
       telegram: {
         enabled: operator.telegramEnabled === true,
         token_configured: operator.telegramTokenConfigured === true,
-        bot: operator.telegramBot ?? null,
+        bot: safeTelegramBot(operator.telegramBot),
         paired: operator.telegramPaired === true,
-        worker_state: operator.telegramWorkerState ?? "not_running",
+        worker_state: safeDiagnosticEnum(operator.telegramWorkerState, TELEGRAM_WORKER_STATES, "not_running"),
         webhook_conflict: operator.telegramWebhookConflict === true,
-        last_successful_contact: operator.telegramLastSuccessfulContact ?? null,
+        last_successful_contact: safeIsoTimestamp(operator.telegramLastSuccessfulContact),
         notification_available: operator.telegramNotificationAvailable === true
       },
       active_task_count: Math.max(0, Math.floor(operator.activeContinuationTasks ?? 0)),
       user_action_required: operator.userActionRequired === true,
       current_runtime: {
-        generation_id: operator.runtimeGenerationId ?? null,
-        deadline_mode: operator.runtimeDeadlineMode ?? config.syncCallDeadlineMode,
+        generation_id: safeRuntimeGenerationId(operator.runtimeGenerationId),
+        deadline_mode: safeDiagnosticEnum(operator.runtimeDeadlineMode ?? config.syncCallDeadlineMode, RUNTIME_DEADLINE_MODES, config.syncCallDeadlineMode),
         deadline_ms: operator.runtimeDeadlineMs ?? config.syncCallDeadlineMs,
-        transport: operator.runtimeTransportState ?? "unknown"
+        transport: safeDiagnosticEnum(operator.runtimeTransportState, RUNTIME_TRANSPORT_STATES, "unknown")
       },
       saved_next_run_deadline: { mode: operator.savedDeadlineMode ?? config.syncCallDeadlineMode, ms: operator.savedDeadlineMs ?? config.syncCallDeadlineMs }
     },

@@ -45,6 +45,11 @@ CodexPro can expose:
 - opt-in task-aware browser continuation using a dedicated managed browser profile, explicit stable-chat binding, coarse page/auth state, and fixed-message user-gated dispatch
 - optional Telegram continuation using one dedicated paired private bot chat, outbound-only long polling, protected per-user token/private state, opaque one-shot callbacks, and a browser-consumed local dispatch grant
 
+### Task-aware continuation threat model
+
+The continuation boundary assumes malicious ChatGPT page content, extension compromise, pairing-code theft or CSRF attempts, tunnel exposure, current-vs-saved deadline drift, runtime-generation changes, stopped or failed transport, wrong or stale chat routes, multiple tabs, nonce replay or stale popup revisions, completion/cancel races, auth expiry, browser profile leakage, extension reconnects, sleep/clock jumps, manual user messages or Stop actions, busy/error/retry/unknown UI, user-typing races, automatic approval clicking attempts, Telegram token leakage, wrong or forwarded Telegram user/chat callbacks, callback replay/expiry, duplicate or backlogged updates, webhook conflict, bot blocked/API outage, changed bot identity, and attempts to turn browser/Telegram endpoints into arbitrary MCP, DOM, or remote-command execution.
+
+Allowed browser actions are intentionally narrow: coarse capability/page-state observation, explicit stable-chat binding, notification/focus, and a user-clicked fixed continuation dispatch. Forbidden actions include conversation output scraping, arbitrary DOM execution, login automation, automatic Retry or model switching, approval/safety clicking, autonomous submission, automatic CodexPro/tunnel restart, rate limit or tool-window circumvention, and takeover of the user's ordinary browser profile. Authentication and reauthentication remain manual human boundaries.
 ## Failure Model
 
 Review changes against these failure modes before release:

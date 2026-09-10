@@ -1,3 +1,5 @@
+import { containsPrivateMetadataText } from "../redact.js";
+
 export interface TelegramClientOptions {
   fetchImpl?: typeof fetch;
   baseUrl?: string;
@@ -20,6 +22,7 @@ function sanitizedErrorText(value: unknown, token: string): string {
   text = text.replaceAll(token, "[redacted]");
   text = text.replace(/https?:\/\/[^\s"']+\/bot[^\s"']+/gi, "[Telegram Bot API URL]");
   text = text.replace(/\/bot\d{6,20}:[A-Za-z0-9_-]+/g, "[Telegram Bot API URL]");
+  if (containsPrivateMetadataText(text)) return "[redacted Telegram error]";
   return text.replace(/[\r\n\0]+/g, " ").slice(0, 500);
 }
 interface TelegramEnvelope<T> {

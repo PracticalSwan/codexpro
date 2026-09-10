@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { CODEXPRO_PACKAGE, assertCodexProReleaseEnvironment } from "./release-guard.mjs";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, extname, join, resolve, sep } from "node:path";
+import { CODEXPRO_PACKAGE, assertCodexProReleaseEnvironment, assertContinuationPackageFilesSafe, assertContinuationPackagedTextSafe } from "./release-guard.mjs";
 
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const npmCliCandidate = process.env.npm_execpath ||
@@ -38,6 +38,15 @@ try {
     fail(`Unexpected tarball filename: ${tarball.filename ?? "(missing)"}.`);
   }
   const packedFiles = (tarball.files ?? []).map((entry) => String(entry.path ?? "").replaceAll("\\", "/"));
+  assertContinuationPackageFilesSafe(packedFiles);
+  const textExtensions = new Set([".js", ".mjs", ".cjs", ".ts", ".json", ".md", ".html", ".css", ".svg", ".txt", ".env"]);
+  for (const file of packedFiles) {
+    if (!textExtensions.has(extname(file).toLowerCase()) && !["LICENSE"].includes(file)) continue;
+    const fullPath = resolve(release.root, file);
+    if (fullPath !== release.root && !fullPath.startsWith(`${release.root}${sep}`)) fail(`Package path escaped release root: ${file}`);
+    if (!existsSync(fullPath)) continue;
+    assertContinuationPackagedTextSafe(readFileSync(fullPath, "utf8"), file);
+  }
   const requiredRuntimeFiles = ["dist/stdio.js", "dist/http.js", "scripts/codexpro.mjs", "README.md", "LICENSE"];
   const missingRuntimeFiles = requiredRuntimeFiles.filter((file) => !packedFiles.includes(file));
   if (missingRuntimeFiles.length) {
