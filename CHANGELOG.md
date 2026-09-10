@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Marked browser/Telegram task continuation as experimental/incomplete pending deferred fresh-session installed-runtime acceptance; package defaults remain disabled.
 - Hardened task-aware continuation telemetry, diagnostics, activity summaries, and Telegram error paths against private-looking browser/Telegram/account metadata, with synthetic security regressions for the public/reporting boundaries.
 - Added strict continuation release guards for the managed-browser extension permission/host allowlists, private browser/session artifact paths, private ChatGPT routes, Telegram credentials/callbacks, and packaged textual state.
 - Added formal continuation threat-model documentation plus sanitized live and fresh-ChatGPT-session acceptance checklists; browser continuation remains human-gated and does not scrape conversation output or automate login, Retry, model switching, approvals, safety controls, or restriction circumvention.
