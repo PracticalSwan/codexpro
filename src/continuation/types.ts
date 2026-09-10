@@ -273,7 +273,7 @@ export function publicContinuationRecord(record: ContinuationRecord): Record<str
     continuation_intents: record.continuationIntents.map((intent) => ({ id: intent.id, template_key: intent.templateKey, label: intent.label, ...(intent.focusRef ? { focus_ref: intent.focusRef } : {}), revision: intent.revision })),
     continuation_count: record.continuationCount, manual_turn_pending: Boolean(record.manualTurnPending),
     conversation_bound: Boolean(record.conversationFingerprint), ...(record.conversationFingerprint ? { conversation_fingerprint_suffix: record.conversationFingerprint.slice(-8) } : {}),
-    dispatch_authorization_pending: Boolean(record.dispatchAuthorization), ...(record.lastDispatchAt ? { last_dispatch_at: record.lastDispatchAt } : {}),
+    dispatch_authorization_pending: Boolean(record.dispatchAuthorization), ...(record.dispatchAuthorization ? { dispatch_authorization_source: record.dispatchAuthorization.source } : {}), ...(record.lastDispatchAt ? { last_dispatch_at: record.lastDispatchAt } : {}),
     ...(record.watchdog?.notificationKey ? { notification_key: record.watchdog.notificationKey } : {}),
     user_action_required: ["continuation_ready", "awaiting_user_send", "paused_by_user", "waiting_for_auth", "blocked_interaction", "manual_rearm_required"].includes(record.state),
     created_at: record.createdAt, updated_at: record.updatedAt, ...(record.lastHeartbeatAt ? { last_heartbeat_at: record.lastHeartbeatAt } : {})
@@ -284,7 +284,7 @@ const ALLOWED_TRANSITIONS: Record<ContinuationState, ReadonlySet<ContinuationSta
   armed: new Set(["working", "continuation_requested", "paused_by_user", "canceled", "error"]),
   working: new Set(["continuation_requested", "continuation_ready", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "manual_rearm_required", "completed", "canceled", "error"]),
   continuation_requested: new Set(["working", "continuation_ready", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "manual_rearm_required", "canceled", "error"]),
-  continuation_ready: new Set(["working", "awaiting_user_send", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "manual_rearm_required", "canceled", "error"]),
+  continuation_ready: new Set(["working", "continuation_requested", "awaiting_user_send", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "manual_rearm_required", "canceled", "error"]),
   awaiting_user_send: new Set(["working", "continuation_ready", "awaiting_ack", "dispatched", "waiting_for_auth", "waiting_for_transport", "paused_by_user", "blocked_interaction", "manual_rearm_required", "canceled", "error"]),
   awaiting_ack: new Set(["working", "waiting_for_transport", "paused_by_user", "manual_rearm_required", "canceled", "error"]),
   dispatched: new Set(["working", "awaiting_ack", "waiting_for_transport", "paused_by_user", "manual_rearm_required", "canceled", "error"]),

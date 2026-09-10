@@ -36,12 +36,13 @@ await fs.writeFile(path.join(baseDir, 'blocked'), 'not a directory');
 await broken.appendBestEffort({ workspaceId: 'ws_fail', kind: 'tool', action: 'read', status: 'ok' });
 const mcpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-activity-mcp-'));
 const mcpActivity = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-activity-mcp-store-'));
+const mcpHome = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-activity-mcp-home-'));
 await fs.writeFile(path.join(mcpRoot, 'visible.txt'), 'visible\n');
 await fs.writeFile(path.join(mcpRoot, 'package.json'), JSON.stringify({ scripts: { test: 'node -e \"process.exit(1)\"' } }, null, 2));
 const transport = new StdioClientTransport({
   command: process.execPath,
   args: ['dist/stdio.js', '--root', mcpRoot, '--allow-root', mcpRoot, '--bash', 'safe', '--write', 'off', '--tool-mode', 'full'],
-  env: { ...process.env, CODEXPRO_ACTIVITY_DIR: mcpActivity, CODEXPRO_ALLOW_NO_HTTP_TOKEN: '1', CODEXPRO_CONTINUATION_ENABLED: '1' }
+  env: { ...process.env, CODEXPRO_HOME: mcpHome, CODEXPRO_OPERATION_DIR: path.join(mcpHome, 'operations'), CODEXPRO_ACTIVITY_DIR: mcpActivity, CODEXPRO_ALLOW_NO_HTTP_TOKEN: '1', CODEXPRO_CONTINUATION_ENABLED: '1' }
 });
 const client = new Client({ name: 'activity-ledger-smoke', version: '0.1.0' });
 await client.connect(transport);

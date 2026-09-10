@@ -150,7 +150,7 @@ On the next CodexPro interaction, ChatGPT can see the current user prompt direct
 - `supersede`: the prompt starts a materially new task; terminally cancel the old continuation state with reason `superseded_by_user`, then arm a new continuation task only if continuation is enabled and the new work actually warrants it.
 - `cancel`: the user explicitly stops/cancels the task; terminally cancel and disarm.
 
-If the relationship is ambiguous, keep the old task paused and do not notify or dispatch. If the user sends a manual `continue`, that is simply the `resume` path; no automation button is required. A manual turn from an unmanaged browser/device may not be observed until the next CodexPro interaction, so stale remote actions remain short-lived and server revision/nonce/page checks still fail closed where evidence exists.
+If the relationship is ambiguous, keep the old task paused and do not notify or dispatch. If the user sends a manual `continue`, that is simply the `resume` path; no automation button is required. A manual turn from an unmanaged browser/device may not be observed until the next CodexPro interaction, so stale remote actions remain exact-revision/nonce-bound and server revision/nonce/page checks still fail closed where evidence exists.
 
 ## Continuation intents and Telegram remote authorization
 
@@ -158,7 +158,7 @@ A continuation request may expose one default `resume_all` intent plus up to thr
 
 Telegram is optional and uses a dedicated private bot over outbound Bot API long polling. The bot token is stored only in protected per-user secret storage. Setup validates the bot with `getMe`, refuses to compete with an existing webhook, and pairs one private Telegram user/chat using a short-lived one-time `/start` deep-link code. Telegram usernames/display names are not used as authorization identity.
 
-When continuation becomes ready, CodexPro may send one privacy-bounded Telegram notification for the current task revision/nonce. Inline `callback_data` contains only an opaque action token; all task/intent metadata remains server-side. The paired user's button click may authorize one current dispatch, but CodexPro and the managed browser must immediately re-check terminal revision, nonce, transport, auth, binding, stable-idle page state, user-pause state, and durable-work status. The resulting authorization expires quickly and is consumed once. Failed safety checks never auto-retry.
+When continuation becomes ready, CodexPro may send one privacy-bounded Telegram notification for the current semantic continuation opportunity. Inline `callback_data` contains only an opaque action token; all task/intent metadata remains server-side. Buttons remain available for at most five hours but are still bound to the exact current revision/nonce/intent. If temporary browser unreadiness causes a fresh ready revision/nonce within that same opportunity, CodexPro edits the existing Telegram message keyboard in place rather than sending another notice. The paired user's button click may authorize one current dispatch, but CodexPro and the managed browser must immediately re-check terminal revision, nonce, transport, auth, binding, stable-idle page state, user-pause state, and durable-work status. The resulting local dispatch authorization expires within 30 seconds and is consumed once. Failed safety checks never auto-retry.
 
 Telegram messages do not include full paths, prompts, ChatGPT output, conversation URLs, credentials, or unrestricted remaining-work text. Version 1 supports no Telegram group/channel control, no webhook endpoint, no Mini App, and no arbitrary remote command/message facility. Browser **Continue task** remains the fallback if Telegram is disabled, blocked, offline, or unpaired.
 
@@ -224,7 +224,7 @@ The authenticated local admin page must show current continuation task state, pa
 | Manual prompt starts a new task | Reconcile `supersede`; terminally cancel old automation and arm new continuation only if enabled/warranted. |
 | ChatGPT is streaming, delayed, showing retry/error/safety/approval UI, or markup is unknown | Fail closed; no Retry/model-switch/approval action. |
 | New chat has not yet acquired a stable conversation identity | Bind disabled until a stable route exists. |
-| Conversation route changes to another chat | Binding becomes ineligible; explicit rebind required. |
+| Conversation route changes to another chat | Binding becomes ineligible; explicit rebind required. Rebinding a ready task invalidates stale nonce/dispatch state and returns it to `continuation_requested` until the newly bound page passes fresh safety evaluation. |
 | Extension/browser/bridge disconnects and later returns | Fetch fresh record/runtime state before showing actions; never replay old nonce. |
 | Auth expires | Invalidate readiness and require manual user authentication workflow. |
 | Long proc/job/Goal remains productive | Suppress new ChatGPT turn until model attention is needed. |

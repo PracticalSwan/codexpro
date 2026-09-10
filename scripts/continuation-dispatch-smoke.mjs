@@ -45,6 +45,17 @@ try {
   const postBindRelease = await releaseContinuationDispatch({ store, binding, continuationId: requestThenBind.id, expectedRevision: postBindGrant.record.revision, token: postBindGrant.token });
   await cancelContinuation({ store, binding, continuationId: postBindRelease.id, expectedRevision: postBindRelease.revision });
 
+  let rebindReady = await readyTask('Ready rebind test');
+  const staleRebindNonce = rebindReady.outstandingNonce;
+  rebindReady = await bindContinuationConversation({ enabled: true, store, binding, continuationId: rebindReady.id, expectedRevision: rebindReady.revision, conversationFingerprint: fpOther });
+  assert.equal(rebindReady.state, 'continuation_requested', 'explicit rebind from ready state did not require fresh readiness');
+  assert.equal(rebindReady.conversationFingerprint, fpOther, 'explicit rebind did not replace the conversation fingerprint');
+  assert.equal(rebindReady.outstandingNonce, undefined, 'explicit rebind retained the stale continuation nonce');
+  assert.equal(rebindReady.selectedContinuationIntentId, undefined, 'explicit rebind retained the stale selected intent');
+  assert.equal(rebindReady.dispatchAuthorization, undefined, 'explicit rebind retained stale dispatch authorization');
+  assert.notEqual(rebindReady.outstandingNonce, staleRebindNonce);
+  await cancelContinuation({ store, binding, continuationId: rebindReady.id, expectedRevision: rebindReady.revision });
+
   let ready = await readyTask();
   await assert.rejects(() => authorizeContinuationDispatch({ enabled: true, store, binding, continuationId: ready.id, expectedRevision: ready.revision, conversationFingerprint: fpOther, source: 'browser' }), /wrong_chat/);
   await assert.rejects(() => authorizeContinuationDispatch({ enabled: true, store, binding, continuationId: ready.id, expectedRevision: ready.revision - 1, conversationFingerprint: fp, source: 'browser' }), /stale_continuation_revision/);

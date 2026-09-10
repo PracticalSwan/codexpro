@@ -12,10 +12,12 @@ function queryFixture(selectors = []) {
   const set = new Set(selectors);
   return (selector) => set.has(selector) ? { present: true } : null;
 }
-const chatUrl = 'https://chatgpt.com/c/12345678-abcd-4def-9999-123456789abc?utm_source=test';
+const chatBase = 'https://chatgpt.com';
+const chatId = '12345678-abcd-4def-9999-123456789abc';
+const chatUrl = `${chatBase}/c/${chatId}?utm_source=test`;
 assert.equal(routeKey(chatUrl), 'c:12345678-abcd-4def-9999-123456789abc');
 assert.equal(routeKey('https://chatgpt.com/'), null);
-assert.equal(routeKey('https://chatgpt.com/c/12345678-abcd-4def-9999-123456789abc?branch=other'), null);
+assert.equal(routeKey(`${chatBase}/c/${chatId}?branch=other`), null);
 
 const signedIn = observeChatGptPage({ href: chatUrl, query: queryFixture(['#prompt-textarea','[data-testid="send-button"]']), now: 10_000 });
 assert.equal(signedIn.auth_state, 'signed_in');
@@ -40,6 +42,9 @@ assert.equal(newChat.platform_state, 'unknown');
 const streaming = observeChatGptPage({ href: chatUrl, query: queryFixture(['#prompt-textarea','[data-testid="send-button"]','[data-testid="stop-button"]']) });
 assert.equal(streaming.streaming, true);
 assert.equal(streaming.platform_state, 'busy');
+const streamingAria = observeChatGptPage({ href: chatUrl, query: queryFixture(['#prompt-textarea','[data-testid="send-button"]','button[aria-label="Stop generating"]']) });
+assert.equal(streamingAria.streaming, true, 'ChatGPT accessible Stop generating control was not recognized');
+assert.equal(streamingAria.platform_state, 'busy');
 
 const busy = observeChatGptPage({ href: chatUrl, query: queryFixture(['#prompt-textarea','[data-testid="send-button"]','[aria-busy="true"]']) });
 assert.equal(busy.platform_state, 'busy');

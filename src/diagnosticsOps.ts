@@ -111,6 +111,8 @@ export function diagnosticsSnapshot(
   operator: {
     savedDeadlineMode?: string; savedDeadlineMs?: number; activeStructuredJobs?: number;
     continuationFeatureEnabled?: boolean; browserPaired?: boolean; browserAuthState?: string;
+    telegramEnabled?: boolean; telegramTokenConfigured?: boolean; telegramBot?: string; telegramPaired?: boolean;
+    telegramWorkerState?: string; telegramWebhookConflict?: boolean; telegramLastSuccessfulContact?: string; telegramNotificationAvailable?: boolean;
     activeContinuationTasks?: number; userActionRequired?: boolean;
     runtimeGenerationId?: string; runtimeDeadlineMode?: string; runtimeDeadlineMs?: number; runtimeTransportState?: string;
   } = {}
@@ -121,6 +123,16 @@ export function diagnosticsSnapshot(
     continuation: {
       enabled: operator.continuationFeatureEnabled ?? config.continuationEnabled,
       browser: { paired: operator.browserPaired === true, auth_state: operator.browserAuthState ?? "unknown" },
+      telegram: {
+        enabled: operator.telegramEnabled === true,
+        token_configured: operator.telegramTokenConfigured === true,
+        bot: operator.telegramBot ?? null,
+        paired: operator.telegramPaired === true,
+        worker_state: operator.telegramWorkerState ?? "not_running",
+        webhook_conflict: operator.telegramWebhookConflict === true,
+        last_successful_contact: operator.telegramLastSuccessfulContact ?? null,
+        notification_available: operator.telegramNotificationAvailable === true
+      },
       active_task_count: Math.max(0, Math.floor(operator.activeContinuationTasks ?? 0)),
       user_action_required: operator.userActionRequired === true,
       current_runtime: {

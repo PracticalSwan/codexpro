@@ -340,6 +340,8 @@ try {
   if (!Number.isFinite(initialDiagnosticsJson.operator?.saved_next_run_deadline?.ms)) throw new Error('admin diagnostics omitted saved next-run deadline');
   if (!Number.isInteger(initialDiagnosticsJson.operator?.active_structured_jobs) || initialDiagnosticsJson.operator.active_structured_jobs < 0) throw new Error('admin diagnostics omitted active structured job count');
   if (initialDiagnosticsJson.operator?.recent_deadline_yield !== false) throw new Error('fresh diagnostics incorrectly reported a recent deadline yield');
+  const initialTelegramDiagnostics = initialDiagnosticsJson.continuation?.telegram;
+  if (initialTelegramDiagnostics?.enabled !== false || initialTelegramDiagnostics?.token_configured !== false || initialTelegramDiagnostics?.paired !== false || initialTelegramDiagnostics?.worker_state !== 'not_running' || initialTelegramDiagnostics?.webhook_conflict !== false || initialTelegramDiagnostics?.notification_available !== false) throw new Error(`admin diagnostics omitted safe Telegram metadata: ${JSON.stringify(initialTelegramDiagnostics)}`);
 
   const badAdminJson = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
     method: 'POST',
@@ -444,7 +446,7 @@ try {
   const continuationRecordsExistedBeforeStatus = await fs.stat(continuationRecordsPath).then(() => true).catch((error) => error?.code === 'ENOENT' ? false : Promise.reject(error));
   const continuationAdmin = await fetch(`${baseUrl}/admin/continuation?codexpro_token=${encodeURIComponent(token)}`);
   const continuationAdminJson = await continuationAdmin.json().catch(() => ({}));
-  if (continuationAdmin.status !== 200 || continuationAdminJson.saved_next_run?.enabled !== false || continuationAdminJson.runtime?.enabled !== false || continuationAdminJson.runtime?.transport !== 'ready' || continuationAdminJson.browser?.setup_required !== false || continuationAdminJson.task !== null || continuationAdminJson.telegram?.state !== 'requires_task_continuation') {
+  if (continuationAdmin.status !== 200 || continuationAdminJson.saved_next_run?.enabled !== false || continuationAdminJson.runtime?.enabled !== false || continuationAdminJson.runtime?.transport !== 'ready' || continuationAdminJson.browser?.setup_required !== false || continuationAdminJson.task !== null || continuationAdminJson.telegram?.state !== 'requires_task_continuation' || continuationAdminJson.telegram?.enabled !== false || continuationAdminJson.telegram?.token_configured !== false || continuationAdminJson.telegram?.paired !== false || continuationAdminJson.telegram?.worker_state !== 'not_running' || continuationAdminJson.telegram?.webhook_conflict !== false || continuationAdminJson.telegram?.notification_available !== false) {
     throw new Error(`continuation admin GET did not expose safe disabled/current-vs-saved state: ${continuationAdmin.status} ${JSON.stringify(continuationAdminJson)}`);
   }
   for (const forbidden of [token, runtimeQuerySecret, runtimeAccessSecret, runtimeCloudflareSecret, 'conversationFingerprint', 'outstandingNonce', 'dispatchAuthorization']) {

@@ -19,6 +19,8 @@ export interface BrowserBridgeOptions {
   onEvent?: (event: BrowserBridgeEvent) => Promise<void> | void;
   bindConversation?: (input: { clientId: string; taskId: string; revision: number; conversationFingerprint: string }) => Promise<unknown>;
   authorizeDispatch?: (input: { clientId: string; taskId: string; revision: number; conversationFingerprint: string }) => Promise<Record<string, unknown>>;
+  consumeRemoteDispatch?: (input: { clientId: string; taskId: string; revision: number; conversationFingerprint: string }) => Promise<Record<string, unknown>>;
+  rejectRemoteDispatch?: (input: { clientId: string; taskId: string; revision: number }) => Promise<unknown>;
   completeDispatch?: (input: { clientId: string; taskId: string; revision: number; conversationFingerprint: string; authorizationToken: string }) => Promise<unknown>;
   releaseDispatch?: (input: { clientId: string; taskId: string; revision: number; authorizationToken: string }) => Promise<unknown>;
   manualInteraction?: (input: { clientId: string; taskId: string; revision: number; conversationFingerprint: string; reason: "manual_message" | "stop_generating" }) => Promise<unknown>;
@@ -152,6 +154,20 @@ export function createBrowserBridgeApp(options: BrowserBridgeOptions) {
     if (!parsed.success || !options.authorizeDispatch) { jsonError(res, 409, "dispatch_precondition_failed", "Dispatch page state is not safely idle or authorization is unavailable."); return; }
     const d = parsed.data;
     try { res.status(200).json(await options.authorizeDispatch({ clientId: String(res.locals.browserClientId), taskId: d.task_id, revision: d.revision, conversationFingerprint: d.conversation_fingerprint })); }
+    catch (error) { operationError(res, error); }
+  });
+  app.post("/continuation/v1/dispatch/remote", async (req, res) => {
+    const parsed = FingerprintBody.safeParse(req.body);
+    if (!parsed.success || !options.consumeRemoteDispatch) { jsonError(res, 409, "dispatch_precondition_failed", "Remote dispatch authorization is unavailable."); return; }
+    const d = parsed.data;
+    try { res.status(200).json(await options.consumeRemoteDispatch({ clientId: String(res.locals.browserClientId), taskId: d.task_id, revision: d.revision, conversationFingerprint: d.conversation_fingerprint })); }
+    catch (error) { operationError(res, error); }
+  });
+  app.post("/continuation/v1/dispatch/remote/reject", async (req, res) => {
+    const parsed = TaskEventBody.safeParse(req.body);
+    if (!parsed.success || !options.rejectRemoteDispatch) { jsonError(res, 400, "invalid_request", "Invalid remote dispatch rejection."); return; }
+    const d = parsed.data;
+    try { res.status(200).json(await options.rejectRemoteDispatch({ clientId: String(res.locals.browserClientId), taskId: d.task_id, revision: d.revision })); }
     catch (error) { operationError(res, error); }
   });
   app.post("/continuation/v1/dispatch/complete", async (req, res) => {

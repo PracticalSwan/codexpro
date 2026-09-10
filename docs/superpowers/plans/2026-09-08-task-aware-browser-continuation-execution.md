@@ -86,12 +86,12 @@ Plan 35 assumes relevant Plans 22–28 are implemented because it integrates the
 
 ## Milestone 37 — Telegram remote continuation authorization
 
-- [ ] Add protected Bot API token storage/client with token-URL redaction.
-- [ ] Reach BotFather/token setup and **STOP: WAITING_FOR_TELEGRAM_BOT_TOKEN** when needed; user configures the token locally and sends `continue`.
-- [ ] Reach private-bot pairing and **STOP: WAITING_FOR_TELEGRAM_PAIR**; user presses Start/pairs and sends `continue`.
-- [ ] Add outbound long polling, exact private-user/chat authorization, opaque inline actions, focused continuation intents, replay/expiry protection, and browser safety revalidation.
-- [ ] Verify Telegram unavailable/blocked/webhook-conflict behavior falls back to browser authorization without auto-send.
-- [ ] Make Plan 37 milestone commit.
+- [x] Add protected Bot API token storage/client with token-URL redaction.
+- [x] Reach BotFather/token setup and **STOP: WAITING_FOR_TELEGRAM_BOT_TOKEN** when needed; user configures the token locally and sends `continue`.
+- [x] Reach private-bot pairing and **STOP: WAITING_FOR_TELEGRAM_PAIR**; user presses Start/pairs and sends `continue`.
+- [x] Add outbound long polling, exact private-user/chat authorization, opaque inline actions, focused continuation intents, replay/expiry protection, and browser safety revalidation.
+- [x] Verify Telegram unavailable/blocked/webhook-conflict behavior falls back to browser authorization without auto-send.
+- [x] Make Plan 37 milestone commit.
 
 ## Milestone 36 — Security/package/live QA
 

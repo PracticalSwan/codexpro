@@ -3,7 +3,7 @@
   const FIXED_MESSAGE = 'Continue the current task from the latest CodexPro continuation state. Preserve the original goal and acceptance criteria. Do not repeat work already recorded as completed and verified.';
   const COMPOSER = ['#prompt-textarea', 'div.ProseMirror[contenteditable="true"]', '[contenteditable="true"][role="textbox"]', 'textarea[name="prompt-textarea"]', 'textarea[data-id="root"]'];
   const SEND = ['#composer-submit-button', '[data-testid="send-button"]', 'button[aria-label="Send prompt"]', 'button[aria-label="Send dictated message"]', 'button[aria-label="Send message"]', 'button[aria-label="Send"]', 'button.composer-submit-btn'];
-  const STOP = ['[data-testid="stop-button"]', '[data-testid="stop-generating-button"]'];
+  const STOP = ['[data-testid="stop-button"]', '[data-testid="stop-generating-button"]', 'button[aria-label="Stop generating"]'];
   const LOGIN = ['a[href*="/auth/login"]', 'a[href*="/login"]', 'button[data-testid*="login"]'];
   const BLOCKING = ['[role="dialog"]', '[data-testid*="approval"]', '[data-testid*="safety"]', '[data-testid*="payment"]'];
   const ERROR = ['[data-testid="retry-button"]', 'button[aria-label="Retry"]', '[data-testid*="error"]'];

@@ -36,9 +36,15 @@ import { startBrowserContinuationBridge } from "./continuation/browserBridge.js"
 import { normalizeContinuationSettings } from "./continuation/settings.js";
 import { ContinuationStore } from "./continuation/store.js";
 import { publicContinuationRecord, TERMINAL_CONTINUATION_STATES, validateContinuationRecord, type ContinuationRecord } from "./continuation/types.js";
-import { bindContinuationConversation, authorizeContinuationDispatch, completeContinuationDispatch, releaseContinuationDispatch, observeContinuationManualTurn, cancelContinuation } from "./continuation/ops.js";
+import { bindContinuationConversation, authorizeContinuationDispatch, completeContinuationDispatch, releaseContinuationDispatch, rejectTelegramContinuationDispatch, expireContinuationDispatchAuthorization, observeContinuationManualTurn, cancelContinuation, FIXED_CONTINUATION_MESSAGE } from "./continuation/ops.js";
 import { evaluateContinuationReadiness, type BrowserContinuationSnapshot, type RuntimeContinuationSnapshot } from "./continuation/watchdog.js";
 import { classifyDurableContinuationWork } from "./continuation/runtimeIntegration.js";
+import { resolveTelegramBotToken } from "./continuation/telegramSecrets.js";
+import { TelegramBotApiClient } from "./continuation/telegramClient.js";
+import { TelegramPairingStore, type TelegramPairedIdentity } from "./continuation/telegramPairing.js";
+import { TelegramUpdateWorker } from "./continuation/telegramWorker.js";
+import { readTelegramRuntimeStatus, writeTelegramRuntimeStatus } from "./continuation/telegramStatus.js";
+import { createTelegramNotification, consumeTelegramAction, peekTelegramActionTaskId, storeTelegramDispatchGrant, consumeTelegramDispatchGrant, clearTelegramDispatchGrant, telegramNotificationOpportunityKey, readTelegramNotificationMarker, claimTelegramNotificationSend, markTelegramNotificationSent, takeStaleTelegramNotificationMessageIds, invalidateTelegramActionsForTask, telegramRuntimeAuthorizationDisabled, setTelegramRuntimeAuthorizationDisabled } from "./continuation/telegramNotifications.js";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -656,6 +662,11 @@ async function continuationAdminResponse(config: CodexProConfig): Promise<Record
   const active = records.filter((record) => sameResolvedPath(record.workspaceRoot, config.defaultRoot) && !TERMINAL_CONTINUATION_STATES.has(record.state));
   const task = active[0] ?? null;
   const currentRuntime = readRuntimeConnection(config.defaultRoot);
+  const telegramStateDir = path.join(continuationRoot, "telegram");
+  const telegramRuntime = await readTelegramRuntimeStatus(telegramStateDir);
+  const telegramRuntimeDisabled = await telegramRuntimeAuthorizationDisabled(telegramStateDir);
+  const telegramTokenConfigured = Boolean(resolveTelegramBotToken(homeDir, process.env).token);
+  const telegramPairedConfigured = Boolean(await new TelegramPairingStore(telegramStateDir).paired());
 
   const browserProfileLabel = config.continuationEnabled ? config.continuationProfile : saved.continuationProfile;
   let browser: Record<string, unknown> = {
@@ -717,7 +728,15 @@ async function continuationAdminResponse(config: CodexProConfig): Promise<Record
     } : null,
     ...(active.length > 1 ? { ambiguous_active_tasks: active.length } : {}),
     telegram: {
-      state: !config.continuationEnabled ? "requires_task_continuation" : config.continuationTelegramEnabled ? "enabled" : "disabled"
+      state: !config.continuationEnabled ? "requires_task_continuation" : config.continuationTelegramEnabled && !telegramRuntimeDisabled ? telegramRuntime.state : "disabled",
+      enabled: config.continuationTelegramEnabled,
+      token_configured: telegramTokenConfigured,
+      bot: telegramRuntime.botUsername ? `@${telegramRuntime.botUsername}` : null,
+      paired: telegramPairedConfigured,
+      worker_state: telegramRuntime.workerState,
+      webhook_conflict: telegramRuntime.webhookConflict,
+      last_successful_contact: telegramRuntime.lastSuccessfulContactAt ?? null,
+      notification_available: config.continuationEnabled && config.continuationTelegramEnabled && !telegramRuntimeDisabled && telegramPairedConfigured && telegramRuntime.notificationAvailable
     }
   });
 }
@@ -778,8 +797,8 @@ function onboardingPage(config: CodexProConfig): string {
   <link rel="icon" href="/favicon.ico">
   <title>CodexPro Local Control - ChatGPT Workspace Agent</title>
   <style>
-    /* Hallmark Â· pre-emit critique: P5 H5 E5 S5 R5 V5 */
-    /* Hallmark Â· macrostructure: Workbench Â· genre: modern-minimal Â· theme: CC Switch-inspired light manager Â· tone: technical admin Â· nav: section switcher Â· footer: Ft2 Â· contrast: pass (40-41) Â· mobile: pass (34, 49, 50-57) */
+    /* Hallmark Ã‚Â· pre-emit critique: P5 H5 E5 S5 R5 V5 */
+    /* Hallmark Ã‚Â· macrostructure: Workbench Ã‚Â· genre: modern-minimal Ã‚Â· theme: CC Switch-inspired light manager Ã‚Â· tone: technical admin Ã‚Â· nav: section switcher Ã‚Â· footer: Ft2 Ã‚Â· contrast: pass (40-41) Ã‚Â· mobile: pass (34, 49, 50-57) */
     :root {
       color-scheme: light;
       --font-display: "Geist", "Aptos", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -1765,7 +1784,7 @@ function onboardingPage(config: CodexProConfig): string {
           ? "Unlimited / observe only"
           : result.saved_next_run?.deadline?.ms ? Math.round(result.saved_next_run.deadline.ms / 60000) + " min bounded" : "unavailable";
         const taskText = result.task
-          ? result.task.short_id + " " + result.task.title + " · " + result.task.state + " · remaining " + result.task.remaining_work_count
+          ? result.task.short_id + " " + result.task.title + " Â· " + result.task.state + " Â· remaining " + result.task.remaining_work_count
           : "none";
         continuationStatus.textContent = [
           "Current runtime: " + (result.runtime?.enabled ? "continuation enabled" : "continuation disabled") + ", " + currentDeadline + ", transport " + (result.runtime?.transport || "unavailable"),
@@ -2173,6 +2192,14 @@ async function main(): Promise<void> {
         continuationFeatureEnabled: config.continuationEnabled,
         browserPaired: continuation.browser?.paired === true,
         browserAuthState: String(continuation.browser?.auth_state ?? "unknown"),
+        telegramEnabled: continuation.telegram?.enabled === true,
+        telegramTokenConfigured: continuation.telegram?.token_configured === true,
+        telegramBot: typeof continuation.telegram?.bot === "string" ? continuation.telegram.bot : undefined,
+        telegramPaired: continuation.telegram?.paired === true,
+        telegramWorkerState: String(continuation.telegram?.worker_state ?? "not_running"),
+        telegramWebhookConflict: continuation.telegram?.webhook_conflict === true,
+        telegramLastSuccessfulContact: typeof continuation.telegram?.last_successful_contact === "string" ? continuation.telegram.last_successful_contact : undefined,
+        telegramNotificationAvailable: continuation.telegram?.notification_available === true,
         activeContinuationTasks: continuationTaskCount,
         userActionRequired: continuation.task?.continuation_ready === true || ["waiting_for_auth", "paused_by_user", "manual_rearm_required"].includes(continuationState),
         runtimeGenerationId: typeof continuation.runtime?.generation_id === "string" ? continuation.runtime.generation_id : undefined,
@@ -2383,6 +2410,10 @@ async function main(): Promise<void> {
   const continuationRoot = path.join(path.dirname(config.operationDir), "continuation");
   const browserRuntimeFile = path.join(continuationRoot, "browser", "runtime.json");
   let browserBridge: Awaited<ReturnType<typeof startBrowserContinuationBridge>> | undefined;
+  let telegramWorkerAbort: AbortController | undefined;
+  let telegramWorkerRun: Promise<void> | undefined;
+  let telegramWorker: TelegramUpdateWorker | undefined;
+  let persistTelegramRuntimeStatus: (workerState: "not_running" | "running" | "error") => Promise<void> = async () => {};
   if (continuationEnabled) {
     const browserStore = new BrowserPairingStore(path.join(continuationRoot, "browser"));
     const continuationStore = new ContinuationStore(continuationRoot, config.maxOperationReceipts);
@@ -2411,6 +2442,25 @@ async function main(): Promise<void> {
       continuationId: record.id.replace(/^continuation_/, "").slice(0, 8),
       summary: `state=${record.state}${reason ? ` reason=${reason}` : ""}`
     });
+    const telegramStateDir = path.join(continuationRoot, "telegram");
+    let telegramClient: TelegramBotApiClient | undefined;
+    let telegramPairingStore: TelegramPairingStore | undefined;
+    let telegramPaired: TelegramPairedIdentity | null = null;
+    let telegramBotId = "";
+    let telegramBotUsername: string | undefined;
+    let telegramWorkerState: "disabled" | "unconfigured" | "unpaired" | "webhook_conflict" | "ready" | "error" = config.continuationTelegramEnabled ? "unconfigured" : "disabled";
+    let telegramLastContactAt: string | undefined;
+    persistTelegramRuntimeStatus = async (workerState) => {
+      const runtimeDisabled = await telegramRuntimeAuthorizationDisabled(telegramStateDir).catch(() => false);
+      await writeTelegramRuntimeStatus(telegramStateDir, {
+        state: telegramWorkerState, workerState, ...(telegramBotUsername ? { botUsername: telegramBotUsername } : {}),
+        webhookConflict: telegramWorkerState === "webhook_conflict", ...(telegramLastContactAt ? { lastSuccessfulContactAt: telegramLastContactAt } : {}),
+        notificationAvailable: workerState === "running" && telegramWorkerState === "ready" && !runtimeDisabled
+      }).catch(() => undefined);
+    };
+    let telegramNotifyReady: (record: ContinuationRecord) => Promise<void> = async () => {};
+    let telegramClearStaleKeyboards: (keepNotificationKey?: string) => Promise<void> = async () => {};
+
     const evaluateRecord = async (record: ContinuationRecord, browser: BrowserContinuationSnapshot) => {
       const beforeState = record.state;
       const evaluated = await evaluateContinuationReadiness({
@@ -2422,18 +2472,102 @@ async function main(): Promise<void> {
         if (evaluated.state === "continuation_ready") await appendContinuationEvent(evaluated, "ready", "watchdog");
         else if (evaluated.state === "waiting_for_auth") await appendContinuationEvent(evaluated, "auth_required", "browser_auth");
       }
+      if (evaluated.state === "continuation_ready") await telegramNotifyReady(evaluated).catch(() => undefined);
       return evaluated;
     };
+    const telegramNotificationsInFlight = new Set<string>();
+    if (config.continuationTelegramEnabled) {
+      await setTelegramRuntimeAuthorizationDisabled(telegramStateDir, false);
+      try {
+        const tokenInfo = resolveTelegramBotToken(path.dirname(config.operationDir), process.env);
+        if (tokenInfo.token) {
+          const candidateClient = new TelegramBotApiClient(tokenInfo.token, { timeoutMs: 12_000 });
+          const candidatePairing = new TelegramPairingStore(telegramStateDir);
+          const bot = await candidateClient.getMe();
+          telegramBotUsername = /^\w{5,32}$/.test(String(bot?.username ?? "")) ? String(bot.username) : undefined;
+          telegramLastContactAt = new Date().toISOString();
+          const paired = await candidatePairing.paired();
+          if (!paired) telegramWorkerState = "unpaired";
+          else {
+            await candidatePairing.assertBotIdentity(bot.id);
+            const webhook = await candidateClient.getWebhookInfo();
+            telegramLastContactAt = new Date().toISOString();
+            if (String(webhook?.url ?? "").trim()) telegramWorkerState = "webhook_conflict";
+            else {
+              telegramClient = candidateClient; telegramPairingStore = candidatePairing; telegramPaired = paired; telegramBotId = String(bot.id); telegramWorkerState = "ready";
+              telegramClearStaleKeyboards = async (keepNotificationKey) => {
+                const currentPaired = await candidatePairing.paired();
+                if (!currentPaired || currentPaired.botId !== String(bot.id)) return;
+                const staleMessageIds = await takeStaleTelegramNotificationMessageIds(telegramStateDir, keepNotificationKey);
+                for (const messageId of staleMessageIds) {
+                  await candidateClient.editMessageReplyMarkup({ chat_id: currentPaired.privateChatId, message_id: messageId, reply_markup: { inline_keyboard: [] } }).catch(() => undefined);
+                }
+              };
+              telegramNotifyReady = async (record) => {
+                const key = telegramNotificationOpportunityKey(record);
+                if (await telegramRuntimeAuthorizationDisabled(telegramStateDir)) return;
+                const currentPaired = await candidatePairing.paired();
+                if (!currentPaired || currentPaired.botId !== String(bot.id)) return;
+                telegramPaired = currentPaired;
+                if (!telegramClient) return;
+                await telegramClearStaleKeyboards(key);
+                if (telegramNotificationsInFlight.has(key)) return;
+                telegramNotificationsInFlight.add(key);
+                try {
+                  const marker = await readTelegramNotificationMarker(telegramStateDir, key);
+                  if (marker?.state === "sent" && marker.revision === record.revision) return;
+                  if (marker?.state === "pending") return;
+                  const notification = await createTelegramNotification({ stateDir: telegramStateDir, paired: currentPaired, task: record });
+                  if (marker?.state === "sent" && marker.messageId) {
+                    try {
+                      await telegramClient.editMessageReplyMarkup({ chat_id: currentPaired.privateChatId, message_id: marker.messageId, reply_markup: notification.replyMarkup });
+                    } catch (error) {
+                      if (marker.revision !== undefined) await invalidateTelegramActionsForTask(telegramStateDir, record.id, marker.revision).catch(() => undefined);
+                      throw error;
+                    }
+                    telegramLastContactAt = new Date().toISOString();
+                    await persistTelegramRuntimeStatus("running");
+                    await markTelegramNotificationSent(telegramStateDir, key, marker.messageId, record.revision);
+                    await invalidateTelegramActionsForTask(telegramStateDir, record.id, record.revision);
+                    await appendContinuationEvent(record, "telegram_refreshed", "ready");
+                    return;
+                  }
+                  if (!(await claimTelegramNotificationSend(telegramStateDir, key, record.revision))) return;
+                  const sent = await telegramClient.sendMessage({ chat_id: currentPaired.privateChatId, text: notification.text, reply_markup: notification.replyMarkup, disable_web_page_preview: true });
+                  telegramLastContactAt = new Date().toISOString();
+                  await persistTelegramRuntimeStatus("running");
+                  await markTelegramNotificationSent(telegramStateDir, key, sent?.message_id, record.revision);
+                  await invalidateTelegramActionsForTask(telegramStateDir, record.id, record.revision);
+                  await appendContinuationEvent(record, "telegram_notified", "ready");
+                } finally { telegramNotificationsInFlight.delete(key); }
+              };
+            }
+          }
+        }
+      } catch (error) {
+        telegramWorkerState = "error";
+        console.error(`[CodexPro] Telegram continuation unavailable; browser fallback remains active: ${error instanceof Error ? error.message : "error"}`);
+      }
+    }
+    await persistTelegramRuntimeStatus("not_running");
     browserBridge = await startBrowserContinuationBridge({
       store: browserStore,
       statusProvider: async (clientId) => {
         const active = (await continuationStore.list()).filter((record) => !TERMINAL_CONTINUATION_STATES.has(record.state));
         if (active.length === 1) {
+          if (active[0].state === "awaiting_user_send" && active[0].dispatchAuthorization && Date.now() > Date.parse(active[0].dispatchAuthorization.expiresAt)) {
+            try { active[0] = await expireContinuationDispatchAuthorization({ store: continuationStore, binding: bindingForRecord(active[0]), continuationId: active[0].id, expectedRevision: active[0].revision }); await clearTelegramDispatchGrant(telegramStateDir, active[0].id); } catch {}
+          }
           const browser = browserObservations.get(clientId);
           if (browser) {
             try { active[0] = await evaluateRecord(active[0], browser); } catch {}
           }
         }
+        const keepTelegramKey = active.length === 1 && (
+          active[0].state === "continuation_ready" ||
+          (["continuation_requested", "waiting_for_auth", "waiting_for_transport", "blocked_interaction"].includes(active[0].state) && active[0].watchdog?.pendingExplicitRequest === true)
+        ) ? telegramNotificationOpportunityKey(active[0]) : undefined;
+        await telegramClearStaleKeyboards(keepTelegramKey).catch(() => undefined);
         return { continuation_enabled: true, task: active.length === 1 ? publicContinuationRecord(active[0]) : null, ...(active.length > 1 ? { ambiguous_active_tasks: active.length } : {}) };
       },
       bindConversation: async ({ taskId, revision, conversationFingerprint }) => {
@@ -2445,6 +2579,21 @@ async function main(): Promise<void> {
         const current = await continuationStore.require(taskId);
         const grant = await authorizeContinuationDispatch({ enabled: true, store: continuationStore, binding: bindingForRecord(current), continuationId: taskId, expectedRevision: revision, conversationFingerprint, source: "browser" });
         return { authorization_token: grant.token, task_id: grant.record.id, revision: grant.record.revision, conversation_fingerprint: conversationFingerprint, message: grant.message };
+      },
+      consumeRemoteDispatch: async ({ taskId, revision, conversationFingerprint }) => {
+        const current = await continuationStore.require(taskId);
+        if (current.revision !== revision) throw new Error(`stale_continuation_revision: expected ${revision}, current ${current.revision}.`);
+        if (current.state !== "awaiting_user_send" || current.dispatchAuthorization?.source !== "telegram") throw new Error("dispatch_authorization_missing");
+        if (current.conversationFingerprint !== conversationFingerprint) throw new Error("wrong_chat");
+        const grant = await consumeTelegramDispatchGrant(telegramStateDir, { taskId, revision, conversationFingerprint });
+        return { authorization_token: grant.authorizationToken, task_id: taskId, revision, conversation_fingerprint: conversationFingerprint, message: FIXED_CONTINUATION_MESSAGE };
+      },
+      rejectRemoteDispatch: async ({ taskId, revision }) => {
+        const current = await continuationStore.require(taskId);
+        const record = await rejectTelegramContinuationDispatch({ store: continuationStore, binding: bindingForRecord(current), continuationId: taskId, expectedRevision: revision });
+        await clearTelegramDispatchGrant(telegramStateDir, taskId);
+        await appendContinuationEvent(record, "telegram_rejected", "browser_not_ready");
+        return { task: publicContinuationRecord(record) };
       },
       completeDispatch: async ({ taskId, revision, conversationFingerprint, authorizationToken }) => {
         const current = await continuationStore.require(taskId);
@@ -2490,6 +2639,45 @@ async function main(): Promise<void> {
         await writeBrowserProfileMetadata(profile, { authState: event.authState });
       }
     });
+    if (telegramWorkerState === "ready" && telegramClient && telegramPairingStore && telegramPaired && telegramBotId) {
+      const pairedIdentity = telegramPaired; const pairedStore = telegramPairingStore; const botClient = telegramClient; const botId = telegramBotId;
+      telegramWorkerAbort = new AbortController();
+      telegramWorker = new TelegramUpdateWorker({
+        stateDir: path.join(telegramStateDir, "worker"), client: botClient,
+        handleUpdate: async (update) => {
+          const callback = update?.callback_query;
+          if (!callback) return;
+          const callbackId = String(callback?.id ?? "");
+          if (!callbackId) return;
+          let answer = "Expired";
+          try {
+            if (await telegramRuntimeAuthorizationDisabled(telegramStateDir)) throw new Error("telegram_disabled");
+            await pairedStore.assertPairedUpdate(update, botId);
+            const taskId = await peekTelegramActionTaskId(telegramStateDir, String(callback?.data ?? ""));
+            const current = await continuationStore.require(taskId);
+            if (current.state !== "continuation_ready" || current.manualTurnPending || !current.conversationFingerprint) throw new Error("continuation_not_ready");
+            const action = await consumeTelegramAction({ stateDir: telegramStateDir, token: String(callback?.data ?? ""), paired: pairedIdentity, task: current });
+            const grant = await authorizeContinuationDispatch({ enabled: true, store: continuationStore, binding: bindingForRecord(current), continuationId: current.id, expectedRevision: current.revision, conversationFingerprint: current.conversationFingerprint, source: "telegram", intentId: action.intentId });
+            await storeTelegramDispatchGrant(telegramStateDir, { taskId: grant.record.id, revision: grant.record.revision, conversationFingerprint: current.conversationFingerprint, authorizationToken: grant.token, expiresAt: grant.record.dispatchAuthorization!.expiresAt });
+            await appendContinuationEvent(grant.record, "telegram_authorized", "telegram_user_authorized");
+            answer = "Request received";
+            telegramLastContactAt = new Date().toISOString();
+            await persistTelegramRuntimeStatus("running");
+            await botClient.answerCallbackQuery({ callback_query_id: callbackId, text: answer });
+            if (callback?.message?.chat?.id !== undefined && callback?.message?.message_id !== undefined) await botClient.editMessageReplyMarkup({ chat_id: callback.message.chat.id, message_id: callback.message.message_id, reply_markup: { inline_keyboard: [] } }).catch(() => undefined);
+            return;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            answer = /terminal|completed|canceled/i.test(message) ? "Task already completed" : /browser_not_ready|continuation_not_ready|auth|transport|durable/i.test(message) ? "Browser not ready" : "Expired";
+          }
+          telegramLastContactAt = new Date().toISOString();
+          await persistTelegramRuntimeStatus("running");
+          await botClient.answerCallbackQuery({ callback_query_id: callbackId, text: answer }).catch(() => undefined);
+        }
+      });
+      await persistTelegramRuntimeStatus("running");
+      telegramWorkerRun = telegramWorker.run(telegramWorkerAbort.signal).catch(async (error) => { if (!telegramWorkerAbort?.signal.aborted) { telegramWorkerState = "error"; await persistTelegramRuntimeStatus("error"); console.error(`[CodexPro] Telegram worker unavailable; browser fallback remains active: ${error instanceof Error ? error.message : "error"}`); } });
+    }
     await fsp.mkdir(path.dirname(browserRuntimeFile), { recursive: true, mode: 0o700 });
     await fsp.writeFile(browserRuntimeFile, `${JSON.stringify({ schemaVersion: 1, pid: process.pid, url: browserBridge.url, startedAt: new Date().toISOString() })}\n`, { encoding: "utf8", mode: 0o600 });
     console.error(`[CodexPro] continuation bridge listening on ${browserBridge.url}`);
@@ -2510,6 +2698,9 @@ async function main(): Promise<void> {
     clearInterval(pruneTimer);
     for (const record of transports.values()) closeTransport(record);
     transports.clear();
+    telegramWorkerAbort?.abort();
+    await telegramWorker?.releaseLease().catch(() => undefined);
+    await persistTelegramRuntimeStatus("not_running");
     if (browserBridge) {
       await new Promise<void>((resolve) => browserBridge!.server.close(() => resolve()));
       await fsp.rm(browserRuntimeFile, { force: true }).catch(() => undefined);

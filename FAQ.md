@@ -353,6 +353,14 @@ Official references:
 - Cloudflare Tunnel routing: https://developers.cloudflare.com/tunnel/routing/
 - Cloudflare Tunnel DNS records: https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/routing-to-tunnel/dns/
 
+## How does Telegram continuation work?
+
+Telegram continuation is optional and disabled by default. It requires task continuation to be enabled first, one dedicated Telegram bot, and one explicitly paired private chat. Save the bot token only through the masked local `codexpro continuation telegram token save` command or the protected environment override; workspace profiles store only the non-secret enable preference.
+
+When a task is genuinely continuation-ready, CodexPro can send one privacy-safe Telegram notice with **Continue** and up to three bounded focused intents. The buttons contain only opaque one-shot action tokens and remain available for up to five hours. If the browser temporarily becomes unsafe and the task later returns ready within the same semantic continuation opportunity, CodexPro refreshes that existing Telegram message's buttons instead of sending another notice. A valid click still cannot bypass task revision/nonce checks, terminal/manual-turn state, current transport, productive durable work, the paired managed browser, the exact bound ChatGPT route, sign-in, streaming/busy state, composer availability, or recent user input. A successful click creates only a <=30-second local dispatch grant. Telegram never supplies an arbitrary ChatGPT message body; the browser can submit only CodexPro's fixed continuation text.
+
+Use `codexpro continuation telegram doctor` for sanitized health, `telegram test` for a fixed test notification, `telegram disable` to stop new Telegram authorizations while preserving browser Continue, and `telegram revoke` to invalidate the paired private identity and outstanding Telegram actions without canceling the continuation task. A webhook conflict, blocked bot, or Telegram outage fails closed and leaves the browser path available without automatic sending.
+
 ## Can I keep the same ChatGPT connection every day?
 
 Yes. With the default OpenAI Secure MCP Tunnel path, keep the same Platform tunnel ID assigned to the same ChatGPT workspace and save that non-secret ID in the CodexPro workspace profile. Daily startup remains:

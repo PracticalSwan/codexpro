@@ -81,6 +81,9 @@ async function refreshTask() {
   const task = result.task || null;
   await saveUi({ available: true, task });
   await syncReadyNotification(task);
+  if (task?.state === 'awaiting_user_send' && task?.dispatch_authorization_source === 'telegram') {
+    void attemptTelegramAuthorizedTask(task).catch(() => {});
+  }
   return task;
 }
 async function poll() {
@@ -150,6 +153,10 @@ async function pair(message) {
   await chrome.storage.local.set({ bridgeUrl: message.bridgeUrl, clientId: result.client_id, credential: result.credential, profileLabel: result.profile_label });
   await saveUi({ paired: true, available: false, bridgeUrl: message.bridgeUrl, clientId: result.client_id, profileLabel: result.profile_label, task: null });
   await poll();
+  try {
+    const active = await activeChatPage();
+    await sendPageState(active.pageState, { tab: { id: active.tabId } });
+  } catch {}
   return popupState();
 }
 async function bindCurrentChat() {
@@ -164,6 +171,7 @@ async function bindCurrentChat() {
   await saveBinding(task.id, { tabId: active.tabId, routeKey: page.conversation_route_key, fingerprint });
   const boundTask = result.task || task;
   await saveUi({ task: boundTask, pageState: page, available: true });
+  await sendPageState(active.pageState, { tab: { id: active.tabId } });
   await syncReadyNotification(boundTask);
   return popupState();
 }
@@ -172,18 +180,15 @@ async function releaseAuthorization(grant) {
     await bridgeFetch('/continuation/v1/dispatch/release', { method: 'POST', body: JSON.stringify({ task_id: grant.task_id, revision: grant.revision, authorization_token: grant.authorization_token }) });
   } catch {}
 }
-async function continueCurrentTask() {
-  const task = await refreshTask();
-  if (!task?.id || !Number.isInteger(task.revision)) throw new Error('no_current_task');
-  if (task.state !== 'continuation_ready' || task.manual_turn_pending || task.dispatch_authorization_pending) throw new Error(task.manual_turn_pending ? 'manual_turn_pending' : 'continuation_not_ready');
+async function safeBoundPage(task) {
   const active = await activeChatPage();
   const binding = await bindingFor(task.id);
   if (!binding || binding.tabId !== active.tabId || binding.routeKey !== active.pageState.conversation_route_key) throw new Error('wrong_chat');
   const reason = safePageReason(active.pageState);
   if (reason) throw new Error(reason);
-  const body = { task_id: task.id, revision: task.revision, conversation_fingerprint: binding.fingerprint, page_state: { auth_state: 'signed_in', composer_ready: true, streaming: false, platform_state: 'idle', blocking_interaction: false, recent_user_input: false } };
-  const response = await bridgeFetch('/continuation/v1/dispatch/authorize', { method: 'POST', body: JSON.stringify(body) });
-  const grant = await response.json();
+  return { active, binding };
+}
+async function submitAuthorizedGrant(task, grant, active, binding) {
   if (grant.message !== FIXED_MESSAGE || !/^[a-f0-9]{64}$/.test(String(grant.authorization_token || '')) || grant.task_id !== task.id || !Number.isInteger(grant.revision)) {
     await releaseAuthorization(grant);
     throw new Error('dispatch_authorization_invalid');
@@ -192,12 +197,10 @@ async function continueCurrentTask() {
   try {
     dispatchResult = await chrome.tabs.sendMessage(active.tabId, { type: 'codexpro_dispatch_fixed', authorizationToken: grant.authorization_token, routeKey: binding.routeKey, taskId: grant.task_id, revision: grant.revision, conversationFingerprint: binding.fingerprint, message: FIXED_MESSAGE });
   } catch {
-    await releaseAuthorization(grant);
-    throw new Error('transport_unavailable');
+    await releaseAuthorization(grant); throw new Error('transport_unavailable');
   }
   if (!dispatchResult?.ok || !dispatchResult.value?.ok) {
-    await releaseAuthorization(grant);
-    throw new Error(dispatchResult?.value?.reason || dispatchResult?.error || 'composer_unavailable');
+    await releaseAuthorization(grant); throw new Error(dispatchResult?.value?.reason || dispatchResult?.error || 'composer_unavailable');
   }
   const completed = await bridgeFetch('/continuation/v1/dispatch/complete', { method: 'POST', body: JSON.stringify({ task_id: grant.task_id, revision: grant.revision, conversation_fingerprint: binding.fingerprint, authorization_token: grant.authorization_token }) });
   const result = await completed.json();
@@ -205,6 +208,31 @@ async function continueCurrentTask() {
   await saveUi({ task: completedTask, available: true });
   await syncReadyNotification(completedTask);
   return popupState();
+}
+async function continueCurrentTask() {
+  const task = await refreshTask();
+  if (!task?.id || !Number.isInteger(task.revision)) throw new Error('no_current_task');
+  if (task.state !== 'continuation_ready' || task.manual_turn_pending || task.dispatch_authorization_pending) throw new Error(task.manual_turn_pending ? 'manual_turn_pending' : 'continuation_not_ready');
+  const { active, binding } = await safeBoundPage(task);
+  const body = { task_id: task.id, revision: task.revision, conversation_fingerprint: binding.fingerprint, page_state: { auth_state: 'signed_in', composer_ready: true, streaming: false, platform_state: 'idle', blocking_interaction: false, recent_user_input: false } };
+  const response = await bridgeFetch('/continuation/v1/dispatch/authorize', { method: 'POST', body: JSON.stringify(body) });
+  return submitAuthorizedGrant(task, await response.json(), active, binding);
+}
+async function attemptTelegramAuthorizedTask(task) {
+  if (!task?.id || !Number.isInteger(task.revision) || task.state !== 'awaiting_user_send' || task.dispatch_authorization_source !== 'telegram') return false;
+  const attemptKey = `${task.id}:${task.revision}`;
+  const saved = await chrome.storage.local.get('remoteDispatchAttemptedKey');
+  if (saved.remoteDispatchAttemptedKey === attemptKey) return false;
+  await chrome.storage.local.set({ remoteDispatchAttemptedKey: attemptKey });
+  let page;
+  try { page = await safeBoundPage(task); }
+  catch (error) {
+    try { await bridgeFetch('/continuation/v1/dispatch/remote/reject', { method: 'POST', body: JSON.stringify({ task_id: task.id, revision: task.revision }) }); } catch {}
+    throw error;
+  }
+  const response = await bridgeFetch('/continuation/v1/dispatch/remote', { method: 'POST', body: JSON.stringify({ task_id: task.id, revision: task.revision, conversation_fingerprint: page.binding.fingerprint }) });
+  await submitAuthorizedGrant(task, await response.json(), page.active, page.binding);
+  return true;
 }
 async function sendManualInteraction(message, sender) {
   if (message.reason !== 'manual_message' && message.reason !== 'stop_generating') return;
@@ -225,6 +253,7 @@ async function sendPageState(pageState, sender) {
   const nextPageState = current.pageState?.auth_state === 'signed_in' && pageState?.auth_state === 'signed_out' ? { ...pageState, auth_state: 'authentication_required' } : pageState;
   await saveUi({ pageState: nextPageState });
   const binding = current.task?.id ? await bindingFor(current.task.id) : null;
+  if (binding && sender?.tab?.id !== binding.tabId) return;
   const routeInvalidated = Boolean(binding && sender?.tab?.id === binding.tabId && binding.routeKey !== nextPageState.conversation_route_key);
   const conversationBound = Boolean(binding && sender?.tab?.id === binding.tabId && binding.routeKey === nextPageState.conversation_route_key);
   const unsafe = nextPageState.auth_state !== 'signed_in' || routeInvalidated || Boolean(nextPageState.streaming) || Boolean(nextPageState.blocking_interaction) || Boolean(nextPageState.recent_user_input) || nextPageState.platform_state !== 'idle';

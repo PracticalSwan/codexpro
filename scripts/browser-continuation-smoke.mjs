@@ -60,6 +60,8 @@ try {
     store, statusProvider: async () => taskStatus, onEvent: async (event) => { events.push(event); },
     bindConversation: async (input) => { bridgeCalls.push({ kind: 'bind', input }); return { task: { ...taskStatus.task, revision: 5, conversation_bound: true } }; },
     authorizeDispatch: async (input) => { bridgeCalls.push({ kind: 'authorize', input }); return { authorization_token: authToken, task_id: input.taskId, revision: 5, conversation_fingerprint: input.conversationFingerprint, message: fixedMessage }; },
+    consumeRemoteDispatch: async (input) => { bridgeCalls.push({ kind: 'remote', input }); return { authorization_token: authToken, task_id: input.taskId, revision: input.revision, conversation_fingerprint: input.conversationFingerprint, message: fixedMessage }; },
+    rejectRemoteDispatch: async (input) => { bridgeCalls.push({ kind: 'remote_reject', input }); return { task: { ...taskStatus.task, revision: input.revision + 1, state: 'continuation_ready' } }; },
     completeDispatch: async (input) => { bridgeCalls.push({ kind: 'complete', input }); return { task: { ...taskStatus.task, revision: 6, state: 'dispatched' } }; },
     releaseDispatch: async (input) => { bridgeCalls.push({ kind: 'release', input }); return { task: { ...taskStatus.task, revision: 6, state: 'continuation_ready' } }; },
     manualInteraction: async (input) => { bridgeCalls.push({ kind: 'manual', input }); return { task: { ...taskStatus.task, revision: 6, state: 'paused_by_user', manual_turn_pending: true } }; }
@@ -119,6 +121,17 @@ try {
   assert.equal(bridgeCalls.at(-1)?.kind, 'authorize');
   const arbitrary = await fetch(`${base}/continuation/v1/dispatch/authorize`, { method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 4, conversation_fingerprint: fp, page_state: safePage, selector: '#danger', script: 'alert(1)', command: 'git push', message: 'arbitrary' }) });
   assert.equal(arbitrary.status, 409, 'bridge accepted arbitrary selector/script/command/message fields');
+  const remoteUnauth = await fetch(`${base}/continuation/v1/dispatch/remote`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 5, conversation_fingerprint: fp }) });
+  assert.equal(remoteUnauth.status, 401, 'remote Telegram grant endpoint was not browser-client authenticated');
+  const remote = await fetch(`${base}/continuation/v1/dispatch/remote`, { method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 5, conversation_fingerprint: fp }) });
+  assert.equal(remote.status, 200);
+  assert.equal((await remote.json()).authorization_token, authToken);
+  assert.equal(bridgeCalls.at(-1)?.kind, 'remote');
+  const remoteArbitrary = await fetch(`${base}/continuation/v1/dispatch/remote`, { method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 5, conversation_fingerprint: fp, message: 'arbitrary' }) });
+  assert.equal(remoteArbitrary.status, 409, 'remote Telegram grant endpoint accepted arbitrary message content');
+  const remoteReject = await fetch(`${base}/continuation/v1/dispatch/remote/reject`, { method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 5 }) });
+  assert.equal(remoteReject.status, 200);
+  assert.equal(bridgeCalls.at(-1)?.kind, 'remote_reject');
   const complete = await fetch(`${base}/continuation/v1/dispatch/complete`, { method: 'POST', headers: { ...browserHeaders, 'content-type': 'application/json' }, body: JSON.stringify({ task_id: 'continuation_demo', revision: 5, conversation_fingerprint: fp, authorization_token: authToken }) });
   assert.equal(complete.status, 200);
   assert.equal(bridgeCalls.at(-1)?.kind, 'complete');
@@ -156,6 +169,9 @@ try {
   assert(sourceText.includes('chrome.action.setBadgeText('), 'ready continuation does not set/clear the extension badge');
   assert(sourceText.includes('chrome.notifications.onClicked.addListener('), 'continuation notification cannot focus the bound chat');
   assert(!/notifications\.onClicked\.addListener[\s\S]{0,800}codexpro_continue/.test(sourceText), 'notification click directly dispatches a continuation message');
+  const forcedPageStateResends = sourceText.split('await sendPageState(active.pageState, { tab: { id: active.tabId } });').length - 1;
+  assert(forcedPageStateResends >= 2, 'pair/bind transitions must explicitly re-send the current page state to the bridge');
+  assert(sourceText.includes('if (binding && sender?.tab?.id !== binding.tabId) return;'), 'unbound ChatGPT tab heartbeat can overwrite bound-tab continuation readiness');
 
   const cliSecret = 'mcp-token-plan30-must-not-print';
   const cli = spawnSync(process.execPath, ['scripts/codexpro.mjs', 'continuation', 'browser', 'pair', '--profile', 'smoke'], { encoding: 'utf8', env: { ...process.env, CODEXPRO_HOME: cliHome, CODEXPRO_HTTP_TOKEN: cliSecret, CODEXPRO_CONTINUATION_ENABLED: '1' } });

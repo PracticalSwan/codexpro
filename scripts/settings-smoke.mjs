@@ -383,7 +383,7 @@ const continuationHelp = run(['continuation', '--help'], env);
 for (const expected of ['continuation status', 'arm-status', 'disarm', 'browser', 'clear-profile']) {
   if (!continuationHelp.toLowerCase().includes(expected.toLowerCase())) throw new Error(`continuation help missing ${expected}:\n${continuationHelp}`);
 }
-if (/token|cookie|conversation url/i.test(continuationHelp)) throw new Error(`continuation help exposes secret-bearing concepts:\n${continuationHelp}`);
+if (/--token(?:\s|<|=)|cookie|conversation url/i.test(continuationHelp)) throw new Error(`continuation help exposes secret-bearing concepts or token-valued arguments:\n${continuationHelp}`);
 const cliContinuationStore = new ContinuationStore(path.join(home, 'continuation'), 16);
 const cliTask = await cliContinuationStore.create({ workspace: { id: 'ws_plan34_cli', root: realRoot }, title: 'Plan 34 CLI disarm test' });
 const disarmOutput = run(['continuation', 'disarm', '--root', root, '--task', cliTask.id], env);

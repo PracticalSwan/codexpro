@@ -747,6 +747,188 @@ async function printContinuationCliStatus(root, settings) {
   ]);
 }
 
+async function readMaskedTelegramSecret(promptText) {
+  if (!process.stdin.isTTY) throw new Error('Telegram bot token save requires CODEXPRO_TELEGRAM_BOT_TOKEN or an interactive masked prompt.');
+  return new Promise((resolve, reject) => {
+    const input = process.stdin; const output = process.stdout; const wasRaw = Boolean(input.isRaw); let value = '';
+    const cleanup = () => { input.off('data', onData); if (input.setRawMode) input.setRawMode(wasRaw); input.pause(); };
+    const onData = (chunk) => { for (const ch of String(chunk)) {
+      if (ch === '\u0003') { output.write('\n'); cleanup(); reject(new Error('Cancelled.')); return; }
+      if (ch === '\r' || ch === '\n') { output.write('\n'); cleanup(); resolve(value.trim()); return; }
+      if (ch === '\u007f' || ch === '\b') { if (value) { value = value.slice(0, -1); output.write('\b \b'); } }
+      else if (ch >= ' ') { value += ch; output.write('*'); }
+    }};
+    output.write(promptText); input.setEncoding('utf8'); if (input.setRawMode) input.setRawMode(true); input.resume(); input.on('data', onData);
+  });
+}
+
+async function runTelegramTokenCommand(argv) {
+  const action = argv[0] ?? 'status';
+  const parsed = parseArgs(argv.slice(1));
+  if (parsed.token !== undefined || parsed.telegramBotToken !== undefined) throw new Error('Telegram bot token command-line arguments are forbidden; use the masked prompt or CODEXPRO_TELEGRAM_BOT_TOKEN.');
+  if (!['save', 'status', 'clear'].includes(action)) throw new Error('Telegram token supports only: save, status, clear.');
+  const moduleUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'telegramSecrets.js')).href;
+  const secrets = await import(moduleUrl); const homeDir = codexProHome();
+  if (action === 'status') {
+    const resolved = secrets.resolveTelegramBotToken(homeDir, process.env);
+    console.log(`Telegram bot token: ${resolved.token ? `configured (${resolved.source})` : 'not configured'}`); return;
+  }
+  if (action === 'save') {
+    const fromEnv = String(process.env.CODEXPRO_TELEGRAM_BOT_TOKEN ?? '').trim();
+    const token = fromEnv || await readMaskedTelegramSecret('Telegram bot token (masked): ');
+    await secrets.saveTelegramBotToken(homeDir, token);
+    console.log('OK Telegram bot token saved to protected per-user storage.'); console.log('   Workspace profiles never store the token value.'); return;
+  }
+  if (!parsed.yes) {
+    if (!process.stdin.isTTY) throw new Error('Use --yes to clear the protected Telegram bot token in non-interactive shells.');
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    try { const answer = await ask(rl, 'Clear the protected Telegram bot token?', 'no'); if (!['y','yes'].includes(answer.trim().toLowerCase())) { console.log('Telegram token clear cancelled.'); return; } }
+    finally { rl.close(); }
+  }
+  await secrets.clearTelegramBotToken(homeDir); console.log('OK Protected Telegram bot token file cleared.');
+}
+
+async function runTelegramContinuationCommand(argv) {
+  if ((argv[0] ?? 'status') === 'token') { await runTelegramTokenCommand(argv.slice(1)); return; }
+  const action = argv[0] ?? 'status';
+  if (!['setup', 'pair', 'status', 'test', 'doctor', 'disable', 'revoke'].includes(action)) {
+    throw new Error('Telegram continuation supports: setup, pair, status, test, doctor, disable, revoke, token save|status|clear.');
+  }
+  const parsed = parseArgs(argv.slice(1));
+  const root = realDir(parsed.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
+  const savedProfile = parsed.noProfile ? {} : loadWorkspaceProfile(root);
+  const settings = await continuationProfileEntries({}, savedProfile);
+  const secretsUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'telegramSecrets.js')).href;
+  const pairingUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'telegramPairing.js')).href;
+  const stateUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'telegramNotifications.js')).href;
+  const runtimeStatusUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'telegramStatus.js')).href;
+  const [{ resolveTelegramBotToken }, { TelegramPairingStore }, telegramState, telegramRuntimeStatus] = await Promise.all([
+    import(secretsUrl), import(pairingUrl), import(stateUrl), import(runtimeStatusUrl)
+  ]);
+  const homeDir = codexProHome();
+  const stateDir = path.join(homeDir, 'continuation', 'telegram');
+  const token = resolveTelegramBotToken(homeDir, process.env);
+  const pairingStore = new TelegramPairingStore(stateDir);
+  const paired = await pairingStore.paired();
+  const runtimeDisabled = await telegramState.telegramRuntimeAuthorizationDisabled(stateDir);
+  const runtimeStatus = await telegramRuntimeStatus.readTelegramRuntimeStatus(stateDir);
+
+  if (action === 'disable') {
+    const { profilePath: _profilePath, ...profileValues } = savedProfile;
+    saveWorkspaceProfile(root, { ...profileValues, continuationTelegramEnabled: false });
+    await telegramState.setTelegramRuntimeAuthorizationDisabled(stateDir, true);
+    await telegramState.invalidateTelegramActions(stateDir);
+    await telegramState.invalidateTelegramDispatchGrants(stateDir);
+    console.log('OK Telegram continuation disabled. Browser Continue remains available when task continuation is enabled.');
+    console.log('   Existing Telegram pairing and bot token were preserved. Pending Telegram actions and dispatch grants were invalidated.');
+    return;
+  }
+
+  if (action === 'revoke') {
+    await pairingStore.revoke();
+    await telegramState.invalidateTelegramNotificationState(stateDir);
+    console.log('OK Telegram private-chat authorization revoked.');
+    console.log('   Bot token, browser pairing, continuation tasks, processes, jobs, Goals, runtime, and tunnel were not changed.');
+    return;
+  }
+
+  if (action === 'status') {
+    printBox('CodexPro Telegram continuation', [
+      labelValue('Task continuation', settings.continuationEnabled ? 'enabled' : 'disabled'),
+      labelValue('Telegram continuation', settings.continuationTelegramEnabled ? 'enabled' : 'disabled'),
+      labelValue('Live authorization', runtimeDisabled ? 'disabled' : settings.continuationTelegramEnabled ? 'available when runtime is ready' : 'disabled'),
+      labelValue('Token', token.token ? 'configured' : 'not configured'),
+      labelValue('Bot identity', runtimeStatus.botUsername ? `@${runtimeStatus.botUsername}` : 'not checked'),
+      labelValue('Paired private chat', paired ? 'yes' : 'no'),
+      labelValue('Worker', runtimeStatus.workerState),
+      labelValue('Webhook conflict', runtimeStatus.webhookConflict ? 'yes' : 'no'),
+      labelValue('Last Bot API contact', runtimeStatus.lastSuccessfulContactAt ?? 'none'),
+      labelValue('Notifications', !runtimeDisabled && paired && runtimeStatus.notificationAvailable ? 'available' : 'unavailable')
+    ]);
+    return;
+  }
+
+  if ((action === 'setup' || action === 'pair' || action === 'test') && !settings.continuationEnabled) {
+    console.log('Telegram continuation requires task continuation to be enabled first. No Telegram action was started.');
+    return;
+  }
+  if ((action === 'setup' || action === 'pair' || action === 'test') && !settings.continuationTelegramEnabled) {
+    console.log('Telegram continuation is disabled in saved settings. No Telegram action was started.');
+    return;
+  }
+  if (!token.token) {
+    if (action === 'doctor') {
+      printBox('CodexPro Telegram doctor', [labelValue('Token', 'not configured'), labelValue('Paired private chat', paired ? 'yes' : 'no'), labelValue('Bot API', 'not checked')]);
+      return;
+    }
+    console.log('WAITING_FOR_TELEGRAM_BOT_TOKEN');
+    console.log('Create a dedicated private-control bot with @BotFather, then save its token locally with: codexpro continuation telegram token save');
+    console.log('Do not paste the Telegram bot token into ChatGPT. After saving it locally, return to this conversation and send: continue');
+    return;
+  }
+
+  const clientUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'telegramClient.js')).href;
+  const { TelegramBotApiClient } = await import(clientUrl);
+  const client = new TelegramBotApiClient(token.token);
+  const bot = await client.getMe();
+  if (!bot?.is_bot || !/^\w{5,32}$/.test(String(bot?.username ?? ''))) throw new Error('Telegram getMe did not return a usable bot identity.');
+  const botLabel = `@${String(bot.username)}`;
+
+  if (action === 'doctor') {
+    const webhook = await client.getWebhookInfo();
+    let pairingState = paired ? 'paired' : 'not paired';
+    if (paired) {
+      try { await pairingStore.assertBotIdentity(bot.id); }
+      catch { pairingState = 'paired identity mismatch'; }
+    }
+    printBox('CodexPro Telegram doctor', [
+      labelValue('Bot', botLabel),
+      labelValue('Token', 'configured'),
+      labelValue('Paired private chat', pairingState),
+      labelValue('Webhook conflict', String(webhook?.url ?? '').trim() ? 'yes (long polling blocked)' : 'no'),
+      labelValue('Live authorization', runtimeDisabled ? 'disabled' : 'enabled'),
+      labelValue('Bot API', 'reachable')
+    ]);
+    return;
+  }
+
+  if (action === 'test') {
+    if (runtimeDisabled) throw new Error('telegram_disabled: enable Telegram continuation before testing notifications.');
+    if (!paired) throw new Error('Telegram private chat is not paired.');
+    await pairingStore.assertBotIdentity(bot.id);
+    const webhook = await client.getWebhookInfo();
+    if (String(webhook?.url ?? '').trim()) throw new Error('telegram_webhook_conflict: long polling is unavailable while a webhook is configured.');
+    await client.sendMessage({ chat_id: paired.privateChatId, text: 'CodexPro Telegram continuation test: private notification channel is available.', disable_web_page_preview: true });
+    console.log(`OK Telegram continuation test notification sent by ${botLabel}.`);
+    return;
+  }
+
+  if (paired) {
+    await pairingStore.assertBotIdentity(bot.id);
+    console.log('Telegram private chat is already paired to this bot.');
+    return;
+  }
+  if (action === 'pair') {
+    const pairingModule = await import(pairingUrl);
+    const updates = await client.getUpdates({ timeout: 0, allowed_updates: ['message'] });
+    const claimed = await pairingModule.claimPairingFromUpdates(pairingStore, Array.isArray(updates) ? updates : [], bot.id);
+    if (!claimed) {
+      console.log('WAITING_FOR_TELEGRAM_PAIR');
+      console.log('No matching Start update has been received for the active pairing yet. Open the existing pairing link and press Start, then send: continue');
+      return;
+    }
+    console.log('OK Telegram private chat paired successfully.');
+    return;
+  }
+  const pending = await pairingStore.createPairing(bot);
+  const username = String(bot.username);
+  console.log(`Telegram bot: @${username}`);
+  console.log(`Pairing link: https://t.me/${username}?start=${pending.code}`);
+  console.log(`Expires: ${pending.expiresAt}`);
+  console.log('WAITING_FOR_TELEGRAM_PAIR');
+  console.log('Open the pairing link in Telegram and press Start. Do not share the pairing link. Then return here and send: continue');
+}
+
 async function runContinuationCommand(argv) {
   if (argv.includes('--help') || argv.includes('-h') || argv[0] === 'help') {
     console.log([
@@ -756,15 +938,18 @@ async function runContinuationCommand(argv) {
       '  codexpro continuation disarm --task <id|short-id> [--root <dir>]',
       '  codexpro continuation browser status|pair|open|auth [--profile <label>] [--root <dir>]',
       '  codexpro continuation browser clear-profile --profile <label> --yes [--root <dir>]',
+      '  codexpro continuation telegram setup|pair|status|test|doctor|disable|revoke [--root <dir>]',
+      '  codexpro continuation telegram token save|status|clear [--yes]',
       '',
       'Saved continuation settings are next-run defaults. Status reports current runtime state separately when available.'
     ].join('\n'));
     return;
   }
   const command = argv[0] ?? 'status';
-  if (!['status', 'arm-status', 'disarm', 'browser'].includes(command)) {
-    throw new Error('Supported continuation commands: status, arm-status, disarm, browser.');
+  if (!['status', 'arm-status', 'disarm', 'browser', 'telegram'].includes(command)) {
+    throw new Error('Supported continuation commands: status, arm-status, disarm, browser, telegram.');
   }
+  if (command === 'telegram') { await runTelegramContinuationCommand(argv.slice(1)); return; }
   const optionStart = command === 'browser' ? 2 : 1;
   const parsed = parseArgs(argv.slice(optionStart));
   const root = realDir(parsed.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());

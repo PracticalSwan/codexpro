@@ -150,6 +150,12 @@ Current support status: Stage A (one-shot Bash and workspace processes) is live-
 
 Allowed hidden workspace paths participate in event snapshots; blocked paths still remain excluded.
 
+### Optional task-aware browser and Telegram continuation
+
+Task continuation is default-off and uses durable semantic task state rather than scraping ChatGPT output. A dedicated managed Chrome/Edge profile can bind one ChatGPT conversation and expose a user-clicked **Continue task** action. Optional Telegram authorization adds one dedicated paired private bot chat: outbound long polling sends a privacy-safe ready notice with **Continue** plus up to three bounded focused intents. Callback data is opaque, one-shot, and server-side bound to the paired identity, exact task revision/nonce, and selected intent. Ready buttons remain available for up to five hours. Readiness churn within the same semantic continuation opportunity refreshes the existing Telegram message's buttons in place rather than sending duplicate notices. Telegram authorization never sends directly: a click creates only a <=30-second local grant, and the managed browser must still consume it after rechecking the exact bound chat and all page/auth/transport/durable-work safety predicates, then submits only the fixed product continuation template.
+
+Local commands include `codexpro continuation telegram setup|pair|status|test|doctor|disable|revoke` and protected `telegram token save|status|clear`. Tokens and paired numeric IDs are kept outside workspace profiles; diagnostics expose only sanitized bot/worker/webhook/contact/availability metadata. Telegram failure leaves browser authorization available and never triggers autonomous fallback submission or runtime/tunnel restart.
+
 ## 9. Git and repository intelligence
 
 Read-only Git tools are available in full mode; write tools also require workspace write mode.
