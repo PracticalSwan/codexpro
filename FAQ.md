@@ -78,13 +78,15 @@ Use explicit tools such as `read`, `search`, `edit`, `bash`, and `show_changes` 
 
 ## What is the recommended install path for this fork?
 
-Install the release artifact directly from GitHub Releases:
+For the full first-time setup, OpenAI tunnel/key steps, and multi-project examples, see [GETTING_STARTED.md](GETTING_STARTED.md).
+
+Install the latest tagged/stable artifact directly from GitHub Releases:
 
 ```bash
 npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz
 ```
 
-Or build the PracticalSwan fork from source:
+If you need fixes listed under **Unreleased** before the next tag is published, build the current `main` branch from source:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -164,7 +166,7 @@ If the client does not provide `download_url` and `file_id`, the tool returns an
 
 ## What do I enable in ChatGPT?
 
-For the default OpenAI Secure MCP Tunnel path, first complete the one-time OpenAI Platform tunnel setup and keep the restricted runtime API key in `CONTROL_PLANE_API_KEY`. Do not paste that key into ChatGPT or save it in a CodexPro profile.
+For the default OpenAI Secure MCP Tunnel path, first complete the one-time OpenAI Platform tunnel setup. Store the restricted runtime API key with `codexpro openai-key save`, or use `CONTROL_PLANE_API_KEY` only as a session-scoped override. Do not paste that key into ChatGPT or save it in a workspace profile.
 
 Then open ChatGPT and go to:
 
@@ -175,7 +177,7 @@ Settings
 -> Enforce CSP in developer mode: on
 
 Settings
--> Connectors
+-> Plugins / Connectors
 -> Connection: Tunnel
 ```
 
@@ -380,7 +382,7 @@ The runtime API key is not saved by CodexPro; provide it through `CONTROL_PLANE_
 
 ## What if I run CodexPro in two repos at once?
 
-For convenient switching through one connector, save the additional projects on the launch workspace:
+For normal multi-session use, prefer **one CodexPro runtime with multiple allowed projects**. Each ChatGPT conversation can select a different allowed root with `open_workspace` and retain its own `workspace_id`. Save the additional projects on the launch workspace:
 
 ```bash
 cd ~/code/app
@@ -406,7 +408,7 @@ repo A: port 8787, tunnel/workspace A
 repo B: port 8788, tunnel/workspace B
 ```
 
-Run `codexpro setup` in each repo and save a profile per workspace. A Secure MCP Tunnel must be scoped to the ChatGPT workspace that will use it; do not reuse one tunnel/profile as a cross-account trust shortcut.
+Run `codexpro setup` in each repo and save a profile per workspace. A Secure MCP Tunnel must be scoped to the ChatGPT workspace that will use it; do not reuse one tunnel/profile as a cross-account trust shortcut. See [GETTING_STARTED.md](GETTING_STARTED.md) for complete one-runtime/two-chat and two-runtime hard-isolation examples.
 
 ## How do multiple ChatGPT sessions avoid overwriting each other?
 

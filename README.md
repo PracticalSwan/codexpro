@@ -59,6 +59,8 @@ npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32
 codexpro --version
 ```
 
+This installs the latest tagged/stable artifact. Changes listed under **Unreleased** may exist on `main` before the next release; build from source when you specifically need those fixes.
+
 ### From a source checkout
 
 ```bash
@@ -77,6 +79,8 @@ Expected version for this branch:
 ```text
 0.32.3
 ```
+
+For the complete first-time tunnel/key setup and multi-project examples, see **[GETTING_STARTED.md](GETTING_STARTED.md)**.
 
 If you already have a verified fork tarball, install that tarball directly instead of rebuilding it.
 
@@ -98,7 +102,7 @@ If you already have a verified fork tarball, install that tarball directly inste
    ```
 
 2. One time, create an OpenAI Secure MCP Tunnel for the same ChatGPT workspace and provide its `tunnel_...` ID to CodexPro. Run `codexpro openai-key save` once to store the restricted runtime key in CodexPro's protected per-user secret file, or keep using `CONTROL_PLANE_API_KEY` for session-only credentials.
-3. In ChatGPT, enable Developer mode and keep CSP enforcement enabled. Open Settings -> Connectors, choose **Connection: Tunnel**, and select or paste the same Tunnel ID.
+3. In ChatGPT, enable Developer mode and keep CSP enforcement enabled. Open the custom MCP/plugin connection UI (shown as **Plugins** or **Connectors** depending on the client), choose **Connection: Tunnel**, and select or paste the same Tunnel ID.
 4. Keep CodexPro and the official `tunnel-client` running while you use the connector. The local MCP endpoint stays loopback-only and bearer protected.
 5. In chat, start with:
 
@@ -219,7 +223,13 @@ CODEXPRO_TOOL_CARDS=1 codexpro start
 
 ## Multiple projects
 
-Save additional explicitly allowed projects:
+For most multi-chat workflows, use **one CodexPro runtime** with multiple explicitly allowed projects. One-off:
+
+```bash
+codexpro start --project ~/code/web --project ~/code/api
+```
+
+Or save the additional roots:
 
 ```bash
 codexpro settings set --project ~/code/web --project ~/code/api
@@ -229,7 +239,9 @@ codexpro start
 
 Use `open_workspace` for another allowed root and keep the returned `workspace_id` for cross-session calls.
 
-Separate local MCP processes/ports can isolate local clients, but a different local port alone does **not** create a second ChatGPT connector when both processes reuse the same OpenAI tunnel identity. CodexPro therefore rejects a second live launcher that tries to reuse an active OpenAI tunnel ID. Use one runtime with additional allowed roots, or configure a distinct OpenAI tunnel ID for each simultaneous runtime.
+Open separate ChatGPT conversations and call `open_workspace` for the intended allowed root in each one. Keep each returned `workspace_id` and pass it explicitly after MCP/session turnover.
+
+Separate local MCP processes/ports can isolate local clients, but a different local port alone does **not** create a second ChatGPT connector when both processes reuse the same OpenAI tunnel identity. CodexPro therefore rejects a second live launcher that tries to reuse an active OpenAI tunnel ID. Use one runtime with additional allowed roots, or configure a distinct OpenAI tunnel ID for each simultaneous runtime. See **[GETTING_STARTED.md](GETTING_STARTED.md)** for complete two-chat/two-project and hard-isolation examples.
 
 ## Connection options
 
@@ -448,6 +460,7 @@ This fork preserves upstream attribution and MIT licensing while maintaining its
 ## Documentation
 
 - [Website](https://practicalswan.github.io/codexpro/)
+- [Getting started / multi-project setup](GETTING_STARTED.md)
 - [Feature guide](FEATURES.md)
 - [FAQ](FAQ.md)
 - [Security](SECURITY.md)

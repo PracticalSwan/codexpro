@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Added a focused public getting-started guide covering stable-vs-main installation, OpenAI tunnel/key setup, daily startup, and safe multi-session/multi-project operation; README, FAQ, and the public site now link to the same workflow.
 - Fixed installed-runtime observability so `server_config`, `codexpro_inventory`, and HTTP `/healthz` expose the actual `codexpro-full` package version; server config also exposes the HTTP session capacity and idle TTL.
 - Fixed continuation-off tool gating so `continuation_*` MCP tools are not advertised or registered when task continuation is disabled.
 - Fixed connection diagnostics so a recovered successful response can return current health to `healthy` while preserving historical dispatch/response failure counters.

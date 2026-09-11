@@ -48,7 +48,7 @@
 codexpro setup</code>
             <button class="copy-button" data-copy="npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz&#10;codexpro setup">Copy</button>
           </div>
-          <p class="eyebrow">CodexPro Full 0.32.3 ships independently through GitHub Releases. The upstream npm package is not this fork release.</p>
+          <p class="eyebrow">CodexPro Full 0.32.3 ships independently through GitHub Releases. Tagged releases are the stable artifacts; build current <code>main</code> when you specifically need fixes listed under Unreleased. The upstream npm package is not this fork release.</p>
           <div class="hero-proof" aria-label="Core capabilities">
             <span>explicit project access</span>
             <span>loopback + bearer protected</span>
@@ -57,6 +57,7 @@ codexpro setup</code>
           </div>
           <div class="hero-actions">
             <a class="button primary" href="#quickstart">Install CodexPro</a>
+            <a class="button secondary" href="https://github.com/PracticalSwan/codexpro/blob/main/GETTING_STARTED.md">Setup & multi-project guide</a>
             <a class="button secondary star-button" href="https://github.com/PracticalSwan/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />Star on GitHub</a>
             <a class="button secondary" href="https://github.com/PracticalSwan/codexpro/blob/main/FEATURES.md">View feature guide</a>
           </div>
@@ -107,7 +108,7 @@ codexpro setup</code>
         <div>
           <span>01</span>
           <strong>Install</strong>
-          <p>Clone the PracticalSwan fork, build it, and install the generated 0.32.3 tarball.</p>
+          <p>Install the tagged GitHub Release for the stable build, or build current <code>main</code> when you need verified Unreleased fixes.</p>
         </div>
         <div>
           <span>02</span>
@@ -247,7 +248,7 @@ codexpro --version</code></pre>
             <span>3</span>
             <div>
               <strong>Prepare ChatGPT</strong>
-              <p>In ChatGPT, enable Developer mode and keep CSP enforcement on. Then open Settings -> Connectors.</p>
+              <p>In ChatGPT, enable Developer mode and keep CSP enforcement on. Then open the custom MCP/plugin connection UI (shown as Plugins or Connectors depending on the client).</p>
             </div>
           </div>
           <div class="step">
@@ -265,6 +266,9 @@ codexpro --version</code></pre>
             </div>
           </div>
         </div>
+        <p>
+          Need two ChatGPT conversations on different projects? Prefer one CodexPro runtime with additional allowed roots via <code>--project</code> or <code>settings set --project</code>. Use separate runtimes only with separate local ports and distinct tunnel IDs. See the <a href="https://github.com/PracticalSwan/codexpro/blob/main/GETTING_STARTED.md">setup & multi-project guide</a>.
+        </p>
       </section>
 
       <section class="section">
@@ -274,15 +278,15 @@ codexpro --version</code></pre>
         </div>
         <div class="compare-grid">
           <article>
-            <span class="tag">Fastest</span>
-            <h3>Cloudflare quick tunnel</h3>
-            <p>No account flow. Good for demos. The URL changes every restart, so you must update the ChatGPT app Server URL each time.</p>
+            <span class="tag">Recommended</span>
+            <h3>OpenAI Secure MCP Tunnel</h3>
+            <p>Primary ChatGPT path. Create one Platform tunnel, save its non-secret tunnel ID in the project profile, and keep the official tunnel-client plus CodexPro running.</p>
             <pre><code>codexpro start</code></pre>
           </article>
           <article>
-            <span class="tag">Recommended</span>
+            <span class="tag">Stable HTTP fallback</span>
             <h3>ngrok free dev domain</h3>
-            <p>Best simple stable URL. Create a free ngrok account, use the assigned dev domain, and keep the same ChatGPT app URL across restarts.</p>
+            <p>Use a stable Server URL only when you deliberately choose the HTTP fallback path instead of the OpenAI tunnel.</p>
             <pre><code>codexpro ngrok --hostname your-name.ngrok-free.dev</code></pre>
           </article>
           <article>
@@ -413,21 +417,20 @@ cloudflared tunnel route dns codexpro codexpro.example.com</code></pre>
               <div><dt>Go to</dt><dd>Security and login</dd></div>
               <div><dt>Prerequisite</dt><dd>Developer mode on</dd></div>
               <div><dt>Keep on</dt><dd>Enforce CSP in developer mode</dd></div>
-              <div><dt>Then</dt><dd>Plugins -> Plugins tab -> + beside Search plugins</dd></div>
+              <div><dt>Then</dt><dd>Open the custom MCP/plugin connection UI (Plugins or Connectors, depending on the client)</dd></div>
             </dl>
             <p>Developer mode is only the settings toggle that unlocks custom plugins. CodexPro widgets work with CSP enabled.</p>
           </article>
           <article>
-            <small>Create Plugin fields</small>
-            <h3>Paste the copied URL</h3>
+            <small>Primary ChatGPT connection</small>
+            <h3>Select the OpenAI tunnel</h3>
             <dl>
               <div><dt>Name</dt><dd>CodexPro</dd></div>
               <div><dt>Description</dt><dd>Local workspace bridge for ChatGPT coding</dd></div>
-              <div><dt>Connection</dt><dd>Server URL</dd></div>
-              <div><dt>Server URL</dt><dd>Paste copied CodexPro URL</dd></div>
-              <div><dt>Authentication</dt><dd>No Authentication / None</dd></div>
+              <div><dt>Connection</dt><dd>Tunnel</dd></div>
+              <div><dt>Tunnel ID</dt><dd>Select or paste the same <code>tunnel_...</code> ID saved in CodexPro</dd></div>
             </dl>
-            <p>The form may initially show OAuth; select No Authentication / None. The copied Server URL includes a private CodexPro token and is for a personal connector only. Shared or multi-user production deployments require OAuth or Authorization-header authentication.</p>
+            <p>Server URL forms are only for the explicit ngrok/Cloudflare/Tailscale HTTP fallback paths. Keep the OpenAI runtime key out of ChatGPT and workspace profiles.</p>
           </article>
           <article>
             <small>Doctor</small>
@@ -544,6 +547,7 @@ codexpro settings delete --yes</code></pre>
 
         <div class="link-row" aria-label="Documentation links">
           <a class="star-link" href="https://github.com/PracticalSwan/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />Star the GitHub repo</a>
+          <a href="https://github.com/PracticalSwan/codexpro/blob/main/GETTING_STARTED.md">Getting started</a>
           <a href="https://github.com/PracticalSwan/codexpro/blob/main/FEATURES.md">Feature guide</a>
           <a href="https://github.com/PracticalSwan/codexpro/blob/main/DOMAIN_SETUP.md">Stable URL guide</a>
           <a href="https://github.com/PracticalSwan/codexpro/blob/main/FAQ.md">FAQ</a>
@@ -572,7 +576,7 @@ codexpro settings delete --yes</code></pre>
           </article>
           <article>
             <h3>What URL should I use?</h3>
-            <p>Use Cloudflare quick tunnel for demos. Use an ngrok free dev domain, Cloudflare named tunnel, or Tailscale Funnel when you want one ChatGPT app URL that survives restarts.</p>
+            <p>Use OpenAI Secure MCP Tunnel for the recommended ChatGPT path. Use ngrok, Cloudflare, or Tailscale only when you deliberately choose an HTTP Server URL fallback.</p>
           </article>
           <article>
             <h3>Can ChatGPT see my Codex context?</h3>
@@ -628,6 +632,7 @@ codexpro settings delete --yes</code></pre>
     <footer class="site-footer">
       <span>CodexPro Full</span>
       <a class="star-link" href="https://github.com/PracticalSwan/codexpro"><img src="./star.svg" alt="" aria-hidden="true" />Star on GitHub</a>
+      <a href="https://github.com/PracticalSwan/codexpro/blob/main/GETTING_STARTED.md">Getting started</a>
       <a href="https://github.com/PracticalSwan/codexpro/blob/main/FEATURES.md">Features</a>
       <a href="./zh.html">中文</a>
       <a href="https://github.com/PracticalSwan/codexpro/blob/main/SECURITY.md">Security</a>
