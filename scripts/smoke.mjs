@@ -239,11 +239,15 @@ const safeInitialize = await client.request('initialize', {
   clientInfo: { name: 'codexpro-smoke', version: '0.1.0' }
 });
 client.notify('notifications/initialized');
+if (safeInitialize.serverInfo?.version !== pkg.version) throw new Error(`MCP serverInfo version drifted from package version: ${JSON.stringify(safeInitialize.serverInfo)}`);
 if (!safeInitialize.instructions?.includes('allowlisted verification commands') || safeInitialize.instructions?.includes('Full Bash access is enabled')) {
   throw new Error(`safe Bash instructions were not mode-appropriate: ${safeInitialize.instructions}`);
 }
 const tools = await client.request('tools/list', {});
 const toolNames = tools.tools.map((tool) => tool.name);
+for (const disabledContinuationTool of ['continuation_arm', 'continuation_checkpoint', 'continuation_request', 'continuation_status', 'continuation_reconcile', 'continuation_complete', 'continuation_cancel']) {
+  if (toolNames.includes(disabledContinuationTool)) throw new Error(`continuation-disabled runtime advertised ${disabledContinuationTool}`);
+}
 const safeBashTool = tools.tools.find((tool) => tool.name === 'bash');
 if (!safeBashTool?.description?.includes('allowlisted verification command')) {
   throw new Error(`safe Bash tool description was not restricted: ${safeBashTool?.description}`);
@@ -291,6 +295,12 @@ if (!diagnosticConfig.structuredContent.gitRuntime?.version) {
 }
 if (!diagnosticConfig.structuredContent.searchBackend?.backend) {
   throw new Error(`server_config omitted search backend diagnostics: ${JSON.stringify(diagnosticConfig.structuredContent)}`);
+}
+if (diagnosticConfig.structuredContent.packageName !== pkg.name || diagnosticConfig.structuredContent.version !== pkg.version) {
+  throw new Error(`server_config omitted installed package identity: ${JSON.stringify(diagnosticConfig.structuredContent)}`);
+}
+if (diagnosticConfig.structuredContent.maxHttpSessions < 128 || diagnosticConfig.structuredContent.httpSessionTtlMs < 60_000) {
+  throw new Error(`server_config exposed unsafe HTTP session capacity: ${JSON.stringify({ max: diagnosticConfig.structuredContent.maxHttpSessions, ttl: diagnosticConfig.structuredContent.httpSessionTtlMs })}`);
 }
 if (diagnosticConfig.structuredContent.executionBackend !== 'host' || diagnosticConfig.structuredContent.execution?.kind !== 'host' || diagnosticConfig.structuredContent.execution?.available !== true || diagnosticConfig.structuredContent.goalExecutionBackend !== 'host') {
   throw new Error(`server_config did not preserve host-default execution diagnostics: ${JSON.stringify(diagnosticConfig.structuredContent.execution)}`);
@@ -944,8 +954,8 @@ if (docsOnlyChanges.structuredContent.analysis?.risk_signals?.some((risk) => ris
 }
 await client.request('tools/call', { name: 'edit', arguments: { workspace_id: ws, path: 'docs/security-storage-model.md', old_text: 'storage threat model after', new_text: 'storage threat model before' } });
 const repeatedChanges = await client.request('tools/call', { name: 'show_changes', arguments: { workspace_id: ws } });
-if (repeatedChanges.structuredContent.changed || repeatedChanges.structuredContent.diff || repeatedChanges.structuredContent.review_checkpoint_hit !== true || repeatedChanges.structuredContent.additions !== 0 || repeatedChanges.structuredContent.deletions !== 0) {
-  throw new Error(`show_changes repeated the same review instead of using the last-shown checkpoint: ${JSON.stringify(repeatedChanges.structuredContent)}`);
+if (!repeatedChanges.structuredContent.changed || repeatedChanges.structuredContent.diff || repeatedChanges.structuredContent.review_checkpoint_hit !== true || repeatedChanges.structuredContent.additions !== 0 || repeatedChanges.structuredContent.deletions !== 0 || !repeatedChanges.structuredContent.changed_files?.length) {
+  throw new Error(`show_changes hid current dirty status when only the diff review was unchanged: ${JSON.stringify(repeatedChanges.structuredContent)}`);
 }
 if ('analysis' in repeatedChanges.structuredContent) {
   throw new Error(`show_changes recomputed analysis for an unchanged checkpoint: ${JSON.stringify(repeatedChanges.structuredContent.analysis)}`);
@@ -1123,11 +1133,24 @@ const untrackedChanges = await client.request('tools/call', { name: 'show_change
 if (!untrackedChanges.structuredContent.changed || !untrackedChanges.structuredContent.changed_files?.some?.((line) => line.includes('new-review.txt'))) {
   throw new Error(`show_changes did not report untracked new file: ${JSON.stringify(untrackedChanges.structuredContent)}`);
 }
+const workspaceUntrackedChanges = await client.request('tools/call', { name: 'show_changes', arguments: { workspace_id: ws, since: 'workspace' } });
+if (!workspaceUntrackedChanges.structuredContent.changed || !workspaceUntrackedChanges.structuredContent.changed_files?.some?.((line) => line.includes('new-review.txt')) || workspaceUntrackedChanges.structuredContent.review_checkpoint_hit) {
+  throw new Error(`show_changes(since=workspace) hid current untracked workspace state: ${JSON.stringify(workspaceUntrackedChanges.structuredContent)}`);
+}
 await fs.writeFile(path.join(tmp, 'new-review.txt'), 'new file changed\n', 'utf8');
 const changedUntrackedChanges = await client.request('tools/call', { name: 'show_changes', arguments: { workspace_id: ws, path: 'new-review.txt' } });
 if (!changedUntrackedChanges.structuredContent.changed || changedUntrackedChanges.structuredContent.review_checkpoint_hit) {
   throw new Error(`show_changes checkpoint hid changed untracked file content: ${JSON.stringify(changedUntrackedChanges.structuredContent)}`);
 }
+await fs.mkdir(path.join(tmp, 'nested-untracked'), { recursive: true });
+await fs.writeFile(path.join(tmp, 'nested-untracked', 'review.txt'), 'state=one\n', 'utf8');
+const nestedUntrackedFirst = await client.request('tools/call', { name: 'show_changes', arguments: { workspace_id: ws, since: 'workspace' } });
+if (!nestedUntrackedFirst.structuredContent.diff?.includes('nested-untracked/review.txt')) throw new Error(`show_changes omitted bounded untracked review diff: ${JSON.stringify(nestedUntrackedFirst.structuredContent)}`);
+const nestedUntrackedRepeat = await client.request('tools/call', { name: 'show_changes', arguments: { workspace_id: ws } });
+if (!nestedUntrackedRepeat.structuredContent.review_checkpoint_hit || nestedUntrackedRepeat.structuredContent.review_checkpoint_scope !== 'mcp_session' || !nestedUntrackedRepeat.structuredContent.changed || nestedUntrackedRepeat.structuredContent.diff) throw new Error(`same-session untracked review checkpoint did not collapse: ${JSON.stringify(nestedUntrackedRepeat.structuredContent)}`);
+await fs.writeFile(path.join(tmp, 'nested-untracked', 'review.txt'), 'state=two\n', 'utf8');
+const nestedUntrackedEdited = await client.request('tools/call', { name: 'show_changes', arguments: { workspace_id: ws } });
+if (nestedUntrackedEdited.structuredContent.review_checkpoint_hit || !nestedUntrackedEdited.structuredContent.diff?.includes('nested-untracked/review.txt') || !nestedUntrackedEdited.structuredContent.diff?.includes('state=two')) throw new Error(`untracked child edit did not invalidate review checkpoint with bounded diff: ${JSON.stringify(nestedUntrackedEdited.structuredContent)}`);
 const codexContext = await client.request('tools/call', { name: 'codex_context', arguments: { workspace_id: ws, target_path: 'demo.txt' } });
 if (!codexContext.structuredContent.agents_files.includes('AGENTS.md')) throw new Error('codex_context did not include AGENTS.md');
 if (codexContext.structuredContent.agents_files.length !== 1) throw new Error(`codex_context returned duplicate AGENTS files: ${codexContext.structuredContent.agents_files.join(', ')}`);

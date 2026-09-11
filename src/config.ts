@@ -487,7 +487,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     maxCheckOutputBytes: numberFrom(process.env.CODEXPRO_MAX_CHECK_OUTPUT_BYTES, maxOutputBytes, 4_000, 2_000_000),
     maxImportBytes: numberFrom(process.env.CODEXPRO_MAX_IMPORT_BYTES, 5_000_000, 1_000, 50_000_000),
     maxSearchResults: numberFrom(process.env.CODEXPRO_MAX_SEARCH_RESULTS, 200, 5, 2_000),
-    maxHttpSessions: numberFrom(process.env.CODEXPRO_MAX_HTTP_SESSIONS, 64, 1, 512),
+    maxHttpSessions: numberFrom(process.env.CODEXPRO_MAX_HTTP_SESSIONS, 128, 1, 512),
     httpSessionTtlMs: numberFrom(process.env.CODEXPRO_HTTP_SESSION_TTL_MS, 30 * 60_000, 60_000, 24 * 60 * 60_000),
     maxOperationBytes: numberFrom(process.env.CODEXPRO_MAX_OPERATION_BYTES, 20_000_000, 1_000, 200_000_000),
     maxOperationFiles: numberFrom(process.env.CODEXPRO_MAX_OPERATION_FILES, 128, 1, 2_048),

@@ -397,9 +397,9 @@ Confirm `Projects` lists the extra roots, then restart the connector so the admi
 codexpro settings set --clear-projects
 ```
 
-Workspace selection is isolated between MCP sessions created by the client. A ChatGPT conversation is not guaranteed to map one-to-one to an MCP session, so use separate CodexPro processes when strict isolation matters.
+Workspace selection is isolated between MCP sessions created by the client. A ChatGPT conversation is not guaranteed to map one-to-one to an MCP session. For strict connector isolation, use separate CodexPro processes **and distinct tunnel/connector identities**; a second local port alone is not a second ChatGPT connector.
 
-For strict separation, run two CodexPro processes with different local ports and distinct OpenAI tunnels (or distinct HTTP fallback hostnames):
+CodexPro rejects a second live launcher that tries to reuse an active OpenAI tunnel ID, because that remote connector identity cannot safely point at two local runtimes. For strict separation, run two CodexPro processes with different local ports and distinct OpenAI tunnels (or distinct HTTP fallback hostnames):
 
 ```text
 repo A: port 8787, tunnel/workspace A

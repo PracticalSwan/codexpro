@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { loadConfig } from "../dist/config.js";
 import { PathGuard } from "../dist/guard.js";
 import { buildPackageGraph } from "../dist/packageGraph.js";
-import { gitHistory, gitShow, gitBlame } from "../dist/gitOps.js";
+import { gitHistory, gitShow, gitBlame, gitDiffStatus } from "../dist/gitOps.js";
 import { preflightChanges } from "../dist/preflightOps.js";
 const rootRaw=await fs.mkdtemp(path.join(os.tmpdir(),"codexpro-git-intel-")); const root=await fs.realpath(rootRaw);
 const run=(a)=>{const r=spawnSync("git",a,{cwd:root,encoding:"utf8"});if(r.status!==0)throw new Error(r.stderr||r.stdout);};
@@ -27,5 +27,9 @@ try {
  await fs.writeFile(path.join(root,"packages","a","src","bad.txt"),"<<<<<<< HEAD\nTOKEN=ghp_abcdefghijklmnopqrstuvwxyz123456\n=======\nx\n>>>>>>> x\n");
  const pre=await preflightChanges(config,guard,ws,{paths:["packages/a/src/bad.txt"],maxFileBytes:4096});
  assert(pre.issues.some(i=>i.kind==="conflict_marker")); assert(pre.issues.some(i=>i.kind==="secret"));
+ await fs.mkdir(path.join(root,"untracked-bulk"));
+ for (let i=0;i<80;i+=1) await fs.writeFile(path.join(root,"untracked-bulk",`fixture-${String(i).padStart(3,"0")}-long-name.txt`),"x\n");
+ const boundedStatus=gitDiffStatus({...config,maxOutputBytes:256},guard,ws);
+ assert(boundedStatus.includes("?? untracked-bulk/"),`bounded untracked status was lost: ${boundedStatus}`);
  console.log("git intelligence smoke passed");
 } finally { await fs.rm(rootRaw,{recursive:true,force:true}); }

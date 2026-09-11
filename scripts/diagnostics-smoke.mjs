@@ -21,6 +21,13 @@ telemetry.record({ stage: 'completion', status: 'ok', tool: 'read', durationMs: 
 telemetry.record({ stage: 'response', status: 'error' });
 connection = connectionDiagnostics(telemetry.snapshot(), 1);
 assert(connection.state === 'response_failed', `expected response_failed, got ${connection.state}`);
+telemetry.record({ stage: 'request_arrival', status: 'ok' });
+telemetry.record({ stage: 'dispatch', status: 'ok', tool: 'read' });
+telemetry.record({ stage: 'completion', status: 'ok', tool: 'read', durationMs: 4, resultBytes: 20 });
+telemetry.record({ stage: 'response', status: 'ok' });
+connection = connectionDiagnostics(telemetry.snapshot(), 1);
+assert(connection.state === 'healthy', `expected recovered healthy state after a successful response, got ${connection.state}`);
+assert(connection.response_failures === 1, `historical response failure counter should remain visible, got ${connection.response_failures}`);
 assert(telemetry.snapshot().events.length === 3, 'telemetry detail records were not bounded');
 
 const secret = 'sk-diagnostics-secret-marker-123456789';

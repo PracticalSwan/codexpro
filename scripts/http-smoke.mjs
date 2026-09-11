@@ -9,6 +9,8 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { ContinuationStore } from '../dist/continuation/store.js';
 import { BrowserPairingStore } from '../dist/continuation/browserAuth.js';
 
+const pkg = JSON.parse(await fs.readFile('package.json', 'utf8'));
+
 async function getFreePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -294,6 +296,9 @@ try {
   const authorizedJson = await authorized.json();
   if (authorizedJson.authRequired !== true) {
     throw new Error(`expected authenticated healthz to report authRequired=true, got ${JSON.stringify(authorizedJson)}`);
+  }
+  if (authorizedJson.packageName !== pkg.name || authorizedJson.version !== pkg.version) {
+    throw new Error(`healthz omitted installed package identity: ${JSON.stringify(authorizedJson)}`);
   }
 
   for (const header of [`bearer ${token}`, `Bearer    ${token}`]) {
@@ -752,6 +757,20 @@ try {
       throw new Error(`show_changes checkpoint leaked across HTTP sessions: ${JSON.stringify(changes.structuredContent)}`);
     }
   });
+  const churnClients = [];
+  try {
+    for (let index = 0; index < 70; index += 1) {
+      const churnClient = new Client({ name: `codexpro-http-churn-${index}`, version: '0.0.0' });
+      const churnTransport = new StreamableHTTPClientTransport(new URL(mcpUrl));
+      await churnClient.connect(churnTransport);
+      await churnClient.listTools();
+      churnClients.push(churnClient);
+    }
+    const oldestChurnClient = await callTool(churnClients[0], 'server_config');
+    if (oldestChurnClient.structuredContent.version !== pkg.version) throw new Error('HTTP session churn evicted a still-live client below the supported concurrency envelope');
+  } finally {
+    for (const churnClient of churnClients) await churnClient.close().catch(() => undefined);
+  }
   const unknownSession = '00000000-0000-4000-8000-000000000000';
   await expectSessionNotFound(await postToolsListWithSession(baseUrl, token, unknownSession), 'unknown POST session');
   await expectSessionNotFound(await fetch(`${baseUrl}/mcp?codexpro_token=${encodeURIComponent(token)}`, {

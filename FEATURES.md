@@ -152,7 +152,7 @@ Allowed hidden workspace paths participate in event snapshots; blocked paths sti
 
 ### Optional task-aware browser and Telegram continuation
 
-> **Experimental / incomplete:** final fresh-session installed-runtime acceptance is deferred. Keep browser and Telegram continuation disabled unless intentionally testing them.
+> **Experimental / incomplete:** final fresh-session installed-runtime acceptance is deferred. Keep browser and Telegram continuation disabled unless intentionally testing them. When disabled, `continuation_*` tools are absent from the MCP tool surface; `server_config` remains the read-only source for the disabled gate state.
 
 Task continuation is default-off and uses durable semantic task state rather than scraping ChatGPT output. A dedicated managed Chrome/Edge profile can bind one ChatGPT conversation and expose a user-clicked **Continue task** action. Optional Telegram authorization adds one dedicated paired private bot chat: outbound long polling sends a privacy-safe ready notice with **Continue** plus up to three bounded focused intents. Callback data is opaque, one-shot, and server-side bound to the paired identity, exact task revision/nonce, and selected intent. Ready buttons remain available for up to five hours. Readiness churn within the same semantic continuation opportunity refreshes the existing Telegram message's buttons in place rather than sending duplicate notices. Telegram authorization never sends directly: a click creates only a <=30-second local grant, and the managed browser must still consume it after rechecking the exact bound chat and all page/auth/transport/durable-work safety predicates, then submits only the fixed product continuation template.
 
@@ -176,6 +176,8 @@ Read-only Git tools are available in full mode; write tools also require workspa
 | Optional push | `git_push` | Appears only when `allowGitPush=true`; there is no force-push path. |
 
 For a practical Full Access profile with `allowGitPush=false`, `git_push` is intentionally absent.
+
+`show_changes` review checkpoints are MCP-session-local. Untracked directories are fingerprinted with bounded traversal, and safe small text files can be represented by bounded redacted synthetic diffs so untracked child edits are reviewable without expanding an entire untracked tree through Git.
 
 ## 10. Code intelligence
 
@@ -276,7 +278,7 @@ The executor/watch/loop commands remain local CLI features; they are not exposed
 
 | Capability | Tools | How to use it |
 | --- | --- | --- |
-| Connection diagnostics | `connection_diagnostics` | Check MCP/HTTP health and bounded failure counters. |
+| Connection diagnostics | `connection_diagnostics` | Check current MCP/HTTP health while retaining bounded historical failure counters. `active_sessions` is the retained transport count and may include recently closed clients until deletion/TTL pruning. |
 | Tool-surface diagnostics | `tool_surface_diagnostics` | Compare expected vs registered tools for the current gates. |
 | Local telemetry | `local_telemetry` | Inspect bounded tool timing/count/error metadata without prompts/source contents. |
 | Activity/evidence ledger | `activity_log` | Read bounded sanitized per-workspace evidence. Ledger reads are observational and do not append themselves. |

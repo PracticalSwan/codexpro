@@ -1,5 +1,3 @@
-Activity evidence: `activity_log` provides a bounded, sanitized per-workspace chronological ledger outside the workspace; it never stores prompts or raw tool output.
-
 <p align="center">
   <img src="docs/favicon.svg" width="72" height="72" alt="CodexPro Full logo">
 </p>
@@ -145,13 +143,12 @@ Tool-time awareness is enabled independently of browser continuation. The normal
 
 For host-window discovery, use a disposable new ChatGPT chat, temporarily save Unlimited/observe for the next manually started runtime, invoke only the read-only `tool_time_probe`, and note the ChatGPT UI closure time. If no server-side abort is observable, record that UI time manually rather than treating a completed server wait as the host cutoff. Restore a bounded deadline with safety margin afterward. `connection_diagnostics` and `tool_surface_diagnostics` report current deadline/capability state; authenticated `/admin/diagnostics` also separates current effective from saved-next-run deadline and reports active structured jobs/recent yields.
 
-**Experimental / incomplete:** browser and Telegram continuation are installed but remain default-off and are not considered final until the deferred fresh-session installed-runtime acceptance is completed. Do not rely on them for unattended operation.
+### Experimental task continuation
 
-Browser continuation remains opt-in. `codexpro continuation browser auth --profile default` opens a dedicated CodexPro-managed Chrome/Edge profile and stops for manual ChatGPT authentication. On current branded Chrome/Edge, load `browser-extension/` manually from the dedicated profile's extensions page; CodexPro never copies or attaches to your normal browser profile. The companion records only coarse auth/page capability state, never credentials, account identity, or conversation text.
+Browser and Telegram continuation are installed but remain **default-off and incomplete pending fresh-session acceptance**. When continuation is disabled, the `continuation_*` MCP tools are not advertised; `server_config` still reports the disabled state. Enable these features only for intentional testing.
 
-Telegram continuation is a separate optional/default-off authorization surface and works only when task continuation is enabled. Save the non-secret preference with `codexpro settings set --continuation enabled --continuation-telegram on`, store the dedicated bot token only through `codexpro continuation telegram token save`, then use `telegram setup`/`pair` for the private one-user chat. `telegram doctor` and `telegram test` expose only sanitized health and send a fixed test notice; `telegram disable` immediately stops new Telegram authorization while browser Continue remains available, and `telegram revoke` invalidates the paired identity plus outstanding Telegram actions without canceling the underlying task. Inline buttons carry opaque one-shot action tokens that remain available for up to five hours but stay bound to the exact current task revision/nonce/intent. If transient browser readiness churn creates a fresh revision/nonce within the same semantic continuation opportunity, CodexPro refreshes the existing Telegram message's buttons in place instead of sending another message. A successful button click creates only a <=30-second local dispatch grant; the managed browser still rechecks the exact bound chat, sign-in, idle/composer state, transport, task revision/nonce, and durable-work suppression before it can submit the fixed continuation message. Telegram never supplies arbitrary prompt text.
+Detailed browser/Telegram behavior, setup, privacy boundaries, and acceptance procedures live in [FEATURES.md](FEATURES.md), [FAQ.md](FAQ.md), `scripts/continuation-live-checklist.md`, and `scripts/continuation-fresh-session-checklist.md`.
 
-Continuation security/release QA is fail-closed. `npm run smoke` includes `scripts/continuation-security-smoke.mjs`, which exercises synthetic private metadata across telemetry, diagnostics, activity summaries, Telegram errors, public continuation records, extension permissions, and package content. Live operator regression is documented in `scripts/continuation-live-checklist.md`; the final installed-runtime/new-chat handoff uses `scripts/continuation-fresh-session-checklist.md`. These checks never require ChatGPT output scraping, ordinary-profile browser access, automatic Retry/model/approval/login actions, or disclosure of Telegram/browser credentials.
 Routing is advisory and derives from the finite deadline reference `D`: `sync_preferred = min(5 minutes, 25% of D)` and `async_preferred = 75% of D`. Never reduce task scope, review depth, verification, or safety to fit one call. Route long model training/rendering or other shell work through `proc_*`, long trusted verification through `job_*`, and substantial dependency/review/projection engineering through `goal_*`.
 
 Use a narrower profile for untrusted repositories.
@@ -171,6 +168,8 @@ prepare_subtask_context as needed
 7. show_changes
 8. git_stage/git_commit only when explicitly requested
 ```
+
+`show_changes` uses MCP-session-local review checkpoints. It can include bounded, redacted synthetic diffs for safe untracked text files; another MCP session intentionally does not inherit the previous session's review checkpoint.
 
 For long-running commands, use `start_workspace_process` and keep the returned `proc_*` handle for later status/output/stop calls.
 
@@ -230,7 +229,7 @@ codexpro start
 
 Use `open_workspace` for another allowed root and keep the returned `workspace_id` for cross-session calls.
 
-For hard isolation, run separate CodexPro processes on separate ports/hostnames.
+Separate local MCP processes/ports can isolate local clients, but a different local port alone does **not** create a second ChatGPT connector when both processes reuse the same OpenAI tunnel identity. CodexPro therefore rejects a second live launcher that tries to reuse an active OpenAI tunnel ID. Use one runtime with additional allowed roots, or configure a distinct OpenAI tunnel ID for each simultaneous runtime.
 
 ## Connection options
 
@@ -398,9 +397,9 @@ codexpro_self_test
 effective_policy
 ```
 
-Diagnostics are designed to expose bounded health/configuration metadata without prompts, source-file contents, raw command transcripts, or authentication tokens.
+Diagnostics are designed to expose bounded health/configuration metadata without prompts, source-file contents, raw command transcripts, or authentication tokens. `server_config` reports the installed package name/version plus the current HTTP session limit/TTL. `connection_diagnostics.active_sessions` is the retained server-side MCP transport count, so recently closed clients can remain counted until explicit session deletion or idle-TTL pruning. Historical failure counters remain visible even after current connection health recovers.
 
-The authenticated local control page can save non-secret next-run profile settings. Authentication tokens remain hidden.
+`activity_log` provides a bounded, sanitized per-workspace chronological ledger outside the workspace; it never stores prompts or raw tool output. The authenticated local control page can save non-secret next-run profile settings. Authentication tokens remain hidden.
 
 ## Safety defaults
 

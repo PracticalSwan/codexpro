@@ -94,6 +94,7 @@ async function waitForFile(filePath, label, timeoutMs = 15000) {
 }
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-openai-root-'));
+const duplicateRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-openai-duplicate-root-'));
 const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-openai-home-'));
 const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-openai-fixture-'));
 const env = { ...process.env, CODEXPRO_HOME: home };
@@ -148,6 +149,8 @@ const fallbackHost = 'codexpro-fallback.ngrok-free.app';
 const token = 'codexpro-openai-local-token-0123456789abcdef';
 const argsFile = path.join(fixtureDir, 'tunnel-client-args.json');
 const envFile = path.join(fixtureDir, 'tunnel-client-env.json');
+const duplicateArgsFile = path.join(fixtureDir, 'duplicate-tunnel-client-args.json');
+const duplicateEnvFile = path.join(fixtureDir, 'duplicate-tunnel-client-env.json');
 
 const fakeTunnelClient = await writeNodeExecutable(path.join(fixtureDir, 'fake-tunnel-client.mjs'), [
   '#!/usr/bin/env node',
@@ -212,6 +215,9 @@ if (!fallbackDoctor.includes(fallbackHost)) {
 ${fallbackDoctor}`);
 }
 
+const leasePath = path.join(home, 'runtime', 'openai-tunnels', `${tunnelId}.json`);
+await fs.mkdir(path.dirname(leasePath), { recursive: true });
+await fs.writeFile(leasePath, JSON.stringify({ version: 1, tunnelId, pid: process.pid, root: 'stale-root', port: '1', createdAt: '2000-01-01T00:00:00.000Z' }));
 const port = await getFreePort();
 const runtimePath = await runtimeStatusPath(root, home);
 const child = spawn(process.execPath, [
@@ -247,6 +253,11 @@ try {
   );
   if (!Number.isInteger(runtime.runtimePid)) throw new Error(`runtime child pid missing: ${JSON.stringify(runtime)}`);
 
+  const liveLease = JSON.parse(await fs.readFile(leasePath, 'utf8'));
+  if (liveLease.pid !== child.pid || liveLease.tunnelId !== tunnelId || path.resolve(liveLease.root) !== path.resolve(root)) {
+    throw new Error(`OpenAI tunnel lease did not replace stale ownership correctly: ${JSON.stringify(liveLease)}`);
+  }
+
   const tunnelArgs = JSON.parse(await waitForFile(argsFile, 'fake tunnel-client args'));
   const tunnelEnv = JSON.parse(await waitForFile(envFile, 'fake tunnel-client env'));
   const joinedArgs = tunnelArgs.join(' ');
@@ -265,6 +276,44 @@ try {
     throw new Error(`tunnel-client environment contract mismatch: ${JSON.stringify(tunnelEnv)}`);
   }
 
+  const duplicatePort = await getFreePort();
+  const duplicate = spawn(process.execPath, [
+    'scripts/codexpro.mjs', 'start', '--root', duplicateRoot, '--no-profile', '--headless',
+    '--tunnel', 'openai', '--openai-tunnel-id', tunnelId, '--tunnel-client', fakeTunnelClient,
+    '--port', String(duplicatePort), '--token', token, '--no-copy-url'
+  ], {
+    cwd: path.resolve('.'),
+    env: { ...env, CODEXPRO_FAKE_TUNNEL_ARGS: duplicateArgsFile, CODEXPRO_FAKE_TUNNEL_ENV: duplicateEnvFile, NO_COLOR: '1' },
+    stdio: ['pipe', 'pipe', 'pipe']
+  });
+  let duplicateOutput = '';
+  duplicate.stdout.on('data', (chunk) => { duplicateOutput += chunk; });
+  duplicate.stderr.on('data', (chunk) => { duplicateOutput += chunk; });
+  const duplicateExit = await Promise.race([
+    new Promise((resolve) => duplicate.once('close', (code, signal) => resolve({ code, signal }))),
+    new Promise((resolve) => setTimeout(() => resolve(null), 2500))
+  ]);
+  if (!duplicateExit) {
+    duplicate.stdin.end('q\n');
+    duplicate.kill('SIGTERM');
+    throw new Error('second runtime with the same OpenAI tunnel ID was allowed to remain active');
+  }
+  if (duplicateExit.code === 0 || !/tunnel.*already active|already.*tunnel|tunnel.*in use/i.test(duplicateOutput)) {
+    throw new Error(`duplicate OpenAI tunnel launch did not fail clearly: ${duplicateOutput}`);
+  }
+  if (child.exitCode !== null) throw new Error('duplicate tunnel attempt disrupted the original runtime');
+
+  const alternateTunnelId = 'tunnel_fedcba9876543210fedcba9876543210';
+  const alternatePort = await getFreePort();
+  const alternate = spawn(process.execPath, ['scripts/codexpro.mjs', 'start', '--root', duplicateRoot, '--no-profile', '--headless', '--tunnel', 'openai', '--openai-tunnel-id', alternateTunnelId, '--tunnel-client', fakeTunnelClient, '--port', String(alternatePort), '--token', token, '--no-copy-url'], { cwd: path.resolve('.'), env: { ...env, CODEXPRO_FAKE_TUNNEL_ARGS: duplicateArgsFile, CODEXPRO_FAKE_TUNNEL_ENV: duplicateEnvFile, NO_COLOR: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
+  try {
+    await waitForJson(await runtimeStatusPath(duplicateRoot, home), (data) => data.tunnel === 'openai' && data.endpoint === alternateTunnelId, 'distinct OpenAI tunnel runtime');
+    if (child.exitCode !== null) throw new Error('distinct tunnel runtime disrupted the original runtime');
+  } finally {
+    alternate.stdin.end('q\n');
+    await Promise.race([new Promise((resolve) => alternate.once('close', resolve)), new Promise((resolve) => setTimeout(() => { alternate.kill('SIGTERM'); resolve(); }, 5000))]);
+  }
+
   await new Promise((resolve) => setTimeout(resolve, 100));
   for (const expected of ['OpenAI Secure MCP Tunnel', 'Connection: Tunnel', tunnelId, 'ready']) {
     if (!output.toLowerCase().includes(expected.toLowerCase())) {
@@ -279,6 +328,34 @@ try {
   await Promise.race([
     new Promise((resolve) => child.once('close', resolve)),
     new Promise((resolve) => setTimeout(() => { child.kill('SIGTERM'); resolve(); }, 5000))
+  ]);
+}
+
+try {
+  await fs.access(leasePath);
+  throw new Error('OpenAI tunnel lease remained after the owning launcher exited');
+} catch (error) {
+  if (error?.code !== 'ENOENT') throw error;
+}
+
+const reusePort = await getFreePort();
+const reuseRuntimePath = await runtimeStatusPath(duplicateRoot, home);
+const reuse = spawn(process.execPath, [
+  'scripts/codexpro.mjs', 'start', '--root', duplicateRoot, '--no-profile', '--headless',
+  '--tunnel', 'openai', '--openai-tunnel-id', tunnelId, '--tunnel-client', fakeTunnelClient,
+  '--port', String(reusePort), '--token', token, '--no-copy-url'
+], {
+  cwd: path.resolve('.'),
+  env: { ...env, CODEXPRO_FAKE_TUNNEL_ARGS: duplicateArgsFile, CODEXPRO_FAKE_TUNNEL_ENV: duplicateEnvFile, NO_COLOR: '1' },
+  stdio: ['pipe', 'pipe', 'pipe']
+});
+try {
+  await waitForJson(reuseRuntimePath, (data) => data.tunnel === 'openai' && data.endpoint === tunnelId, 'reused OpenAI tunnel runtime');
+} finally {
+  reuse.stdin.end('q\n');
+  await Promise.race([
+    new Promise((resolve) => reuse.once('close', resolve)),
+    new Promise((resolve) => setTimeout(() => { reuse.kill('SIGTERM'); resolve(); }, 5000))
   ]);
 }
 

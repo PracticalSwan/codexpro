@@ -682,6 +682,71 @@ function liveRuntimeConnection(root) {
   return runtime;
 }
 
+let activeOpenAiTunnelLeasePath = '';
+
+function openAiTunnelLeasePath(tunnelId) {
+  return path.join(runtimeDir(), 'openai-tunnels', `${tunnelId}.json`);
+}
+
+function releaseOpenAiTunnelLease() {
+  const filePath = activeOpenAiTunnelLeasePath;
+  activeOpenAiTunnelLeasePath = '';
+  if (!filePath) return;
+  try {
+    const lease = readJsonFile(filePath);
+    if (Number(lease?.pid) === process.pid) fs.rmSync(filePath, { force: true });
+  } catch {}
+}
+
+function acquireOpenAiTunnelLease(tunnelId, root, port) {
+  const filePath = openAiTunnelLeasePath(tunnelId);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
+  const payload = { version: 1, tunnelId, pid: process.pid, root, port: String(port), createdAt: new Date().toISOString() };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const fd = fs.openSync(filePath, 'wx', 0o600);
+      try {
+        fs.writeFileSync(fd, `${JSON.stringify(payload, null, 2)}
+`, 'utf8');
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
+      try { fs.chmodSync(filePath, 0o600); } catch {}
+      activeOpenAiTunnelLeasePath = filePath;
+      return filePath;
+    } catch (error) {
+      if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'EEXIST') throw error;
+      let existing;
+      try {
+        existing = readJsonFile(filePath);
+      } catch {
+        const ageMs = (() => { try { return Date.now() - fs.statSync(filePath).mtimeMs; } catch { return 0; } })();
+        if (ageMs > 30_000) { fs.rmSync(filePath, { force: true }); continue; }
+        throw new Error(`OpenAI tunnel ${tunnelId} lease is currently being acquired by another CodexPro launcher. Retry after that launch finishes.`);
+      }
+      const existingPid = Number(existing?.pid);
+      const ownerRoot = typeof existing?.root === 'string' && existing.root ? existing.root : '';
+      let matchingRuntime = false;
+      if (ownerRoot && continuationProcessAlive(existingPid)) {
+        try {
+          const runtime = readJsonFile(runtimeStatusPathForRoot(ownerRoot));
+          matchingRuntime = Number(runtime?.pid) === existingPid && runtime?.tunnel === 'openai' && runtime?.endpoint === tunnelId;
+        } catch {}
+      }
+      const createdMs = Date.parse(String(existing?.createdAt ?? ''));
+      const recentlyAcquired = continuationProcessAlive(existingPid) && Number.isFinite(createdMs) && Date.now() - createdMs < 300_000;
+      if (matchingRuntime || recentlyAcquired) {
+        const ownerLabel = ownerRoot || 'another workspace';
+        const ownerPort = existing?.port ? ` on local port ${existing.port}` : '';
+        throw new Error(`OpenAI tunnel ${tunnelId} is already active in CodexPro launcher PID ${existingPid} for ${ownerLabel}${ownerPort}. One OpenAI tunnel ID can serve only one local CodexPro runtime at a time. Use that runtime with additional allowed roots, or create a separate OpenAI tunnel ID for another simultaneous runtime.`);
+      }
+      fs.rmSync(filePath, { force: true });
+    }
+  }
+  throw new Error(`Could not acquire the OpenAI tunnel lease for ${tunnelId}. Retry after the other CodexPro launcher exits.`);
+}
+
 function continuationDeadlineLabel(mode, milliseconds) {
   if (mode === 'observe') return 'Unlimited (observe only)';
   const value = Number(milliseconds);
@@ -1880,6 +1945,7 @@ function killProcess(child) {
 
 function cleanupChildren() {
   for (const child of spawnedChildren) killProcess(child);
+  releaseOpenAiTunnelLease();
 }
 
 function endpointWithToken(endpoint, token) {
@@ -4856,6 +4922,7 @@ async function main() {
   }
 
   await assertPortAvailable(host, port);
+  if (tunnel === 'openai') acquireOpenAiTunnelLease(openaiTunnelId, root, port);
 
   printBox('CodexPro start', [
     labelValue('Workspace', root),

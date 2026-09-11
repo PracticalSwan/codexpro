@@ -12,6 +12,7 @@ import { createMutationCheckpoint, finalizeMutationCheckpoint, restoreCheckpoint
 import { runHooks } from "./hooks/runner.js";
 import { z } from "zod";
 import type { CodexProConfig } from "./config.js";
+import { CODEXPRO_PACKAGE_NAME, CODEXPRO_VERSION } from "./packageIdentity.js";
 import { withSyncCallDeadline } from "./deadline.js";
 import { classifyExecutionHint, executionHintPublic, executionThresholds } from "./executionGuidance.js";
 import { WorkspaceManager, PathGuard, CodexProError, type Workspace, type WorkspaceRegistry } from "./guard.js";
@@ -623,6 +624,11 @@ const BASH_DEPENDENT_TOOL_NAMES = new Set<string>([
   "resume_job"
 ]);
 
+const CONTINUATION_TOOL_NAMES = new Set<string>([
+  "continuation_arm", "continuation_checkpoint", "continuation_request", "continuation_status",
+  "continuation_reconcile", "continuation_complete", "continuation_cancel"
+]);
+
 const GOAL_TOOL_NAMES = new Set<string>([
   "goal_status", "list_goals", "propose_goal", "approve_goal", "start_goal",
   "pause_goal", "resume_goal", "cancel_goal", "review_goal", "project_goal"
@@ -642,6 +648,12 @@ export function toolNamesForMode(config: CodexProConfig): string[] {
       : config.toolMode === "minimal"
         ? [...MINIMAL_TOOL_NAMES]
         : [...STANDARD_TOOL_NAMES];
+  if (!continuationFeatureEnabled(config)) {
+    for (const continuationTool of CONTINUATION_TOOL_NAMES) {
+      const toolIndex = names.indexOf(continuationTool);
+      if (toolIndex !== -1) names.splice(toolIndex, 1);
+    }
+  }
   if (config.bashMode === "off") {
     for (const bashTool of BASH_DEPENDENT_TOOL_NAMES) {
       const toolIndex = names.indexOf(bashTool);
@@ -694,6 +706,7 @@ export function registeredToolNames(server: McpServer): string[] {
 }
 
 function shouldRegisterTool(config: CodexProConfig, name: string): boolean {
+  if (CONTINUATION_TOOL_NAMES.has(name) && !continuationFeatureEnabled(config)) return false;
   if (config.connectionTest && CONNECTION_TEST_HIDDEN_TOOLS.has(name)) return false;
   if (BASH_DEPENDENT_TOOL_NAMES.has(name) && config.bashMode === "off") return false;
   if (["write", "edit", "prepare_change_set", "apply_change_set", "revert_operation", "restore_checkpoint", "apply_patch", "import_file", "extract_archive", "git_stage", "git_commit", "git_push"].includes(name) && config.writeMode !== "workspace") return false;
@@ -835,26 +848,98 @@ function reviewFingerprint(status: string, diff: string): string {
   return createHash("sha256").update(status).update("\0").update(diff).digest("hex");
 }
 
-async function untrackedReviewFingerprint(config: CodexProConfig, guard: PathGuard, workspace: Workspace, changedFiles: string[]): Promise<string> {
+type UntrackedReviewState = {
+  fingerprint: string;
+  diff: string;
+  additions: number;
+  reviewedFiles: number;
+  truncated: boolean;
+};
+
+function syntheticDiffPath(prefix: "a" | "b", relPath: string): string {
+  const value = `${prefix}/${relPath.replaceAll("\\", "/")}`;
+  return /^[A-Za-z0-9._/@+-]+$/.test(value) ? value : JSON.stringify(value);
+}
+
+function syntheticUntrackedDiff(relPath: string, text: string): { diff: string; additions: number } {
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const trailingNewline = normalized.endsWith("\n");
+  const lines = normalized.length ? normalized.split("\n") : [];
+  if (trailingNewline) lines.pop();
+  const aPath = syntheticDiffPath("a", relPath);
+  const bPath = syntheticDiffPath("b", relPath);
+  const header = [`diff --git ${aPath} ${bPath}`, "new file mode 100644", "--- /dev/null", `+++ ${bPath}`];
+  if (!lines.length) return { diff: header.join("\n"), additions: 0 };
+  const body = lines.map((line) => `+${line}`).join("\n");
+  const noNewline = trailingNewline ? "" : "\n\\ No newline at end of file";
+  return { diff: `${header.join("\n")}\n@@ -0,0 +1,${lines.length} @@\n${body}${noNewline}`, additions: lines.length };
+}
+
+async function untrackedReviewState(config: CodexProConfig, guard: PathGuard, workspace: Workspace, changedFiles: string[], diffBudgetBytes: number): Promise<UntrackedReviewState> {
   const hash = createHash("sha256");
-  for (const line of changedFiles) {
-    const match = line.match(/^\?\?\s+(.+)$/);
-    if (!match) continue;
-    const relPath = match[1];
+  const roots = changedFiles.map((line) => line.match(/^\?\?\s+(.+)$/)?.[1]).filter((value): value is string => Boolean(value)).map(decodeGitQuotedPath);
+  const maxEntries = Math.max(1, Math.min(config.maxOperationFiles, 512));
+  const maxPerRoot = Math.max(1, Math.floor(maxEntries / Math.max(1, roots.length)));
+  const fingerprintByteBudget = Math.max(0, Math.min(config.maxReadBytes, config.maxOperationBytes));
+  let fingerprintBytes = 0;
+  let visited = 0;
+  let reviewedFiles = 0;
+  let additions = 0;
+  let usedDiffBytes = 0;
+  let truncated = false;
+  const diffParts: string[] = [];
+
+  const visit = async (relPath: string, rootCounter: { count: number }): Promise<void> => {
+    if (visited >= maxEntries || rootCounter.count >= maxPerRoot) { truncated = true; return; }
+    visited += 1;
+    rootCounter.count += 1;
     hash.update(relPath).update("\0");
     try {
       const resolved = guard.resolve(workspace, relPath);
-      const stat = await fsp.stat(resolved.absPath);
-      hash.update(String(stat.size)).update("\0").update(String(Math.floor(stat.mtimeMs))).update("\0");
-      if (stat.isFile() && stat.size <= config.maxReadBytes) {
-        hash.update(await fsp.readFile(resolved.absPath));
+      const stat = await fsp.lstat(resolved.absPath);
+      const kind = stat.isDirectory() ? "dir" : stat.isFile() ? "file" : stat.isSymbolicLink() ? "symlink" : "other";
+      hash.update(kind).update("\0").update(String(stat.size)).update("\0").update(String(stat.mtimeMs)).update("\0");
+      if (stat.isSymbolicLink()) {
+        hash.update(await fsp.readlink(resolved.absPath)).update("\0");
+        return;
       }
+      if (stat.isDirectory()) {
+        const entries = (await fsp.readdir(resolved.absPath, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name));
+        for (const entry of entries) {
+          if (visited >= maxEntries || rootCounter.count >= maxPerRoot) { truncated = true; break; }
+          const childRel = path.posix.join(relPath.replace(/\/+$/, ""), entry.name);
+          await visit(childRel, rootCounter);
+        }
+        return;
+      }
+      if (!stat.isFile()) return;
+      reviewedFiles += 1;
+      let bytes: Buffer | undefined;
+      if (stat.size <= config.maxReadBytes && (fingerprintBytes + stat.size <= fingerprintByteBudget || diffBudgetBytes > usedDiffBytes)) {
+        bytes = await fsp.readFile(resolved.absPath);
+      }
+      if (bytes && fingerprintBytes + bytes.length <= fingerprintByteBudget) {
+        hash.update(bytes);
+        fingerprintBytes += bytes.length;
+      }
+      if (!bytes || bytes.includes(0) || diffBudgetBytes <= usedDiffBytes) return;
+      const currentText = redactSensitiveText(bytes.toString("utf8"));
+      const synthetic = syntheticUntrackedDiff(relPath, currentText);
+      const candidateBytes = Buffer.byteLength(synthetic.diff, "utf8") + (diffParts.length ? 1 : 0);
+      if (usedDiffBytes + candidateBytes > diffBudgetBytes) { truncated = true; return; }
+      diffParts.push(synthetic.diff);
+      usedDiffBytes += candidateBytes;
+      additions += synthetic.additions;
     } catch (error) {
       hash.update(errorText(error));
+    } finally {
+      hash.update("\0");
     }
-    hash.update("\0");
-  }
-  return hash.digest("hex");
+  };
+
+  for (const root of roots) await visit(root, { count: 0 });
+  if (truncated) hash.update("truncated");
+  return { fingerprint: hash.digest("hex"), diff: diffParts.join("\n"), additions, reviewedFiles, truncated };
 }
 
 function normalizeGitOutput(output: string): string {
@@ -1429,7 +1514,7 @@ export function createCodexProServer(
       // Heartbeat is liveness evidence only; a concurrent semantic transition must not fail the underlying tool call.
     }
   };
-  const server = new McpServer({ name: "CodexPro", version: "0.32.3" }, { instructions: serverInstructions(config) });
+  const server = new McpServer({ name: "CodexPro", version: CODEXPRO_VERSION }, { instructions: serverInstructions(config) });
   const originalServerClose = server.close.bind(server);
   let serverClosing = false;
   (server as any).close = async () => {
@@ -1669,6 +1754,8 @@ export function createCodexProServer(
       const searchBackend = searchBackendInfo();
       const goalPlatform = goalPlatformStatus(config.goalDir);
       const safeConfig = {
+        packageName: CODEXPRO_PACKAGE_NAME,
+        version: CODEXPRO_VERSION,
         defaultRoot: config.defaultRoot,
         allowedRoots: config.allowedRoots,
         host: config.host,
@@ -1696,6 +1783,8 @@ export function createCodexProServer(
         connectionTest: config.connectionTest,
         syncCallDeadlineMode: config.syncCallDeadlineMode,
         syncCallDeadlineMs: config.syncCallDeadlineMs,
+        continuationEnabled: config.continuationEnabled,
+        continuationTelegramEnabled: config.continuationTelegramEnabled,
         executionRouting: executionThresholds(config.syncCallDeadlineMs),
         allowGitPush: config.allowGitPush,
         codeGraphEnabled: config.codeGraphEnabled,
@@ -1722,6 +1811,8 @@ export function createCodexProServer(
         maxProcessReadBytes: config.maxProcessReadBytes,
         maxCheckOutputBytes: config.maxCheckOutputBytes,
         maxSearchResults: config.maxSearchResults,
+        maxHttpSessions: config.maxHttpSessions,
+        httpSessionTtlMs: config.httpSessionTtlMs,
         maxOperationBytes: config.maxOperationBytes,
         maxOperationFiles: config.maxOperationFiles,
         maxOperationDurationMs: config.maxOperationDurationMs,
@@ -2767,6 +2858,8 @@ export function createCodexProServer(
         maxSkills: limitInt(args.max_skills, 120, 1, 500)
       });
       return textResult(inventory.text, {
+        package_name: CODEXPRO_PACKAGE_NAME,
+        version: CODEXPRO_VERSION,
         workspace_id: workspace.id,
         root: workspace.root,
         bash_mode: workspaceConfig.bashMode,
@@ -4121,14 +4214,19 @@ export function createCodexProServer(
       const rawDiff = normalizeGitOutput(gitDiff(configForWorkspace(workspace), guard, workspace, normalizedScopedPath, staged));
       const statusError = looksLikeGitError(status) ? status : "";
       const diffError = rawDiff && looksLikeGitError(rawDiff) ? rawDiff : "";
-      const diff = diffError ? "" : rawDiff;
-      const stats = diffStats(diff);
+      const trackedDiff = diffError ? "" : rawDiff;
       const changedFiles = statusError ? [] : changedStatusLines(status);
-      const untrackedFingerprint = statusError ? "" : await untrackedReviewFingerprint(configForWorkspace(workspace), guard, workspace, changedFiles);
+      const untrackedDiffBudget = includeDiff ? Math.max(0, config.maxOutputBytes - Buffer.byteLength(trackedDiff, "utf8")) : 0;
+      const untracked = statusError || staged
+        ? { fingerprint: "", diff: "", additions: 0, reviewedFiles: 0, truncated: false }
+        : await untrackedReviewState(configForWorkspace(workspace), guard, workspace, changedFiles, untrackedDiffBudget);
+      const diff = [trackedDiff, untracked.diff].filter(Boolean).join("\n");
+      const trackedStats = diffStats(trackedDiff);
+      const stats = { additions: trackedStats.additions + untracked.additions, deletions: trackedStats.deletions, changed: trackedStats.changed || untracked.reviewedFiles > 0 };
       const since = args.since === "workspace" ? "workspace" : "last_shown";
       const markReviewed = parseBool(args.mark_reviewed, true);
       const checkpointKey = reviewCheckpointKey(workspace, { path: normalizedScopedPath, staged });
-      const fingerprint = reviewFingerprint(status, `${diff}\0${untrackedFingerprint}`);
+      const fingerprint = reviewFingerprint(status, `${trackedDiff}\0${untracked.fingerprint}`);
       const checkpointHit = includeDiff && since === "last_shown" && reviewCheckpoints.get(checkpointKey) === fingerprint;
       const checkpointWritten = markReviewed && includeDiff;
       if (checkpointWritten) reviewCheckpoints.set(checkpointKey, fingerprint);
@@ -4164,12 +4262,11 @@ export function createCodexProServer(
           };
         }
       }
+      const currentChanged = !statusError && (changedFiles.length > 0 || stats.changed);
       const changedText = statusError
         ? `- Git status unavailable: ${statusError}`
-        : checkpointHit
-          ? "- No changes since last shown review."
-          : changedFiles.length
-          ? changedFiles.map((line) => `- ${line}`).join("\n")
+        : changedFiles.length
+          ? `${checkpointHit ? "- Current Git status is unchanged since last shown review.\n" : ""}${changedFiles.map((line) => `- ${line}`).join("\n")}`
           : "- No changed files.";
       const diffText = checkpointHit
         ? "\n\nNo new diff since last shown review."
@@ -4191,16 +4288,20 @@ export function createCodexProServer(
         status,
         status_error: statusError || undefined,
         diff_error: diffError || undefined,
-        changed_files: checkpointHit ? [] : changedFiles,
+        changed_files: changedFiles,
         staged,
         include_diff: includeDiff,
         additions: responseStats.additions,
         deletions: responseStats.deletions,
-        changed: !statusError && (checkpointHit ? false : changedFiles.length > 0 || responseStats.changed),
+        changed: currentChanged,
+        review_has_new_diff: !checkpointHit && currentChanged,
         diff: responseDiff,
         review_since: since,
         review_marked: checkpointWritten,
         review_checkpoint_hit: checkpointHit,
+        review_checkpoint_scope: "mcp_session",
+        untracked_review_files: untracked.reviewedFiles,
+        untracked_review_truncated: untracked.truncated,
         ...(analysis ? { analysis } : {})
       });
     }

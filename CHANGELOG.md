@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- Fixed installed-runtime observability so `server_config`, `codexpro_inventory`, and HTTP `/healthz` expose the actual `codexpro-full` package version; server config also exposes the HTTP session capacity and idle TTL.
+- Fixed continuation-off tool gating so `continuation_*` MCP tools are not advertised or registered when task continuation is disabled.
+- Fixed connection diagnostics so a recovered successful response can return current health to `healthy` while preserving historical dispatch/response failure counters.
+- Fixed `show_changes` dirty-state reporting in large/unusual untracked workspaces: untracked status now uses collapsed Git porcelain output instead of expanding every untracked file, avoiding output-limit fallback to a false-clean result; collapsed untracked directories receive bounded recursive fingerprints and redacted synthetic text diffs so child edits invalidate same-session reviews; repeated unchanged reviews still suppress duplicate diff output without hiding current dirty status.
+- Raised the default bounded HTTP MCP session capacity from 64 to 128 after a 70-client concurrency regression reproduced live-session eviction at the previous ceiling; the existing 30-minute idle TTL remains unchanged.
+- Added an atomic per-user OpenAI tunnel lease so a second live CodexPro launcher cannot reuse the same tunnel ID on another local port/workspace and silently take over ChatGPT routing; stale leases are reclaimed, while distinct tunnel IDs remain concurrently usable.
 - Marked browser/Telegram task continuation as experimental/incomplete pending deferred fresh-session installed-runtime acceptance; package defaults remain disabled.
 - Hardened task-aware continuation telemetry, diagnostics, activity summaries, and Telegram error paths against private-looking browser/Telegram/account metadata, with synthetic security regressions for the public/reporting boundaries.
 - Added strict continuation release guards for the managed-browser extension permission/host allowlists, private browser/session artifact paths, private ChatGPT routes, Telegram credentials/callbacks, and packaged textual state.

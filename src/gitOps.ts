@@ -169,7 +169,7 @@ export function gitDiffStats(
 export function gitDiffStatus(config: CodexProConfig, guard: PathGuard, workspace: Workspace, filePath?: string, staged = false): string {
   const args = ["diff", "--name-status"];
   if (staged) args.push("--staged");
-  const untrackedArgs = ["ls-files", "--others", "--exclude-standard"];
+  const untrackedArgs = ["status", "--short", "--untracked-files=normal", "--ignore-submodules=all"];
   let cwd = workspace.root;
   if (filePath?.trim()) {
     const context = pathScopedGitContext(workspace, guard, filePath);
@@ -181,7 +181,8 @@ export function gitDiffStatus(config: CodexProConfig, guard: PathGuard, workspac
   if (staged || isGitFailure(diffStatus)) return diffStatus;
   const untracked = runGit(cwd, untrackedArgs, config.maxOutputBytes);
   if (isGitFailure(untracked)) return diffStatus;
-  const lines = [...outputLines(diffStatus), ...outputLines(untracked).map((line) => `?? ${line}`)];
+  const untrackedLines = outputLines(untracked).filter((line) => line.startsWith("?? "));
+  const lines = [...outputLines(diffStatus), ...untrackedLines];
   return lines.length ? lines.join("\n") : "(no output)";
 }
 

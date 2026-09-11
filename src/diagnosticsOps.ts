@@ -51,11 +51,16 @@ export function connectionDiagnostics(snapshot: TelemetrySnapshot, activeSession
   const responses = count(snapshot, "stage:response");
   const dispatchFailures = count(snapshot, "stage:dispatch:error") + count(snapshot, "stage:dispatch:timeout");
   const responseFailures = count(snapshot, "stage:response:error") + count(snapshot, "stage:response:timeout");
+  const latestResponse = [...snapshot.events].reverse().find((event) => event.stage === "response");
+  const latestDispatch = [...snapshot.events].reverse().find((event) => event.stage === "dispatch");
+  const latestCompletion = [...snapshot.events].reverse().find((event) => event.stage === "completion");
+  const failed = (status: string | undefined) => status === "error" || status === "timeout";
   let state: ConnectionDiagnostics["state"];
   if (!arrivals) state = "no_requests";
   else if (!dispatches) state = "arrived_not_dispatched";
-  else if (responseFailures > 0 && responses <= responseFailures) state = "response_failed";
-  else if (dispatchFailures > 0 && completions === 0) state = "dispatch_failed";
+  else if (latestResponse && failed(latestResponse.status)) state = "response_failed";
+  else if (latestDispatch && failed(latestDispatch.status) && (!latestCompletion || latestCompletion.sequence < latestDispatch.sequence)) state = "dispatch_failed";
+  else if (latestResponse?.status === "ok") state = "healthy";
   else if (dispatchFailures || responseFailures) state = "degraded";
   else state = "healthy";
   return {
