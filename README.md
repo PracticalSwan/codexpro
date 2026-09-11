@@ -143,9 +143,9 @@ codexpro settings set --analysis on --artifact-export on --goals on --codegraph 
 
 `codexpro settings show` reports the effective capability state, and later unrelated `settings set` changes preserve these flags.
 
-Tool-time awareness is enabled independently of browser continuation. The normal synchronous transport boundary is 20 minutes; save any integer bounded value from 5-60 minutes with `codexpro settings set --sync-call-deadline-minutes 12` or type it into the local admin **Tool access window (minutes)** field. Unlimited/observe is a separate temporary discovery mode rather than a duration choice. Unlimited disables CodexPro's cooperative cutoff but does not extend ChatGPT tool access, lower quality requirements, or make long mutating calls advisable. Saved changes apply on the next launch.
+Tool-time awareness is enabled independently of browser continuation. The normal synchronous transport boundary is 20 minutes; save any integer bounded value from 5-60 minutes with `codexpro settings set --sync-call-deadline-minutes 12` or type it into the local admin **Synchronous tool-call deadline (minutes)** field. This value applies independently to each blocking MCP tool call and restarts on every invocation; it is not a countdown for the whole ChatGPT response/tool-access window. Unlimited/observe is a separate temporary discovery mode rather than a duration choice. Unlimited disables CodexPro's cooperative cutoff but does not extend ChatGPT tool access, lower quality requirements, or make long mutating calls advisable. Saved changes apply on the next launch.
 
-For host-window discovery, use a disposable new ChatGPT chat, temporarily save Unlimited/observe for the next manually started runtime, invoke only the read-only `tool_time_probe`, and note the ChatGPT UI closure time. If no server-side abort is observable, record that UI time manually rather than treating a completed server wait as the host cutoff. Restore a bounded deadline with safety margin afterward. `connection_diagnostics` and `tool_surface_diagnostics` report current deadline/capability state; authenticated `/admin/diagnostics` also separates current effective from saved-next-run deadline and reports active structured jobs/recent yields.
+For host-window discovery, use a disposable new ChatGPT chat, temporarily save Unlimited/observe for the next manually started runtime, invoke only the read-only `tool_time_probe`, and note the ChatGPT UI closure time. If no server-side abort is observable, record that UI time manually rather than treating a completed server wait as the host cutoff. Restore a bounded deadline with a multi-minute safety margin afterward; for an observed cutoff near 25 minutes, 20-22 minutes is materially safer than 24 minutes. `connection_diagnostics` and `tool_surface_diagnostics` report current deadline/capability state; authenticated `/admin/diagnostics` also separates current effective from saved-next-run deadline and reports active structured jobs/recent yields.
 
 ### Experimental task continuation
 
@@ -343,6 +343,15 @@ staged path set
 ```
 
 `git_push` only exists when explicitly enabled. No force-push interface exists.
+
+For one user-wide extra commit guard, enable the built-in staged-commit safety hook:
+
+```bash
+codexpro hooks staged-commit enable
+codexpro hooks status
+```
+
+It applies to every current and future CodexPro workspace for that OS user, runs only before `git_commit`, and does not auto-trust any other project hook. See [docs/hooks.md](docs/hooks.md).
 
 ## Archive, document, and export tools
 

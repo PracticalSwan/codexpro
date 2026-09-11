@@ -317,7 +317,7 @@ if (!saved.includes('Saved workspace settings')) {
 }
 
 const shown = run(['settings', 'show', '--root', root], env);
-for (const expected of ['Tunnel', 'ngrok', 'codexpro-test.ngrok-free.app', '19087', 'Tool cards', 'on', 'Analysis', 'on', 'Artifact export', 'on', 'Durable Goals', 'on', 'CodeGraph', 'on', 'LSP', 'off', 'Git push', 'off', 'Environment inheritance', 'off', 'Bash transcript', 'full', 'Sync deadline', '12 min', 'Task continuation', 'off', 'Continuation browser', 'chrome', 'Continuation profile', 'default', 'Continuation cooldown', '60000 ms', 'Continuation max dispatches', '20', 'Unexpected interruption grace', '120000 ms', 'Continuation notifications', 'on', 'Telegram continuation', 'off', 'Projects', realReuseRoot, '<saved>']) {
+for (const expected of ['Tunnel', 'ngrok', 'codexpro-test.ngrok-free.app', '19087', 'Tool cards', 'on', 'Analysis', 'on', 'Artifact export', 'on', 'Durable Goals', 'on', 'CodeGraph', 'on', 'LSP', 'off', 'Git push', 'off', 'Environment inheritance', 'off', 'Bash transcript', 'full', 'Sync call deadline', '12 min', 'Task continuation', 'off', 'Continuation browser', 'chrome', 'Continuation profile', 'default', 'Continuation cooldown', '60000 ms', 'Continuation max dispatches', '20', 'Unexpected interruption grace', '120000 ms', 'Continuation notifications', 'on', 'Telegram continuation', 'off', 'Projects', realReuseRoot, '<saved>']) {
   if (!shown.includes(expected)) {
     throw new Error(`settings show missing ${expected}\n${shown}`);
   }

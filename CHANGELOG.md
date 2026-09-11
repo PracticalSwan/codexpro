@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Clarified deadline/continuation behavior: the synchronous deadline is per MCP call rather than a whole-ChatGPT-turn timer, continuation checkpoints must be persisted proactively before risky long phases, and operators should leave a multi-minute margin below an observed host cutoff.
+- Added an opt-in per-user global staged-commit safety hook (`codexpro hooks staged-commit enable`) that applies to every current and future CodexPro workspace without auto-trusting arbitrary project hooks; legacy project hooks pointing to the same packaged safety script are de-duplicated.
 - Added a focused public getting-started guide covering stable-vs-main installation, OpenAI tunnel/key setup, daily startup, and safe multi-session/multi-project operation; README, FAQ, and the public site now link to the same workflow.
 - Fixed installed-runtime observability so `server_config`, `codexpro_inventory`, and HTTP `/healthz` expose the actual `codexpro-full` package version; server config also exposes the HTTP session capacity and idle TTL.
 - Fixed continuation-off tool gating so `continuation_*` MCP tools are not advertised or registered when task continuation is disabled.

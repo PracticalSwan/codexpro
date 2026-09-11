@@ -15,6 +15,19 @@ codexpro trust hooks --root /path/to/repo
 
 Opening a repository never executes hooks and never grants trust.
 
+## User-global staged-commit safety hook
+
+CodexPro also has one narrowly scoped user-global hook: the staged-commit safety gate used by this repository. It is **off by default** and can be enabled explicitly for one local CodexPro installation:
+
+```bash
+codexpro hooks staged-commit enable
+codexpro hooks status
+```
+
+When enabled, it runs before `git_commit` in every CodexPro workspace for that OS user, including workspaces added later. It invokes the packaged `scripts/check-staged-commit.mjs` with the selected workspace as `cwd`, so the checks are identical everywhere without copying scripts into repositories. It blocks commits with no staged changes, blocked/sensitive paths, oversized staged files, `git diff --cached --check` failures, or supported secret-looking additions. Any execution/settings failure blocks `git_commit` rather than bypassing the gate.
+
+This setting does **not** trust, enable, or execute any other project hook. `.codexpro-hooks.json` files keep the separate fingerprint-based trust boundary below. If a trusted project hook points to the same staged-commit script, CodexPro de-duplicates it while the user-global gate is enabled. Disable only this global gate with `codexpro hooks staged-commit disable`.
+
 ## Hook file
 
 ```json

@@ -1,8 +1,20 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { redactSensitiveText } from "../redact.js";
 import { projectTrustStatus } from "../projectTrust.js";
+import { readGlobalHookSettings } from "./globalSettings.js";
 import { readHookConfig } from "./store.js";
 import type { HookCommand, HookEvent, HookRequest, HookRunResult } from "./types.js";
+
+const stagedCommitSafetyScript = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../scripts/check-staged-commit.mjs");
+
+function isManagedStagedCommitCommand(command: HookCommand): boolean {
+  const executable = path.basename(command.command).toLowerCase();
+  if (executable !== "node" && executable !== "node.exe") return false;
+  const firstArg = command.args[0]?.replaceAll("\\", "/") ?? "";
+  return /(?:^|\/)scripts\/check-staged-commit\.mjs$/i.test(firstArg);
+}
 
 function safeEnvironment(event: HookEvent): NodeJS.ProcessEnv {
   const allowed = ["PATH", "Path", "SystemRoot", "WINDIR", "ComSpec", "PATHEXT", "TEMP", "TMP"];
@@ -65,14 +77,32 @@ async function runOne(event: HookEvent, root: string, command: HookCommand, requ
   });
 }
 
+async function runGlobalStagedCommitHook(event: HookEvent, request: HookRequest): Promise<HookRunResult | null> {
+  if (event !== "before_tool" || request.input?.tool !== "git_commit") return null;
+  let enabled = false;
+  try { enabled = readGlobalHookSettings().stagedCommitSafety; }
+  catch (error) {
+    return { event, status: "blocked", exitCode: 2, message: `Global staged-commit safety hook settings are invalid: ${error instanceof Error ? error.message : String(error)}`.slice(0, 2_000) };
+  }
+  if (!enabled) return null;
+  const result = await runOne(event, request.root, { command: process.execPath, args: [stagedCommitSafetyScript], timeoutMs: 5_000 }, request);
+  if (result.status === "allowed") return result;
+  return { ...result, status: "blocked", exitCode: result.exitCode ?? 2, message: result.message ?? "Global staged-commit safety hook failed closed." };
+}
+
 export async function runHooks(event: HookEvent, request: HookRequest): Promise<HookRunResult[]> {
+  const globalResult = await runGlobalStagedCommitHook(event, request);
+  if (globalResult?.status === "blocked") return [globalResult];
+  const results: HookRunResult[] = globalResult ? [globalResult] : [];
   const loaded = await readHookConfig(request.root);
-  if (!loaded) return [];
+  if (!loaded) return results;
   const trust = await projectTrustStatus(request.root, loaded.bytes, request.trustDir);
-  const commands = loaded.config.hooks[event] ?? [];
-  if (!commands.length) return [];
-  if (!trust.trusted) return [{ event, status: "skipped", exitCode: null, message: trust.changed ? "Project hook trust is stale because the hook file changed." : "Project hooks are not trusted." }];
-  const results: HookRunResult[] = [];
+  let commands = loaded.config.hooks[event] ?? [];
+  if (globalResult && event === "before_tool" && request.input?.tool === "git_commit") {
+    commands = commands.filter((command) => !isManagedStagedCommitCommand(command));
+  }
+  if (!commands.length) return results;
+  if (!trust.trusted) return [...results, { event, status: "skipped", exitCode: null, message: trust.changed ? "Project hook trust is stale because the hook file changed." : "Project hooks are not trusted." }];
   for (const command of commands) results.push(await runOne(event, request.root, command, request));
   return results;
 }

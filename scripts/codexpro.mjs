@@ -56,6 +56,7 @@ Usage:
   codexpro openai-key save
   codexpro trust status --root /path/to/repo
   codexpro trust hooks --root /path/to/repo
+  codexpro hooks staged-commit status|enable|disable
   codexpro tailscale --hostname your-device.your-tailnet.ts.net
   codexpro stable --hostname codexpro.example.com --tunnel-name codexpro
   codexpro pro-bundle --root /path/to/repo --copy
@@ -4245,7 +4246,7 @@ function printProfile(root, profile) {
     ...(safe.write ? [labelValue('Write', safe.write)] : []),
     ...(safe.toolMode ? [labelValue('Tool mode', safe.toolMode)] : []),
     ...(safe.toolCards !== undefined ? [labelValue('Tool cards', safe.toolCards ? 'on' : 'off')] : []),
-    labelValue('Sync deadline', safe.syncCallDeadlineMode === 'observe' ? 'Unlimited (observe only)' : `${Math.round((safe.syncCallDeadlineMs ?? DEFAULT_SYNC_CALL_DEADLINE_MS) / 60_000)} min`),
+    labelValue('Sync call deadline', safe.syncCallDeadlineMode === 'observe' ? 'Unlimited (observe only)' : `${Math.round((safe.syncCallDeadlineMs ?? DEFAULT_SYNC_CALL_DEADLINE_MS) / 60_000)} min`),
     labelValue('Task continuation', safe.continuationEnabled ? 'on' : 'off'),
     labelValue('Continuation browser', safe.continuationBrowser ?? 'chrome'),
     labelValue('Continuation profile', safe.continuationProfile ?? 'default'),
@@ -4416,6 +4417,26 @@ async function runTrust(argv) {
     return;
   }
   throw new Error(`Unknown trust action: ${action}`);
+}
+
+async function runGlobalHooksCommand(argv) {
+  const feature = argv[0] && !argv[0].startsWith('--') ? argv[0] : 'status';
+  const action = feature === 'staged-commit' ? (argv[1] ?? 'status') : feature;
+  if (argv.includes('--help') || argv.includes('-h') || feature === 'help') {
+    console.log('Usage: codexpro hooks status | codexpro hooks staged-commit status|enable|disable');
+    return;
+  }
+  if (feature !== 'status' && feature !== 'staged-commit') throw new Error(`Unknown global hook: ${feature}`);
+  if (!['status', 'enable', 'disable'].includes(action)) throw new Error(`Unknown staged-commit hook action: ${action}`);
+  const hooks = await import(pathToFileURL(path.join(projectRoot, 'dist', 'hooks', 'globalSettings.js')).href);
+  if (action === 'enable') hooks.saveGlobalHookSettings({ stagedCommitSafety: true });
+  if (action === 'disable') hooks.saveGlobalHookSettings({ stagedCommitSafety: false });
+  const settings = hooks.readGlobalHookSettings();
+  printBox('CodexPro global hooks', [
+    labelValue('Staged-commit safety', settings.stagedCommitSafety ? 'enabled' : 'disabled'),
+    labelValue('Scope', 'all CodexPro workspaces for this user'),
+    labelValue('Other global hooks', 'none')
+  ]);
 }
 
 async function runSettings(argv) {
@@ -4684,6 +4705,10 @@ async function main() {
   }
   if (subcommand === 'trust') {
     await runTrust(argv.slice(1));
+    return;
+  }
+  if (subcommand === 'hooks') {
+    await runGlobalHooksCommand(argv.slice(1));
     return;
   }
   if (subcommand === 'settings' || subcommand === 'config') {

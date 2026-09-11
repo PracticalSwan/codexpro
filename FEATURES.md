@@ -48,7 +48,7 @@ CodexPro exposes tools according to the active configuration and optional `.code
 | MCP compatibility | SDK v2 / legacy protocol | Uses the stable split MCP v2 packages, but defaults to the 2025 protocol era; interactive `ask` and Tasks stay disabled until separately verified client capabilities exist. |
 | Write mode | `off`, `handoff`, `workspace` | Controls direct workspace mutation. |
 | Bash mode | `off`, `safe`, `full` | Removes Bash entirely, allows restricted verification, or permits trusted full shell use. |
-| Synchronous tool deadline | bounded 5–60 min / Unlimited observe-only | Tool-time awareness defaults to a 20-minute transport budget. Observe mode keeps elapsed diagnostics but removes only CodexPro's cooperative cutoff; it never changes task-quality or safety requirements. |
+| Synchronous tool deadline | bounded 5-60 min / Unlimited observe-only | Tool-time awareness defaults to a 20-minute per-call transport budget. The budget restarts for every MCP tool invocation and is not a whole-turn host timer. Observe mode keeps elapsed diagnostics but removes only CodexPro's cooperative cutoff; it never changes task-quality or safety requirements. |
 | Deadline diagnostics | `connection_diagnostics`, `tool_surface_diagnostics`, `local_telemetry`, `tool_time_probe` | Shows bounded/redacted resilience events, current/default/min/max deadline state, timeout-risk alternatives, active-job operator status, and an observe-only mutation-free host-window probe. |
 | Execution routing hints | derived from finite deadline reference | `sync_preferred=min(5 min,25% D)` and `async_preferred=75% D`; explicit duration/risk metadata can recommend `proc_*`, `job_*`, or `goal_*` without auto-escalating permission or reducing scope. |
 | Analysis | on/off | Enables built-in repository analysis. |
@@ -176,6 +176,8 @@ Read-only Git tools are available in full mode; write tools also require workspa
 | Optional push | `git_push` | Appears only when `allowGitPush=true`; there is no force-push path. |
 
 For a practical Full Access profile with `allowGitPush=false`, `git_push` is intentionally absent.
+
+An optional user-global staged-commit safety hook can be enabled with `codexpro hooks staged-commit enable`. It is off by default, covers every current/future workspace for that user, invokes the packaged staged-commit gate before `git_commit`, fails closed, and does not auto-trust other project hooks.
 
 `show_changes` review checkpoints are MCP-session-local. Untracked directories are fingerprinted with bounded traversal, and safe small text files can be represented by bounded redacted synthetic diffs so untracked child edits are reviewable without expanding an entire untracked tree through Git.
 

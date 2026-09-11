@@ -224,13 +224,18 @@ try {
     enabled: true, store: mcpStore, binding: mcpBinding, continuationId: mcpArmed.id, expectedRevision: 1,
     checkpointId: 'mcp-checkpoint', currentPhase: 'Ready for MCP', completedEvidence: ['Direct setup'], remainingWork: []
   });
-  const makeTransport = () => new StdioClientTransport({
+  const makeTransport = (enabled) => new StdioClientTransport({
     command: process.execPath,
     args: ['dist/stdio.js', '--root', mcpRoot, '--bash', 'off', '--write', 'workspace', '--tool-mode', 'full'],
-    env: { ...process.env, CODEXPRO_ALLOW_NO_HTTP_TOKEN: '1', CODEXPRO_OPERATION_DIR: mcpOperationDir }
+    env: {
+      ...process.env,
+      CODEXPRO_ALLOW_NO_HTTP_TOKEN: '1',
+      CODEXPRO_OPERATION_DIR: mcpOperationDir,
+      CODEXPRO_CONTINUATION_ENABLED: enabled ? '1' : '0'
+    }
   });
   const client = new Client({ name: 'continuation-state-smoke', version: '0.1.0' });
-  await client.connect(makeTransport());
+  await client.connect(makeTransport(true));
   const listed = await client.listTools();
   const requiredTools = ['continuation_arm','continuation_checkpoint','continuation_request','continuation_status','continuation_reconcile','continuation_complete','continuation_cancel'];
   for (const name of requiredTools) assert(listed.tools.some((tool) => tool.name === name), `continuation MCP contract did not expose ${name}`);
@@ -253,19 +258,20 @@ try {
   const invalidSession = await client.callTool({ name: 'continuation_status', arguments: { continuation_id: mcpWorking.id, session_id: 'bad\nsession' } });
   assert.equal(invalidSession.isError, true, 'invalid continuation session id bypassed MCP schema');
   assert.match(JSON.stringify(invalidSession), /invalid|validation|session/i);
-  const disabledArm = await client.callTool({ name: 'continuation_arm', arguments: { title: 'Disabled via MCP', session_id: 'mcp-session' } });
-  assert.equal(disabledArm.isError, true);
-  assert.match(JSON.stringify(disabledArm), /continuation_disabled/i);
-  const disabledRequest = await client.callTool({ name: 'continuation_request', arguments: { continuation_id: mcpWorking.id, expected_revision: mcpWorking.revision, request_id: 'mcp-disabled-request', session_id: 'mcp-session' } });
-  assert.equal(disabledRequest.isError, true);
-  assert.match(JSON.stringify(disabledRequest), /continuation_disabled/i);
+  const disabledClient = new Client({ name: 'continuation-state-smoke-disabled', version: '0.1.0' });
+  await disabledClient.connect(makeTransport(false));
+  const disabledListed = await disabledClient.listTools();
+  for (const name of requiredTools) {
+    assert(!disabledListed.tools.some((tool) => tool.name === name), `disabled continuation unexpectedly exposed ${name}`);
+  }
+  await disabledClient.close();
   const reconcileTool = listed.tools.find((tool) => tool.name === 'continuation_reconcile');
   const reconcileSchemaText = JSON.stringify(reconcileTool?.inputSchema ?? {});
   for (const disposition of ['resume','redirect','supersede','cancel']) assert(reconcileSchemaText.includes(disposition), `continuation_reconcile schema omitted ${disposition}`);
   await client.close();
 
   const client2 = new Client({ name: 'continuation-state-smoke-restart', version: '0.1.0' });
-  await client2.connect(makeTransport());
+  await client2.connect(makeTransport(true));
   const status2 = await client2.callTool({ name: 'continuation_status', arguments: { continuation_id: mcpWorking.id, session_id: 'mcp-session' } });
   assert.equal(status2.structuredContent.task.revision, mcpWorking.revision, 'MCP continuation state did not survive server/client turnover');
   const completedMcp = await client2.callTool({ name: 'continuation_complete', arguments: { continuation_id: mcpWorking.id, expected_revision: mcpWorking.revision, verified_complete: true, session_id: 'mcp-session' } });

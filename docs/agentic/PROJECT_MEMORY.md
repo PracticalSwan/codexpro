@@ -74,6 +74,9 @@ The integration branch includes Windows output decoding/runtime fixes, search fa
 - Specs: `docs/superpowers/specs/`.
 - Plans: `docs/superpowers/plans/`.
 
+- On 2026-09-12, an opt-in user-global staged-commit safety hook was added for the local operator: the package default remains off, `codexpro hooks staged-commit enable|disable|status` stores only a per-user boolean under CodexPro home, and the enabled gate invokes the packaged `scripts/check-staged-commit.mjs` before `git_commit` in every current/future workspace. It fails closed on settings/execution errors, de-duplicates the legacy repository-local copy of the same hook, and does not auto-trust any other `.codexpro-hooks.json`.
+- On 2026-09-12, deadline investigation confirmed that `syncCallDeadlineMs` is a per-MCP-call cooperative transport budget, not a cumulative ChatGPT-turn timer. For this operator's observed approximately 25-minute host cutoff, all six saved profiles now use 22 minutes (`1,320,000` ms) while the package default remains 20 minutes; model/admin guidance requires proactive semantic checkpoints before long/high-variance phases when continuation is enabled, and states explicitly that continuation-disabled runtimes do not auto-save semantic checkpoints.
+
 ## Verification baseline
 
 - On 2026-09-08, final post-fix live runtime regression QA on canonical `main` / global `codexpro-full@0.32.3` passed with no confirmed functional regression. The activity-ledger self-recording and Goal `isolation_active` fixes held alongside the earlier policy, Context v2, CodeGraph, verification-path, activity-summary, and process-readiness remediations. One isolated MCP/tunnel `network_error` recovered immediately on the required single retry; final diagnostics were healthy with `dispatch_failures=0` and `response_failures=0`, so transport changes remain monitoring-only unless repeatable evidence appears.

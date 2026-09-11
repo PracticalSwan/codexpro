@@ -422,8 +422,8 @@ try {
       throw new Error(`onboarding page did not include profile field ${fieldName}`);
     }
   }
-  if (!homeText.includes('Tool access window (minutes)') || !homeText.includes('type="number" min="5" max="60" step="1"') || homeText.includes('<select name="syncCallDeadlineMode"')) {
-    throw new Error('tool access window must be a typed numeric field, not a predefined deadline selector');
+  if (!homeText.includes('Synchronous tool-call deadline (minutes)') || !homeText.includes('type="number" min="5" max="60" step="1"') || homeText.includes('<select name="syncCallDeadlineMode"')) {
+    throw new Error('synchronous tool-call deadline must be a typed numeric field, not a predefined deadline selector');
   }
   if (homeText.includes(token)) {
     throw new Error('onboarding page leaked the raw auth token');
