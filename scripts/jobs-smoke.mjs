@@ -55,6 +55,21 @@ async function settle(id, attempts = Math.ceil(STRUCTURED_JOB_ATTESTATION_GRACE_
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   return store.require(id);
+}
+
+async function boundedStep(label, operation, timeoutMs = 15_000) {
+  console.log(`[jobs smoke] ${label}`);
+  let timer;
+  try {
+    return await Promise.race([
+      operation(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`jobs smoke timed out during ${label} after ${timeoutMs} ms`)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }try {
   const job = await store.create({ workspace, kind: 'verification', progress: { phase: 'queued', completed: 0 } });
   assert.match(job.id, /^job_[A-Za-z0-9-]+$/);
@@ -103,10 +118,10 @@ async function settle(id, attempts = Math.ceil(STRUCTURED_JOB_ATTESTATION_GRACE_
 
   const completeJob = await store.create({ workspace, kind: 'verification' });
   await store.savePayload(completeJob.id, { mode: 'complete', completed: 0 });
-  const launched = await launchStructuredJob(config, store, workspace, completeJob.id);
+  const launched = await boundedStep('complete job launch', () => launchStructuredJob(config, store, workspace, completeJob.id), 60_000);
   assert.equal(launched.state, 'running');
   assert(launched.worker?.pid && launched.worker.nonceHash.length === 64 && launched.worker.startKey);
-  const completed = await settle(completeJob.id);
+  const completed = await boundedStep('complete job settle', () => settle(completeJob.id), 60_000);
   assert.equal(completed.state, 'completed');
   assert.equal(completed.result?.ok, true);
   assert(!JSON.stringify(completed.result).includes('ghp_abcdefghijklmnopqrstuvwxyz123456'));
@@ -117,13 +132,13 @@ async function settle(id, attempts = Math.ceil(STRUCTURED_JOB_ATTESTATION_GRACE_
   if (process.platform === 'win32') {
     const parentAttestedJob = await store.create({ workspace, kind: 'verification' });
     await store.savePayload(parentAttestedJob.id, { mode: 'complete', completed: 0 });
-    const parentAttestedLaunch = await launchStructuredJob(config, store, workspace, parentAttestedJob.id, {
+    const parentAttestedLaunch = await boundedStep('parent-attested job launch', () => launchStructuredJob(config, store, workspace, parentAttestedJob.id, {
       spawnWorker: (entrypoint, args, env) => spawn(process.execPath, [entrypoint, ...args], {
         detached: true, stdio: 'ignore', windowsHide: true, env: { ...env, PATH: '', Path: '' }
       })
-    });
+    }), 60_000);
     assert.equal(parentAttestedLaunch.state, 'running');
-    const parentAttestedDone = await settle(parentAttestedJob.id);
+    const parentAttestedDone = await boundedStep('parent-attested job settle', () => settle(parentAttestedJob.id), 60_000);
     assert.equal(parentAttestedDone.state, 'completed', 'worker required a redundant Windows start-identity lookup after parent attestation');
   }
 
@@ -132,7 +147,7 @@ async function settle(id, attempts = Math.ceil(STRUCTURED_JOB_ATTESTATION_GRACE_
   const delayedIdentityJob = await store.create({ workspace, kind: 'verification' });
   await store.savePayload(delayedIdentityJob.id, { mode: 'complete', completed: 0 });
   let delayedIdentityAttempts = 0;
-  const delayedIdentityLaunched = await launchStructuredJob(config, store, workspace, delayedIdentityJob.id, {
+  const delayedIdentityLaunched = await boundedStep('delayed-identity job launch', () => launchStructuredJob(config, store, workspace, delayedIdentityJob.id, {
     processStartIdentity: (pid) => {
       delayedIdentityAttempts += 1;
       if (delayedIdentityAttempts <= 6) {
@@ -141,31 +156,31 @@ async function settle(id, attempts = Math.ceil(STRUCTURED_JOB_ATTESTATION_GRACE_
       }
       return processStartIdentity(pid);
     }
-  });
+  }), 60_000);
   assert(delayedIdentityAttempts >= 7, 'delayed identity fixture did not cross the legacy worker-claim window');
   assert.equal(delayedIdentityLaunched.state, 'running');
-  const delayedIdentityDone = await settle(delayedIdentityJob.id);
+  const delayedIdentityDone = await boundedStep('delayed-identity job settle', () => settle(delayedIdentityJob.id), 60_000);
   assert.equal(delayedIdentityDone.state, 'completed');
 
   const crashJob = await store.create({ workspace, kind: 'verification' });
   await store.savePayload(crashJob.id, { mode: 'hold', completed: 1 });
-  const crashLaunched = await launchStructuredJob(config, store, workspace, crashJob.id);
+  const crashLaunched = await boundedStep('crash job launch', () => launchStructuredJob(config, store, workspace, crashJob.id), 60_000);
   await new Promise((resolve) => setTimeout(resolve, 700));
   assert(await store.readOwner(crashJob.id), 'worker did not attest ownership');
   assert(signalJobProcessTree(crashLaunched.worker.pid));
   await new Promise((resolve) => setTimeout(resolve, 150));
-  const interrupted = await reconcileJob(store, crashJob.id);
+  const interrupted = await boundedStep('crash job reconcile', () => reconcileJob(store, crashJob.id), 60_000);
   assert.equal(interrupted.state, 'interrupted');
   await store.savePayload(crashJob.id, { mode: 'complete', completed: 1 });
-  const resumed = await resumeJob(config, store, workspace, crashJob.id);
+  const resumed = await boundedStep('crash job resume', () => resumeJob(config, store, workspace, crashJob.id), 60_000);
   assert.equal(resumed.state, 'running');
-  const resumedDone = await settle(crashJob.id);
+  const resumedDone = await boundedStep('resumed job settle', () => settle(crashJob.id), 60_000);
   assert.equal(resumedDone.state, 'completed');
   assert.equal(resumedDone.result?.completed, 2, 'resume did not use durable producer payload');
 
   const mismatchJob = await store.create({ workspace, kind: 'verification' });
   await store.savePayload(mismatchJob.id, { mode: 'hold', completed: 0 });
-  const mismatchLaunched = await launchStructuredJob(config, store, workspace, mismatchJob.id);
+  const mismatchLaunched = await boundedStep('mismatch job launch', () => launchStructuredJob(config, store, workspace, mismatchJob.id), 60_000);
   await new Promise((resolve) => setTimeout(resolve, 700));
   assert(await store.readOwner(mismatchJob.id), 'mismatch worker did not attest ownership');
   let signaled = false;
@@ -178,10 +193,10 @@ async function settle(id, attempts = Math.ceil(STRUCTURED_JOB_ATTESTATION_GRACE_
 
   const cancelTarget = await store.create({ workspace, kind: 'verification' });
   await store.savePayload(cancelTarget.id, { mode: 'hold', completed: 0 });
-  const cancelLaunched = await launchStructuredJob(config, store, workspace, cancelTarget.id);
+  const cancelLaunched = await boundedStep('cancel job launch', () => launchStructuredJob(config, store, workspace, cancelTarget.id), 60_000);
   await new Promise((resolve) => setTimeout(resolve, 700));
   assert(await store.readOwner(cancelTarget.id), 'cancel worker did not attest ownership');
-  const canceled = await cancelJob(store, cancelTarget.id);
+  const canceled = await boundedStep('cancel running job', () => cancelJob(store, cancelTarget.id), 60_000);
   assert.equal(canceled.state, 'canceled');
   assert.equal(await store.readOwner(cancelTarget.id), null);
   let canceledAlive = true;
@@ -194,11 +209,11 @@ async function settle(id, attempts = Math.ceil(STRUCTURED_JOB_ATTESTATION_GRACE_
   });
   const client = new Client({ name: 'jobs-mcp-smoke', version: '0.1.0' });
   try {
-    await client.connect(transport);
-    const tools = await client.listTools();
+    await boundedStep('MCP connect', () => client.connect(transport));
+    const tools = await boundedStep('MCP listTools', () => client.listTools());
     assert(!tools.tools.some((tool) => tool.name === 'job_start'), 'generic public job_start tool must not exist');
     assert(['job_status','list_jobs','read_job_output','cancel_job','resume_job'].every((name) => tools.tools.some((tool) => tool.name === name)), 'job control surface incomplete');
-    const opened = await client.callTool({ name: 'open_current_workspace', arguments: {} });
+    const opened = await boundedStep('MCP open_current_workspace', () => client.callTool({ name: 'open_current_workspace', arguments: {} }));
     const serverWorkspaceId = opened.structuredContent.workspace?.id ?? opened.structuredContent.workspace_id;
     const serverWorkspaceRoot = opened.structuredContent.workspace?.root ?? opened.structuredContent.root;
     assert(serverWorkspaceId, 'MCP workspace id missing');
@@ -207,18 +222,18 @@ async function settle(id, attempts = Math.ceil(STRUCTURED_JOB_ATTESTATION_GRACE_
     const mcpJob = await store.create({ workspace: mcpWorkspace, kind: 'verification' });
     await store.appendOutput(mcpJob.id, 'mcp persisted output\n');
     const statusStarted = Date.now();
-    const status = await client.callTool({ name: 'job_status', arguments: { workspace_id: serverWorkspaceId, job_id: mcpJob.id } });
+    const status = await boundedStep('MCP job_status', () => client.callTool({ name: 'job_status', arguments: { workspace_id: serverWorkspaceId, job_id: mcpJob.id } }));
     assert(Date.now() - statusStarted < 2_000, 'job_status waited instead of polling persisted state');
     assert.equal(status.structuredContent.job.id, mcpJob.id);
     assert.equal(status.structuredContent.job.state, 'queued');
-    const jobs = await client.callTool({ name: 'list_jobs', arguments: { workspace_id: serverWorkspaceId } });
+    const jobs = await boundedStep('MCP list_jobs', () => client.callTool({ name: 'list_jobs', arguments: { workspace_id: serverWorkspaceId } }));
     assert(jobs.structuredContent.jobs.some((item) => item.id === mcpJob.id));
-    const output = await client.callTool({ name: 'read_job_output', arguments: { workspace_id: serverWorkspaceId, job_id: mcpJob.id, cursor: 0, max_bytes: 1024 } });
+    const output = await boundedStep('MCP read_job_output', () => client.callTool({ name: 'read_job_output', arguments: { workspace_id: serverWorkspaceId, job_id: mcpJob.id, cursor: 0, max_bytes: 1024 } }));
     assert.match(output.structuredContent.text, /mcp persisted output/);
-    const canceledMcp = await client.callTool({ name: 'cancel_job', arguments: { workspace_id: serverWorkspaceId, job_id: mcpJob.id } });
+    const canceledMcp = await boundedStep('MCP cancel_job', () => client.callTool({ name: 'cancel_job', arguments: { workspace_id: serverWorkspaceId, job_id: mcpJob.id } }));
     assert.equal(canceledMcp.structuredContent.job.state, 'canceled');
   } finally {
-    await client.close().catch(() => undefined);
+    await boundedStep('MCP close', () => client.close().catch(() => undefined), 7_500);
   }
 
   for (let i = 0; i < 6; i += 1) {
