@@ -14,7 +14,8 @@ import {
   cancelJob,
   resumeJob,
   signalJobProcessTree,
-  processStartIdentity
+  processStartIdentity,
+  STRUCTURED_JOB_ATTESTATION_GRACE_MS
 } from '../dist/jobs/runner.js';
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-jobs-smoke-'));
@@ -46,7 +47,7 @@ await runStructuredJobWorker(async (ctx) => {
 `, 'utf8');
 const unregister = registerStructuredJobProducer({ kind: 'verification', workerEntrypoint: fixtureWorker, resumable: true });
 
-async function settle(id, attempts = 30) {
+async function settle(id, attempts = Math.ceil(STRUCTURED_JOB_ATTESTATION_GRACE_MS / 100) + 20) {
   for (let i = 0; i < attempts; i += 1) {
     const record = await reconcileJob(store, id);
     if (['completed', 'failed', 'canceled', 'interrupted'].includes(record.state)) return record;
@@ -129,7 +130,7 @@ async function settle(id, attempts = 30) {
   });
   assert(delayedIdentityAttempts >= 7, 'delayed identity fixture did not cross the legacy worker-claim window');
   assert.equal(delayedIdentityLaunched.state, 'running');
-  const delayedIdentityDone = await settle(delayedIdentityJob.id, 60);
+  const delayedIdentityDone = await settle(delayedIdentityJob.id);
   assert.equal(delayedIdentityDone.state, 'completed');
 
   const crashJob = await store.create({ workspace, kind: 'verification' });
