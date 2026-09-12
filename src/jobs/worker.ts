@@ -1,7 +1,7 @@
 import type { CodexProConfig } from "../config.js";
 import { boundedJobText, hashWorkerNonce, normalizeJobProgress, sanitizeJobResult, type JobRecord } from "./types.js";
 import { JobStore } from "./store.js";
-import { STRUCTURED_JOB_ATTESTATION_GRACE_MS, waitForProcessStartIdentity } from "./runner.js";
+import { STRUCTURED_JOB_ATTESTATION_GRACE_MS } from "./runner.js";
 
 function arg(name: string): string {
   const index = process.argv.indexOf(name);
@@ -43,8 +43,8 @@ async function waitForWorkerClaim(store: JobStore, id: string, nonceHash: string
   delete process.env.CODEXPRO_JOB_WORKER_NONCE;
   const store = new JobStore({ baseDir: jobDir });
   let record = await waitForWorkerClaim(store, id, nonceHash);
-  const startKey = await waitForProcessStartIdentity(process.pid);
-  if (!startKey || startKey !== record.worker?.startKey) throw new Error("Structured job worker process identity does not match launch metadata.");
+  const startKey = record.worker?.startKey;
+  if (!startKey || record.worker?.pid !== process.pid || record.worker.nonceHash !== nonceHash) throw new Error("Structured job worker launch metadata does not match this worker.");
   const attestedAt = new Date().toISOString();
   await store.saveOwner(id, { pid: process.pid, startedAt: record.worker.startedAt, nonceHash, startKey, attestedAt });
   const config = await store.readRuntime(id);

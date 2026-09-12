@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -112,6 +113,19 @@ async function settle(id, attempts = Math.ceil(STRUCTURED_JOB_ATTESTATION_GRACE_
   const completedOutput = await store.readOutput(completeJob.id, 0, 512);
   assert.match(completedOutput.text, /fixture output/);
   assert(!completedOutput.text.includes('ghp_abcdefghijklmnopqrstuvwxyz123456'));
+
+  if (process.platform === 'win32') {
+    const parentAttestedJob = await store.create({ workspace, kind: 'verification' });
+    await store.savePayload(parentAttestedJob.id, { mode: 'complete', completed: 0 });
+    const parentAttestedLaunch = await launchStructuredJob(config, store, workspace, parentAttestedJob.id, {
+      spawnWorker: (entrypoint, args, env) => spawn(process.execPath, [entrypoint, ...args], {
+        detached: true, stdio: 'ignore', windowsHide: true, env: { ...env, PATH: '', Path: '' }
+      })
+    });
+    assert.equal(parentAttestedLaunch.state, 'running');
+    const parentAttestedDone = await settle(parentAttestedJob.id);
+    assert.equal(parentAttestedDone.state, 'completed', 'worker required a redundant Windows start-identity lookup after parent attestation');
+  }
 
   // A cold Windows runner can take longer than the worker's initial claim window to expose StartTime.
   // Keep the detached worker alive while the parent performs bounded secure PID/start-identity attestation.
