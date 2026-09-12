@@ -200,20 +200,22 @@ async function settle(id, attempts = Math.ceil(STRUCTURED_JOB_ATTESTATION_GRACE_
     assert(['job_status','list_jobs','read_job_output','cancel_job','resume_job'].every((name) => tools.tools.some((tool) => tool.name === name)), 'job control surface incomplete');
     const opened = await client.callTool({ name: 'open_current_workspace', arguments: {} });
     const serverWorkspaceId = opened.structuredContent.workspace?.id ?? opened.structuredContent.workspace_id;
+    const serverWorkspaceRoot = opened.structuredContent.workspace?.root ?? opened.structuredContent.root;
     assert(serverWorkspaceId, 'MCP workspace id missing');
-    const mcpWorkspace = { id: serverWorkspaceId, root };
+    assert(serverWorkspaceRoot, 'MCP canonical workspace root missing');
+    const mcpWorkspace = { id: serverWorkspaceId, root: serverWorkspaceRoot };
     const mcpJob = await store.create({ workspace: mcpWorkspace, kind: 'verification' });
     await store.appendOutput(mcpJob.id, 'mcp persisted output\n');
     const statusStarted = Date.now();
-    const status = await client.callTool({ name: 'job_status', arguments: { job_id: mcpJob.id } });
+    const status = await client.callTool({ name: 'job_status', arguments: { workspace_id: serverWorkspaceId, job_id: mcpJob.id } });
     assert(Date.now() - statusStarted < 2_000, 'job_status waited instead of polling persisted state');
     assert.equal(status.structuredContent.job.id, mcpJob.id);
     assert.equal(status.structuredContent.job.state, 'queued');
-    const jobs = await client.callTool({ name: 'list_jobs', arguments: {} });
+    const jobs = await client.callTool({ name: 'list_jobs', arguments: { workspace_id: serverWorkspaceId } });
     assert(jobs.structuredContent.jobs.some((item) => item.id === mcpJob.id));
-    const output = await client.callTool({ name: 'read_job_output', arguments: { job_id: mcpJob.id, cursor: 0, max_bytes: 1024 } });
+    const output = await client.callTool({ name: 'read_job_output', arguments: { workspace_id: serverWorkspaceId, job_id: mcpJob.id, cursor: 0, max_bytes: 1024 } });
     assert.match(output.structuredContent.text, /mcp persisted output/);
-    const canceledMcp = await client.callTool({ name: 'cancel_job', arguments: { job_id: mcpJob.id } });
+    const canceledMcp = await client.callTool({ name: 'cancel_job', arguments: { workspace_id: serverWorkspaceId, job_id: mcpJob.id } });
     assert.equal(canceledMcp.structuredContent.job.state, 'canceled');
   } finally {
     await client.close().catch(() => undefined);
