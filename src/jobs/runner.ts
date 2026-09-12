@@ -153,12 +153,15 @@ function runtimeForJob(config: CodexProConfig, record: JobRecord): CodexProConfi
     record.progress = { ...record.progress, phase: record.progress.phase === "queued" ? "starting" : record.progress.phase, lastProgressAt: startedAt };
     return record;
   });
-}function workerMatches(record: JobRecord, owner: Awaited<ReturnType<JobStore["readOwner"]>>, currentStartKey: string | null): boolean {
-  if (!record.worker || !owner || !currentStartKey) return false;
+}function ownerMatchesWorker(record: JobRecord, owner: Awaited<ReturnType<JobStore["readOwner"]>>): boolean {
+  if (!record.worker || !owner) return false;
   return owner.pid === record.worker.pid &&
     owner.nonceHash === record.worker.nonceHash &&
-    owner.startKey === record.worker.startKey &&
-    currentStartKey === record.worker.startKey;
+    owner.startKey === record.worker.startKey;
+}
+
+function workerMatches(record: JobRecord, owner: Awaited<ReturnType<JobStore["readOwner"]>>, currentStartKey: string | null): boolean {
+  return ownerMatchesWorker(record, owner) && Boolean(currentStartKey) && currentStartKey === record.worker?.startKey;
 }
 
 export async function reconcileJob(store: JobStore, id: string, deps: JobRunnerDeps = {}): Promise<JobRecord> {
@@ -188,6 +191,7 @@ export async function reconcileJob(store: JobStore, id: string, deps: JobRunnerD
   const ageMs = Math.max(0, Date.now() - Date.parse(record.worker.startedAt));
   const alive = (deps.processAlive ?? jobProcessAlive)(record.worker.pid);
   if (workerMatches(record, owner, currentStartKey)) return record;
+  if (alive && currentStartKey === null && ownerMatchesWorker(record, owner)) return record;
   if (alive && ageMs < STRUCTURED_JOB_ATTESTATION_GRACE_MS && (currentStartKey === null || currentStartKey === record.worker.startKey)) return record;
   return store.update(id, (current) => {
     if (current.state === "running") {

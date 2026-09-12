@@ -116,6 +116,26 @@ async function boundedStep(label, operation, timeoutMs = 15_000) {
   const attestationGrace = await reconcileJob(store, attestationGraceJob.id, { processStartIdentity: () => null });
   assert.equal(attestationGrace.state, 'running', 'temporary identity-probe unavailability interrupted a newly claimed worker');
 
+  const attestedLongRunningJob = await store.create({ workspace, kind: 'verification' });
+  const attestedStartedAt = new Date(Date.now() - STRUCTURED_JOB_ATTESTATION_GRACE_MS - 5_000).toISOString();
+  await store.update(attestedLongRunningJob.id, (record) => {
+    record.state = 'running';
+    record.worker = { pid: process.pid, startedAt: attestedStartedAt, nonceHash: 'c'.repeat(64), startKey: 'attested-start-key' };
+    return record;
+  });
+  await store.saveOwner(attestedLongRunningJob.id, {
+    pid: process.pid,
+    startedAt: attestedStartedAt,
+    nonceHash: 'c'.repeat(64),
+    startKey: 'attested-start-key',
+    attestedAt: new Date().toISOString()
+  });
+  const attestedProbeUnavailable = await reconcileJob(store, attestedLongRunningJob.id, {
+    processStartIdentity: () => null,
+    processAlive: () => true
+  });
+  assert.equal(attestedProbeUnavailable.state, 'running', 'transient identity-probe unavailability interrupted an attested live worker after startup grace');
+
   const completeJob = await store.create({ workspace, kind: 'verification' });
   await store.savePayload(completeJob.id, { mode: 'complete', completed: 0 });
   const launched = await boundedStep('complete job launch', () => launchStructuredJob(config, store, workspace, completeJob.id), 60_000);
