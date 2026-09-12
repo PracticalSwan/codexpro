@@ -43,6 +43,7 @@ Implementation begins only when the user authorizes the exact plan scope. For si
 - Local module behavior: focused smoke + `npm run build`.
 - Shared MCP/tool registration/config: focused smoke + `npm run build` + `npm run smoke`.
 - Process/concurrency/output budgets: add `npm run stress`.
+- Windows smoke tests that spawn child processes and then remove temporary trees must use bounded `fs.rm` retries for transient `EBUSY`/`EPERM`/`ENOTEMPTY` cleanup races after real teardown completion; prefer condition-based teardown evidence over arbitrary sleeps.
 - Dependency/release work: add `npm audit --audit-level=high` and release packaging checks.
 - For single user-authorized CodexPro implementation or defect-fix work, after successful verification automatically update relevant docs/instructions, commit the intended change, integrate into `main`, push `origin/main`, and reinstall the global `codexpro-full` package when that install can be performed without violating the runtime-lifecycle rule below. For an explicitly authorized multi-plan batch, create verified milestone commits during the batch but perform integration, push, and global reinstall only once after the final cumulative gate. Releases/publication/deployment, force operations, and unrelated external mutations still require separate authorization; directly verify every external action actually performed.
 

@@ -173,6 +173,7 @@ try {
 } finally {
   child.kill("SIGTERM");
   await new Promise((resolve) => child.once("exit", resolve));
-  await fs.rm(root, { recursive: true, force: true });
-  await fs.rm(home, { recursive: true, force: true });
+  // Windows can briefly retain directory handles while child teardown settles; fs.rm retries EBUSY/EPERM/ENOTEMPTY only when maxRetries is non-zero.
+  await fs.rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  await fs.rm(home, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
