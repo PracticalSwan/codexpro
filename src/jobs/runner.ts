@@ -15,11 +15,13 @@ export interface StructuredJobProducerRegistration {
 
 export interface JobRunnerDeps {
   processStartIdentity?: (pid: number) => string | null;
+  processAlive?: (pid: number) => boolean;
   signalProcess?: (pid: number) => boolean;
   spawnWorker?: (entrypoint: string, args: string[], env: NodeJS.ProcessEnv) => ChildProcess;
 }
 
 const producers = new Map<JobKind, StructuredJobProducerRegistration>();
+export const STRUCTURED_JOB_ATTESTATION_GRACE_MS = 30_000;
 
 export function registerStructuredJobProducer(input: StructuredJobProducerRegistration): () => void {
   if (input.kind !== "verification") throw new Error(`Unsupported structured job kind: ${String(input.kind)}`);
@@ -53,6 +55,12 @@ export function processStartIdentity(pid: number): string | null {
   return result.status === 0 && value ? `${process.platform}:${value}` : null;
 }
 
+function jobProcessAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
+}
+
 export function signalJobProcessTree(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   if (process.platform === "win32") {
@@ -74,7 +82,10 @@ function defaultSpawnWorker(entrypoint: string, args: string[], env: NodeJS.Proc
   return spawn(process.execPath, [entrypoint, ...args], { detached: true, stdio: "ignore", windowsHide: true, env });
 }
 
-async function waitForStartIdentity(pid: number, lookup: (pid: number) => string | null): Promise<string | null> {
+export async function waitForProcessStartIdentity(
+  pid: number,
+  lookup: (pid: number) => string | null = processStartIdentity
+): Promise<string | null> {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const identity = lookup(pid);
     if (identity) return identity;
@@ -127,7 +138,7 @@ function runtimeForJob(config: CodexProConfig, record: JobRecord): CodexProConfi
   if (!child.pid) throw new Error("Structured job worker did not provide a pid.");
   child.unref();
   const lookup = deps.processStartIdentity ?? processStartIdentity;
-  const startKey = await waitForStartIdentity(child.pid, lookup);
+  const startKey = await waitForProcessStartIdentity(child.pid, lookup);
   if (!startKey) {
     (deps.signalProcess ?? signalJobProcessTree)(child.pid);
     await store.update(id, (record) => { record.state = "interrupted"; record.error = "Job worker identity could not be established."; return record; });
@@ -175,7 +186,9 @@ export async function reconcileJob(store: JobStore, id: string, deps: JobRunnerD
   const currentStartKey = lookup(record.worker.pid);
   const owner = await store.readOwner(id).catch(() => null);
   const ageMs = Math.max(0, Date.now() - Date.parse(record.worker.startedAt));
-  if (workerMatches(record, owner, currentStartKey) || (ageMs < 5_000 && currentStartKey === record.worker.startKey)) return record;
+  const alive = (deps.processAlive ?? jobProcessAlive)(record.worker.pid);
+  if (workerMatches(record, owner, currentStartKey)) return record;
+  if (alive && ageMs < STRUCTURED_JOB_ATTESTATION_GRACE_MS && (currentStartKey === null || currentStartKey === record.worker.startKey)) return record;
   return store.update(id, (current) => {
     if (current.state === "running") {
       current.state = "interrupted";

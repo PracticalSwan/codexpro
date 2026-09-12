@@ -13,7 +13,8 @@ import {
   reconcileJob,
   cancelJob,
   resumeJob,
-  signalJobProcessTree
+  signalJobProcessTree,
+  processStartIdentity
 } from '../dist/jobs/runner.js';
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-jobs-smoke-'));
@@ -89,6 +90,15 @@ async function settle(id, attempts = 30) {
   assert(!JSON.stringify(safePublic).includes('test-start-key'));
   assert(!JSON.stringify(safePublic).includes('a'.repeat(64)));
 
+  const attestationGraceJob = await store.create({ workspace, kind: 'verification' });
+  await store.update(attestationGraceJob.id, (record) => {
+    record.state = 'running';
+    record.worker = { pid: process.pid, startedAt: new Date().toISOString(), nonceHash: 'b'.repeat(64), startKey: 'delayed-start-key' };
+    return record;
+  });
+  const attestationGrace = await reconcileJob(store, attestationGraceJob.id, { processStartIdentity: () => null });
+  assert.equal(attestationGrace.state, 'running', 'temporary identity-probe unavailability interrupted a newly claimed worker');
+
   const completeJob = await store.create({ workspace, kind: 'verification' });
   await store.savePayload(completeJob.id, { mode: 'complete', completed: 0 });
   const launched = await launchStructuredJob(config, store, workspace, completeJob.id);
@@ -101,6 +111,26 @@ async function settle(id, attempts = 30) {
   const completedOutput = await store.readOutput(completeJob.id, 0, 512);
   assert.match(completedOutput.text, /fixture output/);
   assert(!completedOutput.text.includes('ghp_abcdefghijklmnopqrstuvwxyz123456'));
+
+  // A cold Windows runner can take longer than the worker's initial claim window to expose StartTime.
+  // Keep the detached worker alive while the parent performs bounded secure PID/start-identity attestation.
+  const delayedIdentityJob = await store.create({ workspace, kind: 'verification' });
+  await store.savePayload(delayedIdentityJob.id, { mode: 'complete', completed: 0 });
+  let delayedIdentityAttempts = 0;
+  const delayedIdentityLaunched = await launchStructuredJob(config, store, workspace, delayedIdentityJob.id, {
+    processStartIdentity: (pid) => {
+      delayedIdentityAttempts += 1;
+      if (delayedIdentityAttempts <= 6) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 750);
+        return null;
+      }
+      return processStartIdentity(pid);
+    }
+  });
+  assert(delayedIdentityAttempts >= 7, 'delayed identity fixture did not cross the legacy worker-claim window');
+  assert.equal(delayedIdentityLaunched.state, 'running');
+  const delayedIdentityDone = await settle(delayedIdentityJob.id, 60);
+  assert.equal(delayedIdentityDone.state, 'completed');
 
   const crashJob = await store.create({ workspace, kind: 'verification' });
   await store.savePayload(crashJob.id, { mode: 'hold', completed: 1 });

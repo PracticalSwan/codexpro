@@ -1,7 +1,7 @@
 import type { CodexProConfig } from "../config.js";
 import { boundedJobText, hashWorkerNonce, normalizeJobProgress, sanitizeJobResult, type JobRecord } from "./types.js";
 import { JobStore } from "./store.js";
-import { processStartIdentity } from "./runner.js";
+import { STRUCTURED_JOB_ATTESTATION_GRACE_MS, waitForProcessStartIdentity } from "./runner.js";
 
 function arg(name: string): string {
   const index = process.argv.indexOf(name);
@@ -24,7 +24,11 @@ export interface StructuredJobWorkerContext {
 export type StructuredJobWorkerExecutor = (context: StructuredJobWorkerContext) => Promise<Record<string, unknown>>;
 
 async function waitForWorkerClaim(store: JobStore, id: string, nonceHash: string): Promise<JobRecord> {
-  for (let attempt = 0; attempt < 80; attempt += 1) {
+  // Parent-side Windows StartTime attestation may require several bounded PowerShell probes on cold runners.
+  // Keep this pre-claim window longer than the parent's worst-case identity probe budget; the parent still
+  // terminates the worker when identity cannot be established, and the worker remains nonce/start-key gated.
+  const attempts = Math.ceil(STRUCTURED_JOB_ATTESTATION_GRACE_MS / 50);
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
     const record = await store.require(id);
     if (record.worker?.pid === process.pid && record.worker.nonceHash === nonceHash) return record;
     if (["completed", "failed", "canceled"].includes(record.state)) throw new Error(`Job became terminal before worker claim: ${record.state}.`);
@@ -39,7 +43,7 @@ async function waitForWorkerClaim(store: JobStore, id: string, nonceHash: string
   delete process.env.CODEXPRO_JOB_WORKER_NONCE;
   const store = new JobStore({ baseDir: jobDir });
   let record = await waitForWorkerClaim(store, id, nonceHash);
-  const startKey = processStartIdentity(process.pid);
+  const startKey = await waitForProcessStartIdentity(process.pid);
   if (!startKey || startKey !== record.worker?.startKey) throw new Error("Structured job worker process identity does not match launch metadata.");
   const attestedAt = new Date().toISOString();
   await store.saveOwner(id, { pid: process.pid, startedAt: record.worker.startedAt, nonceHash, startKey, attestedAt });

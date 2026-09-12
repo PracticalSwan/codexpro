@@ -85,13 +85,16 @@ try {
   let processId;
   let eventCursor;
   let workspaceId;
+  let workspaceRoot;
   let persistedJobId;
   let staleJobId;
   let asyncVerificationJobId;
   await withFreshClient(url, token, async (client) => {
     const opened = await callTool(client, "open_current_workspace");
     workspaceId = opened.workspace?.id ?? opened.workspace_id;
+    workspaceRoot = opened.workspace?.root ?? opened.root;
     assert(workspaceId, "workspace id missing for job continuity");
+    assert(workspaceRoot, "canonical workspace root missing for job continuity");
     const started = await callTool(client, "start_workspace_process", {
       command: `node -e "console.log('state-ready'); setTimeout(()=>{},10000)"`
     });
@@ -107,7 +110,7 @@ try {
     assert.match(eventCursor, /^evt_/);
   });
   const persistedStore = new JobStore({ baseDir: jobDir });
-  const workspace = { id: workspaceId, root };
+  const workspace = { id: workspaceId, root: workspaceRoot };
   const persistedJob = await persistedStore.create({ workspace, kind: "verification" });
   persistedJobId = persistedJob.id;
   await persistedStore.appendOutput(persistedJob.id, "persisted-across-client\n");
@@ -122,23 +125,23 @@ try {
   const failures = [];
   await withFreshClient(url, token, async (client) => {
     try {
-      const status = await callTool(client, "workspace_process_status", { process_id: processId });
+      const status = await callTool(client, "workspace_process_status", { workspace_id: workspaceId, process_id: processId });
       assert.equal(status.process.id, processId);
       assert.equal(status.process.state, "running");
       let output = "";
       for (let attempt = 0; attempt < 20 && !output.includes("state-ready"); attempt += 1) {
-        const page = await callTool(client, "read_workspace_process_output", { process_id: processId, max_bytes: 2048 });
+        const page = await callTool(client, "read_workspace_process_output", { workspace_id: workspaceId, process_id: processId, max_bytes: 2048 });
         output = `${page.stdout ?? ""}${page.stderr ?? ""}`;
         if (!output.includes("state-ready")) await new Promise((resolve) => setTimeout(resolve, 50));
       }
       assert.match(output, /state-ready/);
-      await callTool(client, "stop_workspace_process", { process_id: processId });
+      await callTool(client, "stop_workspace_process", { workspace_id: workspaceId, process_id: processId });
     } catch (error) { failures.push(`process continuity: ${error instanceof Error ? error.message : error}`); }
 
     try {
       let asyncStatus;
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        asyncStatus = await callTool(client, "job_status", { job_id: asyncVerificationJobId });
+      for (let attempt = 0; attempt < 600; attempt += 1) {
+        asyncStatus = await callTool(client, "job_status", { workspace_id: workspaceId, job_id: asyncVerificationJobId });
         if (["completed", "failed", "canceled"].includes(asyncStatus.job.state)) break;
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
@@ -148,25 +151,25 @@ try {
     } catch (error) { failures.push(`async verification continuity: ${error instanceof Error ? error.message : error}`); }
 
     try {
-      const persisted = await callTool(client, "job_status", { job_id: persistedJobId });
+      const persisted = await callTool(client, "job_status", { workspace_id: workspaceId, job_id: persistedJobId });
       assert.equal(persisted.job.id, persistedJobId);
       assert.equal(persisted.job.state, "queued");
-      const output = await callTool(client, "read_job_output", { job_id: persistedJobId, cursor: 0, max_bytes: 2048 });
+      const output = await callTool(client, "read_job_output", { workspace_id: workspaceId, job_id: persistedJobId, cursor: 0, max_bytes: 2048 });
       assert.match(output.text, /persisted-across-client/);
-      const stale = await callTool(client, "job_status", { job_id: staleJobId });
+      const stale = await callTool(client, "job_status", { workspace_id: workspaceId, job_id: staleJobId });
       assert.equal(stale.job.state, "interrupted");
       assert.match(stale.job.error, /no longer live|identity/i);
     } catch (error) { failures.push(`job continuity: ${error instanceof Error ? error.message : error}`); }
 
     try {
-      const events = await callTool(client, "workspace_events", { cursor: eventCursor });
+      const events = await callTool(client, "workspace_events", { workspace_id: workspaceId, cursor: eventCursor });
       assert(events.events.some((event) => event.kind === "create" && event.path === "created-after-cursor.txt"));
     } catch (error) { failures.push(`event continuity: ${error instanceof Error ? error.message : error}`); }
   });
 
   if (failures.length) throw new Error(failures.join("\n"));
   await withFreshClient(url, token, async (client) => {
-    const finalStatus = await callTool(client, "workspace_process_status", { process_id: processId });
+    const finalStatus = await callTool(client, "workspace_process_status", { workspace_id: workspaceId, process_id: processId });
     assert.notEqual(finalStatus.process.state, "running");
   });
   console.log("http state continuity smoke passed");
