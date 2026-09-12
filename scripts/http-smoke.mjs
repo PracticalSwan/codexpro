@@ -463,7 +463,7 @@ try {
   }
 
   const adminContinuationStore = new ContinuationStore(path.join(profileHome, 'continuation'), 16);
-  const adminTask = await adminContinuationStore.create({ workspace: { id: 'ws_http_plan34', root }, title: 'HTTP Plan 34 admin task' });
+  const adminTask = await adminContinuationStore.create({ workspace: { id: 'ws_http_plan34', root: await fs.realpath(root) }, title: 'HTTP Plan 34 admin task' });
   const crossOriginDisarm = await fetch(`${baseUrl}/admin/continuation/disarm?codexpro_token=${encodeURIComponent(token)}`, {
     method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://attacker.example' }, body: JSON.stringify({ task_id: adminTask.id })
   });
