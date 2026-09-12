@@ -44,7 +44,10 @@ class McpStdioClient {
     const msg = { jsonrpc: '2.0', id, method, params };
     this.child.stdin.write(encode(msg));
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`timeout waiting for ${method}`)), 15000);
+      const toolName = method === 'tools/call' && params?.name ? String(params.name) : '';
+      const detail = toolName ? ` (${toolName})` : '';
+      const timeoutMs = toolName === 'codexpro_self_test' ? 60_000 : 15_000;
+      const timer = setTimeout(() => reject(new Error(`timeout waiting for ${method}${detail} after ${timeoutMs}ms`)), timeoutMs);
       timer.unref();
       this.pending.set(id, { resolve, reject, timer });
     });

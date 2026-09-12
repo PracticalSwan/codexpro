@@ -254,8 +254,12 @@ try {
   if (!Number.isInteger(runtime.runtimePid)) throw new Error(`runtime child pid missing: ${JSON.stringify(runtime)}`);
 
   const liveLease = JSON.parse(await fs.readFile(leasePath, 'utf8'));
-  if (liveLease.pid !== child.pid || liveLease.tunnelId !== tunnelId || path.resolve(liveLease.root) !== path.resolve(root)) {
-    throw new Error(`OpenAI tunnel lease did not replace stale ownership correctly: ${JSON.stringify(liveLease)}`);
+  const [leaseRoot, expectedLeaseRoot] = await Promise.all([fs.realpath(liveLease.root), fs.realpath(root)]);
+  const leaseRootMatches = process.platform === 'win32'
+    ? leaseRoot.toLowerCase() === expectedLeaseRoot.toLowerCase()
+    : leaseRoot === expectedLeaseRoot;
+  if (liveLease.pid !== child.pid || liveLease.tunnelId !== tunnelId || !leaseRootMatches) {
+    throw new Error(`OpenAI tunnel lease did not replace stale ownership correctly: expected pid=${child.pid} root=${expectedLeaseRoot}; actual=${JSON.stringify(liveLease)}`);
   }
 
   const tunnelArgs = JSON.parse(await waitForFile(argsFile, 'fake tunnel-client args'));
