@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Refreshed the verified dependency lock within existing semver ranges: @types/node 24.13.4, minimatch 10.2.6, tsx 4.23.13, and zod 4.6.5; TypeScript remains on the supported 5.x line rather than taking the 7.x major upgrade.
 
 ## 0.32.4 (2026-09-14)
 - Refreshed GitHub-facing documentation and Pages for 0.32.4: promote long-lived OpenAI tunnel recovery into the stable release documentation, update ChatGPT Apps/Developer-mode setup wording to current OpenAI guidance, correct the continuation-vs-launcher tunnel-recovery security boundary, and add canonical/social metadata plus crawl files for the English/Chinese Pages site.
