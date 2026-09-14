@@ -12,7 +12,7 @@ The fork is distributed independently as **`codexpro-full`**, while the installe
 
 ## Which ChatGPT account should I use?
 
-Use a ChatGPT account that can create custom MCP plugins. OpenAI's July 2026 documentation says full MCP, including write/modify actions, is available to Business and Enterprise/Edu. Pro can connect MCP apps with read/fetch permissions, but does not currently receive full MCP write support. Plus is not listed as a supported custom-MCP tier in that documentation.
+Use a ChatGPT account and web surface that can create or connect custom MCP apps. OpenAI's current documentation says full MCP, including write/modify actions, is available to Business and Enterprise/Edu, while Pro can connect MCP apps with read/fetch permissions. Availability, UI labels, and permissions can change during the beta, so check the current ChatGPT Apps / Developer mode controls for your plan.
 
 CodexPro does not unlock Plugins, unlock models, bypass account limits, or provide account access. It connects to the ChatGPT plugin surface your account already has.
 
@@ -86,7 +86,7 @@ Install the latest tagged/stable artifact directly from GitHub Releases:
 npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz
 ```
 
-If you need fixes listed under **Unreleased** before the next tag is published, build the current `main` branch from source:
+If you need fixes listed under **Unreleased** before the next tag is published, build the current post-0.32.3 `main` branch from source. That currently includes long-lived OpenAI tunnel heartbeat/child recovery, which is not in the tagged 0.32.3 tarball:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -168,18 +168,17 @@ If the client does not provide `download_url` and `file_id`, the tool returns an
 
 For the default OpenAI Secure MCP Tunnel path, first complete the one-time OpenAI Platform tunnel setup. Store the restricted runtime API key with `codexpro openai-key save`, or use `CONTROL_PLANE_API_KEY` only as a session-scoped override. Do not paste that key into ChatGPT or save it in a workspace profile.
 
-Then open ChatGPT and go to:
+Then open ChatGPT. In the current UI, individual users typically enable Developer mode under:
 
 ```text
 Settings
--> Security and login
+-> Apps
+-> Advanced settings
 -> Developer mode: on
--> Enforce CSP in developer mode: on
-
-Settings
--> Plugins / Connectors
--> Connection: Tunnel
+-> Enforce CSP in developer mode: on   # when this control is shown
 ```
+
+Business / Enterprise / Edu workspaces may require an administrator to enable Developer mode/custom apps first. Then open the custom app/MCP connection UI and choose the tunnel connection.
 
 Select the tunnel or paste the same `tunnel_...` ID printed by CodexPro. The local CodexPro bearer token is forwarded by the official `tunnel-client` from a referenced environment value; it is not part of the ChatGPT connector form or public URL.
 
@@ -199,11 +198,11 @@ CodexPro does not bypass, avoid, increase, pool, resell, or modify ChatGPT, Code
 
 The useful part is that Codex and ChatGPT are different product surfaces. If one workflow is unavailable and another product surface you already have access to is still available, CodexPro lets you work against the same local repo without changing either product's limits.
 
-## Can CodexPro use GPT-5.5?
+## Can CodexPro use the newest ChatGPT models?
 
-Only if your ChatGPT account already exposes that exact model, or a similar stronger model, in the ChatGPT web product surface you are using, and that model surface can call custom MCP plugins.
+Only when your ChatGPT account exposes that model in the product surface you are using **and** that model/chat surface can call the custom MCP app. Model availability and MCP-tool availability are separate.
 
-Some GPT-5.5 Pro or other model surfaces may not expose plugin actions in a given chat. If CodexPro actions are unavailable there, CodexPro cannot make that request reach the local server. CodexPro does not provide, proxy, resell, or unlock models. It gives compatible ChatGPT sessions local repo tools.
+If CodexPro actions are unavailable in that chat, CodexPro cannot make that request reach the local server. CodexPro does not provide, proxy, resell, or unlock models; it gives compatible ChatGPT sessions local repo tools.
 
 For models that cannot call tools, generate a repo context bundle instead:
 
@@ -308,6 +307,14 @@ Local MCP clients:        local-only mode
 
 Cloudflare quick tunnel URLs change on restart. HTTP fallback modes expose a public/non-loopback endpoint and should keep CodexPro token authentication enabled.
 
+## Does CodexPro recover the OpenAI tunnel if it fails after running for a while?
+
+On current post-0.32.3 `main`, yes. CodexPro gives the official tunnel-client a response-forwarding TTL longer than CodexPro's maximum bounded synchronous call (60 minutes plus a five-minute transport margin), heartbeats `/readyz` after startup, and watches the tunnel child process.
+
+If that child exits or remains not-ready across the failure threshold, CodexPro marks runtime transport unavailable, replaces **only** the tunnel-client child with bounded backoff, and restores `ready` only after the replacement passes `/readyz`. The local MCP server, runtime generation, workspace selection, bearer-auth boundary, and tunnel lease stay in place.
+
+This recovery behavior is **not** in the tagged 0.32.3 stable artifact; build current `main` until a newer release containing it is published.
+
 ## Why does ChatGPT show “Something went wrong” when I create a connector?
 
 Usually ChatGPT could not reach the public MCP URL. A generated `trycloudflare.com` URL is not proof that `cloudflared` stayed connected.
@@ -319,9 +326,7 @@ codexpro connection-test --root /path/to/repo
 ```
 
 This keeps `read`, `tree`, `search`, and `load_skill`, but disables file writes,
-bash, and tool cards. In ChatGPT, create the development plugin under
-`Settings -> Plugins`, paste the complete Server URL, and choose
-`No Authentication`.
+bash, and tool cards. In ChatGPT, open the custom app/MCP connection UI from Apps / Developer mode (exact labels vary by plan/client), paste the complete Server URL for the HTTP fallback, and choose the matching authentication option.
 
 The terminal output separates the failure boundary:
 
@@ -341,10 +346,10 @@ Keep CodexPro running while testing. A Cloudflare quick-tunnel URL changes on
 every restart. If Cloudflare returns `530` / `Error 1033`, check DNS or
 proxy-client DNS handling on the machine running `cloudflared`.
 
-ChatGPT now manages custom MCP connections under Plugins. The browser error
+ChatGPT manages custom MCP connections under Apps / Developer mode, with labels that can vary by plan/client. The browser error
 `Failed to execute 'removeChild' on 'Node'` occurs in the ChatGPT page, before
-CodexPro can handle an MCP request. Remove or recreate the stale plugin entry
-from the Plugins page, then retry with the current URL. CodexPro cannot repair
+CodexPro can handle an MCP request. Remove or recreate the stale custom app/connection
+from that UI, then retry with the current URL. CodexPro cannot repair
 that browser-side entry.
 
 Official references:
@@ -378,7 +383,7 @@ Yes. With the default OpenAI Secure MCP Tunnel path, keep the same Platform tunn
 codexpro start
 ```
 
-The runtime API key is not saved by CodexPro; provide it through `CONTROL_PLANE_API_KEY` in the runtime environment. If you use an HTTP fallback instead, a stable ngrok/Cloudflare/Tailscale hostname can likewise be reused.
+The runtime API key can be stored locally with the masked `codexpro openai-key save` flow in CodexPro's protected per-user secret file, or supplied for one session through `CONTROL_PLANE_API_KEY`. It is never stored in the workspace profile. If you use an HTTP fallback instead, a stable ngrok/Cloudflare/Tailscale hostname can likewise be reused.
 
 ## What if I run CodexPro in two repos at once?
 

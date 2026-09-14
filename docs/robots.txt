@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://practicalswan.github.io/codexpro/sitemap.xml

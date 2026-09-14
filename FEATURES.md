@@ -1,6 +1,8 @@
-# CodexPro Full 0.32.3 — Feature Guide
+# CodexPro Full — Feature Guide
 
 CodexPro Full is PracticalSwan's independently maintained CodexPro fork. It keeps the `codexpro` CLI and MCP compatibility while adding the 0.31–0.32 agentic, continuity, safety, code-intelligence, artifact, and Durable Goal features. The release package is `codexpro-full`; installing it still provides the `codexpro` CLI.
+
+> **Release status:** the latest tagged stable artifact is **0.32.3**. This guide follows current `main`, which is post-0.32.3 and may include verified items listed under **Unreleased** that are not yet in the tagged tarball.
 
 > Repository: `https://github.com/PracticalSwan/codexpro`
 > Upstream lineage: `https://github.com/rebel0789/codexpro`
@@ -299,7 +301,7 @@ They provide compact UI for selected high-signal results while raw reads/searche
 
 ## 17. Tunnels and remote connection options
 
-CodexPro's primary ChatGPT transport is OpenAI Secure MCP Tunnel. The launcher supervises the official `tunnel-client`, keeps the local MCP server on loopback with CodexPro bearer authentication intact, injects that bearer value through an environment reference rather than argv, and requires tunnel-client `/readyz` before reporting ready. CodexPro aligns tunnel-client response forwarding with its own bounded tool-call window (60-minute maximum plus a five-minute transport margin) and heartbeats the tunnel after startup; persistent readiness failure restarts only the tunnel-client child with bounded backoff while the local MCP server and runtime generation remain stable.
+CodexPro's primary ChatGPT transport is OpenAI Secure MCP Tunnel. The launcher supervises the official `tunnel-client`, keeps the local MCP server on loopback with CodexPro bearer authentication intact, injects that bearer value through an environment reference rather than argv, and requires tunnel-client `/readyz` before reporting ready. On current post-0.32.3 `main`, CodexPro aligns tunnel-client response forwarding with its own bounded tool-call window (60-minute maximum plus a five-minute transport margin) and heartbeats the tunnel after startup; persistent readiness failure restarts only the tunnel-client child with bounded backoff while the local MCP server and runtime generation remain stable. This recovery behavior is not part of the tagged 0.32.3 artifact.
 
 ```text
 OpenAI Secure MCP Tunnel (default for new/no-profile start)

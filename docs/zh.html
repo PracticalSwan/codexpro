@@ -6,13 +6,22 @@
     <title>CodexPro Full - 让 ChatGPT Web 连接本地仓库</title>
     <meta
       name="description"
-      content="CodexPro 通过 ChatGPT Plugins 和 MCP，把 ChatGPT Web 连接到你明确允许的本地仓库，支持读取、搜索、编辑、git 检查和安全验证。"
+      content="CodexPro Full 通过 MCP 把 ChatGPT 连接到你明确允许的本地仓库，提供 OpenAI Secure MCP Tunnel、受控编辑、验证和持久工作流。"
     />
+    <meta name="robots" content="index, follow" />
+    <meta property="og:type" content="website" />
     <meta property="og:title" content="CodexPro 中文文档" />
     <meta property="og:description" content="本地 MCP 桥：默认通过 OpenAI Secure MCP Tunnel 连接 ChatGPT Plugins，并保留 ngrok/Cloudflare/Tailscale HTTP 回退。" />
+    <meta property="og:url" content="https://practicalswan.github.io/codexpro/zh.html" />
     <meta property="og:image" content="https://raw.githubusercontent.com/PracticalSwan/codexpro/main/docs/og.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="CodexPro 中文文档" />
+    <meta name="twitter:description" content="通过 MCP 把 ChatGPT 连接到明确允许的本地仓库，并使用受控编码和验证工具。" />
     <meta name="theme-color" content="#0b1220" />
-    <link rel="alternate" hreflang="en" href="./index.html" />
+    <link rel="canonical" href="https://practicalswan.github.io/codexpro/zh.html" />
+    <link rel="alternate" hreflang="en" href="https://practicalswan.github.io/codexpro/" />
+    <link rel="alternate" hreflang="zh-CN" href="https://practicalswan.github.io/codexpro/zh.html" />
+    <link rel="alternate" hreflang="x-default" href="https://practicalswan.github.io/codexpro/" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -48,12 +57,13 @@
 codexpro setup</code>
             <button class="copy-button" data-copy="npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz&#10;codexpro setup">复制</button>
           </div>
-          <p class="eyebrow">CodexPro Full 0.32.3 ships independently through GitHub Releases; the upstream npm package is not this fork.</p>
+          <p class="eyebrow"><strong>稳定版：0.32.3。</strong> 当前 <code>main</code> 已进入 post-0.32.3，并包含经过验证但尚未打 tag 的修复，包括长时间 OpenAI Tunnel 自动恢复。需要稳定制品时使用 0.32.3；需要这些新修复时从 <code>main</code> 构建。</p>
           <div class="hero-proof" aria-label="核心能力">
             <span>AGENTS.md 上下文</span>
             <span>.ai-bridge handoff</span>
             <span>紧凑卡片</span>
             <span>Codex session metadata 可选开启</span>
+            <span>main 上的 Tunnel 心跳与子进程恢复</span>
           </div>
           <div class="hero-actions">
             <a class="button primary" href="#quickstart">安装 CodexPro</a>
@@ -113,7 +123,7 @@ codexpro setup</code>
         <div>
           <span>01</span>
           <strong>Install</strong>
-          <p>先运行 <code>git clone https://github.com/PracticalSwan/codexpro.git</code>。</p>
+          <p>稳定版安装 0.32.3；如果需要 post-0.32.3 的 Tunnel 恢复等修复，则从当前 <code>main</code> 构建。</p>
         </div>
         <div>
           <span>02</span>
@@ -124,6 +134,22 @@ codexpro setup</code>
           <span>03</span>
           <strong>Paste</strong>
           <p>创建 ChatGPT Plugin 时优先选择 Tunnel，并填写 OpenAI Platform 创建的 <code>tunnel_...</code> ID。</p>
+        </div>
+      </section>
+
+      <section class="section two-col" aria-labelledby="zh-reliability-title">
+        <div>
+          <p class="eyebrow">当前 main 的可靠性</p>
+          <h2 id="zh-reliability-title">长时间 Tunnel 会话可以自动恢复，不需要重启 CodexPro。</h2>
+          <p>当前 <code>main</code> 把官方 tunnel-client 的 response-forwarding 时间与 CodexPro 的最大 bounded tool-call 窗口对齐：60 分钟加 5 分钟传输余量，并在启动后持续检查 <code>/readyz</code>。</p>
+          <p>如果 tunnel 子进程退出或持续 not-ready，launcher 会先把 transport 标记为 unavailable，只替换 tunnel-client 子进程，并使用有上限的退避重试；新子进程通过 readiness 后才恢复 ready。Local MCP server、runtime generation、workspace、bearer 边界和 tunnel lease 都保持不变。</p>
+          <p>该恢复机制目前只在 post-0.32.3 的 <code>main</code>，不属于已发布的 0.32.3 稳定制品。</p>
+        </div>
+        <div class="value-matrix">
+          <div><small>稳定制品</small><strong>GitHub Releases 上的 0.32.3</strong></div>
+          <div><small>当前 main</small><strong>经过验证的 post-0.32.3 连续性和 Tunnel 修复</strong></div>
+          <div><small>恢复范围</small><strong>只重启 tunnel-client，不重启本地 MCP runtime</strong></div>
+          <div><small>运行状态</small><strong>恢复期间为 unavailable，readiness 成功后才回到 ready</strong></div>
         </div>
       </section>
 
@@ -201,14 +227,13 @@ codexpro setup</code></pre>
           <div>
             <small>ChatGPT 设置路径</small>
             <pre><code>Settings
--&gt; Security and login
+-&gt; Apps
+-&gt; Advanced settings
 -&gt; Developer mode: on
--&gt; Enforce CSP in developer mode: on
+-&gt; Enforce CSP in developer mode: on（如果当前界面提供该开关）
 
-Settings
--&gt; Plugins
--&gt; Plugins 标签页
--&gt; 点击搜索框旁的 +</code></pre>
+Business / Enterprise / Edu
+-&gt; 可能还需要 workspace 管理员先启用 Developer mode / custom apps</code></pre>
           </div>
           <div>
             <small>创建 Plugin 字段</small>
@@ -221,7 +246,7 @@ Tunnel ID: tunnel_...</code></pre>
           <p class="eyebrow">ChatGPT Plugin 设置</p>
           <h2>在 Plugins 标签页点击 +，然后把 OpenAI Platform 创建的 Tunnel ID 填到 New Plugin。</h2>
           <p>保持 Enforce CSP in developer mode 开启。CodexPro 的小组件按 CSP 开启路径设计，不依赖远程脚本、外部字体、iframe 或第三方图片。</p>
-          <p>OpenAI runtime API key 只放在本机环境变量，不保存到 CodexPro profile。CodexPro 的 bearer token 仍保护 loopback MCP hop，并由官方 <code>tunnel-client</code> 通过环境引用转发。</p>
+          <p>OpenAI runtime API key 可通过 <code>codexpro openai-key save</code> 保存到受保护的用户级 secret 文件，或只在当前会话使用环境变量；不要把它粘贴到 ChatGPT、仓库或 workspace profile。CodexPro bearer token 仍保护 loopback MCP hop，并由官方 <code>tunnel-client</code> 通过环境引用转发。</p>
         </div>
       </section>
 

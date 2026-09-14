@@ -10,7 +10,7 @@ CodexPro Full uses the independent distribution package **`codexpro-full`** whil
 
 ## 我应该用什么 ChatGPT 账号？
 
-使用当前能创建自定义 MCP 插件的 ChatGPT 账号和 Web 界面。OpenAI 2026 年 7 月的文档说明：包含写入和修改操作的完整 MCP 目前面向 Business、Enterprise 和 Edu；Pro 目前只能连接 read/fetch 权限的 MCP App。该文档没有把 Plus 列为支持自定义 MCP 的账号层级。
+使用当前能创建或连接自定义 MCP App 的 ChatGPT 账号和 Web 界面。OpenAI 当前文档说明：包含写入和修改操作的完整 MCP 目前面向 Business、Enterprise 和 Edu；Pro 目前可以连接 read/fetch 权限的 MCP App。Beta 期间可用范围、界面标签和权限可能变化，请以当前 ChatGPT Apps / Developer mode 设置为准。
 
 CodexPro 不解锁 Plugins，不解锁模型，不绕过账号限制，也不提供账号访问。它只连接你自己的 ChatGPT Plugins 界面和你自己的本地仓库。
 
@@ -34,7 +34,7 @@ npm pack
 npm install -g ./codexpro-full-0.32.3.tgz
 ```
 
-Then run `codexpro setup` in the workspace you want ChatGPT to access. Daily startup is `codexpro start`. Upstream `codexpro@latest` is not the fork release.
+Then run `codexpro setup` in the workspace you want ChatGPT to access. Daily startup is `codexpro start`. The tagged tarball is stable 0.32.3; current `main` is post-0.32.3 and includes verified Unreleased fixes such as long-lived OpenAI tunnel recovery. Upstream `codexpro@latest` is not the fork release.
 
 ## CodexPro Full update
 
@@ -85,13 +85,13 @@ CodexPro 是本地 MCP bridge：用你自己的 ChatGPT 会话，通过 Plugins 
 
 ```text
 Settings
--> Security and login
+-> Apps
+-> Advanced settings
 -> Developer mode: on
--> Enforce CSP in developer mode: on
+-> Enforce CSP in developer mode: on（如果当前界面提供该开关）
 
-Settings
--> Plugins
--> Create
+Business / Enterprise / Edu
+-> 可能需要 workspace 管理员先启用 Developer mode / custom apps
 ```
 
 创建 Plugin 时填写：
@@ -103,7 +103,7 @@ Connection: Tunnel
 Tunnel ID: 填写 OpenAI Platform 创建的 tunnel_... ID
 ```
 
-本机 `codexpro start` 使用官方 `tunnel-client` 连接该 Tunnel。OpenAI runtime API key 只放在本机环境变量中，不要粘贴到 ChatGPT、profile 或仓库。CodexPro bearer token 由 `tunnel-client` 通过环境引用传给本地 MCP server。
+本机 `codexpro start` 使用官方 `tunnel-client` 连接该 Tunnel。OpenAI runtime API key 可通过 `codexpro openai-key save` 保存到受保护的用户级 secret 文件，或只通过当前会话环境变量提供；不要粘贴到 ChatGPT、workspace profile 或仓库。CodexPro bearer token 由 `tunnel-client` 通过环境引用传给本地 MCP server。
 
 
 ## CSP 要保持开启吗？
@@ -120,9 +120,9 @@ CodexPro 不绕过、不提升、不合并、不转售、不修改 ChatGPT、Cod
 
 它的价值在于 ChatGPT 和 Codex 是不同产品界面。某个工作流暂时不可用时，如果另一个你本来就有权限的界面仍可用，CodexPro 可以让它继续操作同一个本地仓库。
 
-## CodexPro 可以使用 GPT-5.5 吗？
+## CodexPro 可以使用最新的 ChatGPT 模型吗？
 
-前提是你的 ChatGPT 账号已经在 Web 产品里提供这个模型或同级更强模型，并且该模型界面可以调用自定义 MCP 插件。
+前提是你的 ChatGPT 账号已经在当前产品界面提供该模型，并且该模型/聊天界面可以调用自定义 MCP App。模型可用性和 MCP 工具可用性是两回事。
 
 CodexPro 不提供、不代理、不转售、也不解锁模型。它只给兼容的 ChatGPT 会话提供本地仓库工具。
 
@@ -223,6 +223,14 @@ OpenAI 模式使用 Platform 创建的 `tunnel_...` ID和本机 runtime API key�
 
 OpenAI Tunnel 模式先运行 `codexpro doctor`。如果 doctor 报告 tunnel ID、`tunnel-client` 或 runtime key 缺失，先解决这些本机前置条件。下面的 Server URL 故障排查主要适用于 ngrok/Cloudflare/Tailscale HTTP 回退。
 
+## CodexPro 运行很久后 OpenAI Tunnel 失效，会自动恢复吗？
+
+当前 post-0.32.3 的 `main` 会自动恢复。CodexPro 会让官方 tunnel-client 的 response-forwarding TTL 长于 CodexPro 最大 bounded synchronous call（60 分钟加 5 分钟传输余量），启动后持续检查 `/readyz`，并监控 tunnel 子进程。
+
+如果 tunnel 子进程退出，或连续达到 not-ready 失败阈值，CodexPro 会把 runtime transport 标记为 unavailable，只替换 **tunnel-client 子进程**，使用有上限的退避重试；新子进程通过 `/readyz` 后才恢复 ready。Local MCP server、runtime generation、workspace selection、bearer auth 边界和 tunnel lease 都保持不变。
+
+这个恢复机制**不在**已发布的 0.32.3 稳定制品中；在包含该修复的新版本发布前，需要从当前 `main` 构建。
+
 ## ChatGPT 创建 connector 时显示 “Something went wrong” 怎么办？
 
 通常是 ChatGPT 无法访问公网 MCP URL。生成 `trycloudflare.com` URL 不代表 `cloudflared` 一直连通。
@@ -234,9 +242,7 @@ codexpro connection-test --root /path/to/repo
 ```
 
 这个模式保留 `read`、`tree`、`search` 和 `load_skill`，关闭文件写入、bash
-和 tool cards，并记录请求是否到达本地 MCP endpoint。在 ChatGPT 的
-`Settings -> Plugins` 创建 development plugin，粘贴完整 Server URL，
-Authentication 选择 `No Authentication`。
+和 tool cards，并记录请求是否到达本地 MCP endpoint。在 ChatGPT 的 Apps / Developer mode 自定义 MCP 连接界面（不同 plan/client 标签可能不同）创建 HTTP fallback 连接，粘贴完整 Server URL，并选择匹配的认证方式。
 
 - 没有 `POST /mcp received`：请求没有到达 CodexPro，检查 ChatGPT Plugins 页面和 tunnel。
 - `POST /mcp -> 401`：请粘贴包含 `codexpro_token` 的完整 URL。
@@ -250,9 +256,9 @@ URL token 只适合作为个人 connector 的兼容方式。共享或多用户�
 如果 Cloudflare 返回 `530` / `Error 1033`，检查运行 `cloudflared` 的机器上的
 DNS 或代理客户端 DNS 设置。
 
-ChatGPT 现在在 Plugins 中管理 development app。浏览器错误
+ChatGPT 现在通过 Apps / Developer mode 管理自定义 MCP 连接，具体标签会因 plan/client 不同。浏览器错误
 `Failed to execute 'removeChild' on 'Node'` 发生在 ChatGPT 页面中，早于任何
-CodexPro MCP 请求。请在 Plugins 页面删除或重建旧条目，再使用当前 URL 重试；
+CodexPro MCP 请求。请在该界面删除或重建旧连接，再使用当前 URL 重试；
 CodexPro 无法修复浏览器端的旧条目。
 
 ## 能每天使用同一个 ChatGPT App URL 吗？
@@ -325,7 +331,7 @@ Use the repository as the source of truth:
 https://github.com/PracticalSwan/codexpro
 ```
 
-Do not assume a GitHub Pages deployment exists for this fork. The upstream project remains credited at `https://github.com/rebel0789/codexpro`.
+Public documentation is published at `https://practicalswan.github.io/codexpro/`, with Chinese documentation at `https://practicalswan.github.io/codexpro/zh.html`. The repository remains the source of truth, and the upstream project remains credited at `https://github.com/rebel0789/codexpro`.
 
 ## CodexPro 是否违反服务条款？
 

@@ -6,13 +6,22 @@
     <title>CodexPro Full - Use ChatGPT like your local coding agent</title>
     <meta
       name="description"
-      content="CodexPro connects ChatGPT Plugins to explicitly allowed local projects through MCP so ChatGPT can inspect, edit, verify, and hand off code safely."
+      content="CodexPro Full connects ChatGPT to explicitly allowed local repositories through MCP, with OpenAI Secure MCP Tunnel, guarded edits, verification, and durable workflows."
     />
+    <meta name="robots" content="index, follow" />
+    <meta property="og:type" content="website" />
     <meta property="og:title" content="CodexPro Full" />
     <meta property="og:description" content="Local MCP bridge: connect ChatGPT through OpenAI Secure MCP Tunnel and work on repos you explicitly allow." />
+    <meta property="og:url" content="https://practicalswan.github.io/codexpro/" />
     <meta property="og:image" content="https://raw.githubusercontent.com/PracticalSwan/codexpro/main/docs/og.svg" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="CodexPro Full" />
+    <meta name="twitter:description" content="Connect ChatGPT to explicitly allowed local repositories through MCP with guarded coding and verification." />
     <meta name="theme-color" content="#0b1220" />
-    <link rel="alternate" hreflang="zh-CN" href="./zh.html" />
+    <link rel="canonical" href="https://practicalswan.github.io/codexpro/" />
+    <link rel="alternate" hreflang="en" href="https://practicalswan.github.io/codexpro/" />
+    <link rel="alternate" hreflang="zh-CN" href="https://practicalswan.github.io/codexpro/zh.html" />
+    <link rel="alternate" hreflang="x-default" href="https://practicalswan.github.io/codexpro/" />
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -48,12 +57,13 @@
 codexpro setup</code>
             <button class="copy-button" data-copy="npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz&#10;codexpro setup">Copy</button>
           </div>
-          <p class="eyebrow">CodexPro Full 0.32.3 ships independently through GitHub Releases. Tagged releases are the stable artifacts; build current <code>main</code> when you specifically need fixes listed under Unreleased. The upstream npm package is not this fork release.</p>
+          <p class="eyebrow"><strong>Stable release: 0.32.3.</strong> Current <code>main</code> is post-0.32.3 and includes verified Unreleased fixes, including long-lived OpenAI tunnel recovery. Use the tagged release for the stable artifact; build <code>main</code> when you need those fixes before the next tag. The upstream npm package is not this fork release.</p>
           <div class="hero-proof" aria-label="Core capabilities">
             <span>explicit project access</span>
             <span>loopback + bearer protected</span>
             <span>safe bash default</span>
             <span>repo-backed context</span>
+            <span>tunnel heartbeat + child recovery on main</span>
           </div>
           <div class="hero-actions">
             <a class="button primary" href="#quickstart">Install CodexPro</a>
@@ -108,7 +118,7 @@ codexpro setup</code>
         <div>
           <span>01</span>
           <strong>Install</strong>
-          <p>Install the tagged GitHub Release for the stable build, or build current <code>main</code> when you need verified Unreleased fixes.</p>
+          <p>Install tagged 0.32.3 for the stable build, or build current <code>main</code> for verified post-0.32.3 fixes such as long-lived tunnel recovery.</p>
         </div>
         <div>
           <span>02</span>
@@ -119,6 +129,22 @@ codexpro setup</code>
           <span>03</span>
           <strong>Connect</strong>
           <p>Choose Connection: Tunnel in ChatGPT and select or paste the OpenAI Tunnel ID.</p>
+        </div>
+      </section>
+
+      <section class="section two-col" aria-labelledby="reliability-title">
+        <div>
+          <p class="eyebrow">Current main reliability</p>
+          <h2 id="reliability-title">Long-lived tunnel sessions recover without restarting CodexPro.</h2>
+          <p>Current <code>main</code> aligns the official tunnel-client response-forwarding budget with CodexPro's maximum bounded tool-call window: 60 minutes plus a five-minute transport margin. It also heartbeats <code>/readyz</code> after startup.</p>
+          <p>If the tunnel child exits or becomes persistently not-ready, the launcher marks transport unavailable, replaces only the tunnel-client child with bounded backoff, then returns to ready after the replacement passes its readiness check. The local MCP server, runtime generation, workspace selection, bearer boundary, and tunnel lease stay in place.</p>
+          <p>This recovery behavior is currently in post-0.32.3 <code>main</code>; it is not part of the tagged 0.32.3 stable artifact.</p>
+        </div>
+        <div class="value-matrix">
+          <div><small>Stable artifact</small><strong>0.32.3 from GitHub Releases</strong></div>
+          <div><small>Current main</small><strong>Verified post-0.32.3 continuity and tunnel fixes</strong></div>
+          <div><small>Recovery scope</small><strong>Restart only tunnel-client, not the local MCP runtime</strong></div>
+          <div><small>Runtime truth</small><strong><code>transportState</code> is unavailable during recovery and ready only after <code>/readyz</code> succeeds</strong></div>
         </div>
       </section>
 
@@ -255,7 +281,7 @@ codexpro --version</code></pre>
             <span>4</span>
             <div>
               <strong>Connect the tunnel</strong>
-              <p>Choose Connection: Tunnel and select or paste the same <code>tunnel_...</code> ID saved for CodexPro. Keep the official tunnel-client and CodexPro running.</p>
+              <p>Choose Connection: Tunnel and select or paste the same <code>tunnel_...</code> ID saved for CodexPro. Keep CodexPro running; current <code>main</code> supervises and replaces its tunnel-client child if that child exits or becomes persistently not-ready.</p>
             </div>
           </div>
           <div class="step">
@@ -414,10 +440,9 @@ cloudflared tunnel route dns codexpro codexpro.example.com</code></pre>
             <h3>Enable Plugins once</h3>
             <dl>
               <div><dt>Open</dt><dd>ChatGPT Settings</dd></div>
-              <div><dt>Go to</dt><dd>Security and login</dd></div>
-              <div><dt>Prerequisite</dt><dd>Developer mode on</dd></div>
-              <div><dt>Keep on</dt><dd>Enforce CSP in developer mode</dd></div>
-              <div><dt>Then</dt><dd>Open the custom MCP/plugin connection UI (Plugins or Connectors, depending on the client)</dd></div>
+              <div><dt>Developer mode</dt><dd>Apps → Advanced settings where available; Business/Enterprise/Edu may require workspace-admin enablement</dd></div>
+              <div><dt>Keep on</dt><dd>Enforce CSP in developer mode when that control is shown</dd></div>
+              <div><dt>Then</dt><dd>Open the custom app/MCP connection UI and choose the tunnel connection</dd></div>
             </dl>
             <p>Developer mode is only the settings toggle that unlocks custom plugins. CodexPro widgets work with CSP enabled.</p>
           </article>
@@ -584,7 +609,7 @@ codexpro settings delete --yes</code></pre>
           </article>
           <article>
             <h3>Should CSP stay enabled?</h3>
-            <p>Yes. Keep Enforce CSP in developer mode enabled. Create and manage the connection under Settings -> Plugins.</p>
+            <p>Yes. Keep Enforce CSP in developer mode enabled when that control is shown. Manage the custom MCP app/connection from ChatGPT Apps / Developer mode; exact labels vary by plan and client.</p>
           </article>
         </div>
       </section>

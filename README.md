@@ -11,7 +11,8 @@
 <p align="center">
   <a href="https://github.com/PracticalSwan/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/PracticalSwan/codexpro/ci.yml?branch=main&style=flat-square"></a>
   <a href="https://github.com/PracticalSwan/codexpro/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/PracticalSwan/codexpro?style=flat-square"></a>
-  <img alt="CodexPro Full" src="https://img.shields.io/badge/CodexPro%20Full-0.32.3-2563eb?style=flat-square">
+  <img alt="Stable release 0.32.3" src="https://img.shields.io/badge/stable-0.32.3-2563eb?style=flat-square">
+  <img alt="Main status post-0.32.3" src="https://img.shields.io/badge/main-post--0.32.3-0f766e?style=flat-square">
 </p>
 
 ## Project status
@@ -21,7 +22,8 @@
 ```text
 Canonical fork: https://github.com/PracticalSwan/codexpro
 Upstream:       https://github.com/rebel0789/codexpro
-Current fork:   0.32.3
+Stable release: 0.32.3
+Current main:   post-0.32.3 (verified Unreleased fixes)
 ```
 
 CodexPro Full uses the independent distribution package **`codexpro-full`** while preserving the installed CLI command **`codexpro`**, MCP protocol, profiles, and workspace model. **GitHub Releases are the canonical public release channel.** The upstream npm package `codexpro` is a different distribution; the `codexpro-full` npm registry package is not published yet.
@@ -45,6 +47,7 @@ Depending on the active profile, ChatGPT can:
 - inspect safe ZIP/PDF/OOXML content and export workspace artifacts back to ChatGPT
 - execute opt-in Durable Goals in detached Git worktrees with review/projection authorization
 - use planning-only handoff workflows when direct source editing is not desired
+- on current `main`, supervise the OpenAI tunnel after startup and recover a failed/not-ready tunnel-client child without restarting the local MCP runtime
 
 See **[FEATURES.md](FEATURES.md)** for the complete feature map and short usage examples.
 
@@ -59,7 +62,7 @@ npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32
 codexpro --version
 ```
 
-This installs the latest tagged/stable artifact. Changes listed under **Unreleased** may exist on `main` before the next release; build from source when you specifically need those fixes.
+This installs the latest tagged/stable artifact. Current `main` is post-0.32.3 and contains verified **Unreleased** fixes that are not in that tarball, including long-lived OpenAI tunnel recovery; build from source when you need those fixes before the next tag.
 
 ### From a source checkout
 
@@ -74,11 +77,13 @@ npm install -g ./codexpro-full-0.32.3.tgz
 codexpro --version
 ```
 
-Expected version for this branch:
+Expected package version for this branch:
 
 ```text
 0.32.3
 ```
+
+`main` can be newer than the latest tag while keeping the same package version until the next release; use the Git commit and **Unreleased** changelog entries to distinguish those builds.
 
 For the complete first-time tunnel/key setup and multi-project examples, see **[GETTING_STARTED.md](GETTING_STARTED.md)**.
 
@@ -103,7 +108,7 @@ If you already have a verified fork tarball, install that tarball directly inste
 
 2. One time, create an OpenAI Secure MCP Tunnel for the same ChatGPT workspace and provide its `tunnel_...` ID to CodexPro. Run `codexpro openai-key save` once to store the restricted runtime key in CodexPro's protected per-user secret file, or keep using `CONTROL_PLANE_API_KEY` for session-only credentials.
 3. In ChatGPT, enable Developer mode and keep CSP enforcement enabled. Open the custom MCP/plugin connection UI (shown as **Plugins** or **Connectors** depending on the client), choose **Connection: Tunnel**, and select or paste the same Tunnel ID.
-4. Keep CodexPro and the official `tunnel-client` running while you use the connector. The local MCP endpoint stays loopback-only and bearer protected.
+4. Keep CodexPro running while you use the connector. CodexPro launches and supervises the official `tunnel-client`; on current `main`, a failed or persistently not-ready tunnel child is replaced automatically while the local MCP runtime stays in place. The local MCP endpoint remains loopback-only and bearer protected.
 5. In chat, start with:
 
    ```text

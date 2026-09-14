@@ -17,7 +17,7 @@ codexpro --version
 
 ### Latest `main`
 
-`main` can contain verified fixes listed under **Unreleased** before the next GitHub Release is tagged. Build from source when you specifically need those changes:
+`main` can contain verified fixes listed under **Unreleased** before the next GitHub Release is tagged. Current `main` is post-0.32.3 and includes the long-lived OpenAI tunnel heartbeat/child-recovery fix, which is not in the tagged 0.32.3 artifact. Build from source when you specifically need those changes:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -44,7 +44,7 @@ Install or prepare:
 - an OpenAI Platform Secure MCP Tunnel (`tunnel_...`)
 - a restricted OpenAI runtime API key authorized for the tunnel
 
-Keep ChatGPT Developer mode enabled and keep CSP enforcement enabled.
+Keep ChatGPT Developer mode enabled. In the current ChatGPT UI, individual users typically find it under **Settings → Apps → Advanced settings**; Business/Enterprise/Edu workspaces may require administrator enablement first. Keep CSP enforcement enabled when that control is shown.
 
 Official ChatGPT MCP connection documentation:
 
@@ -91,7 +91,7 @@ CodexPro keeps the local MCP server loopback-bound and bearer protected while th
 
 ## 5. Connect ChatGPT
 
-In ChatGPT, open the custom plugin/MCP connection UI (the label may appear as **Plugins** or **Connectors** depending on the client), choose **Connection: Tunnel**, and select or paste the same `tunnel_...` ID.
+In ChatGPT, open the custom app/MCP connection UI (labels can vary by plan/client), choose the tunnel connection, and select or paste the same `tunnel_...` ID.
 
 Then start a chat with a bounded discovery prompt such as:
 
@@ -197,7 +197,7 @@ codexpro doctor
 codexpro settings show
 ```
 
-Confirm only one live CodexPro launcher owns a given OpenAI tunnel ID. With current `main`, duplicate ownership is rejected before takeover.
+Confirm only one live CodexPro launcher owns a given OpenAI tunnel ID. With current `main`, duplicate ownership is rejected before takeover. Current post-0.32.3 `main` also heartbeats the active tunnel after startup and automatically replaces only the tunnel-client child if it exits or remains not-ready; the local MCP runtime stays in place.
 
 ## 9. Safe defaults to keep
 
