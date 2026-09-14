@@ -299,7 +299,7 @@ They provide compact UI for selected high-signal results while raw reads/searche
 
 ## 17. Tunnels and remote connection options
 
-CodexPro's primary ChatGPT transport is OpenAI Secure MCP Tunnel. The launcher supervises the official `tunnel-client`, keeps the local MCP server on loopback with CodexPro bearer authentication intact, injects that bearer value through an environment reference rather than argv, and requires tunnel-client `/readyz` before reporting ready.
+CodexPro's primary ChatGPT transport is OpenAI Secure MCP Tunnel. The launcher supervises the official `tunnel-client`, keeps the local MCP server on loopback with CodexPro bearer authentication intact, injects that bearer value through an environment reference rather than argv, and requires tunnel-client `/readyz` before reporting ready. CodexPro aligns tunnel-client response forwarding with its own bounded tool-call window (60-minute maximum plus a five-minute transport margin) and heartbeats the tunnel after startup; persistent readiness failure restarts only the tunnel-client child with bounded backoff while the local MCP server and runtime generation remain stable.
 
 ```text
 OpenAI Secure MCP Tunnel (default for new/no-profile start)

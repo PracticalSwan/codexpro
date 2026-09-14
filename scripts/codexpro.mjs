@@ -23,6 +23,11 @@ const UNTRACKED_SYMLINK_TARGET_BYTES = 512;
 const DEFAULT_SYNC_CALL_DEADLINE_MS = 1_200_000;
 const MIN_SYNC_CALL_DEADLINE_MS = 300_000;
 const MAX_SYNC_CALL_DEADLINE_MS = 3_600_000;
+const OPENAI_TUNNEL_CONNECTION_TTL_MARGIN_MS = 300_000;
+const OPENAI_TUNNEL_CONNECTION_MAX_TTL = `${(MAX_SYNC_CALL_DEADLINE_MS + OPENAI_TUNNEL_CONNECTION_TTL_MARGIN_MS) / 60_000}m`;
+const DEFAULT_OPENAI_TUNNEL_HEARTBEAT_MS = 30_000;
+const OPENAI_TUNNEL_HEARTBEAT_FAILURE_THRESHOLD = 3;
+const OPENAI_TUNNEL_RECOVERY_MAX_BACKOFF_MS = 30_000;
 
 function packageVersion() {
   return JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8')).version;
@@ -1268,6 +1273,21 @@ function saveRuntimeConnection(root, details, options = {}) {
   return filePath;
 }
 
+function updateRuntimeTransportState(root, runtimeGenerationId, transportState) {
+  if (!['ready', 'unavailable', 'unknown'].includes(transportState)) return false;
+  try {
+    const filePath = runtimeStatusPathForRoot(root);
+    const runtime = readJsonFile(filePath);
+    if (runtime?.pid !== process.pid || runtime?.runtimeGenerationId !== runtimeGenerationId) return false;
+    const payload = { ...runtime, updatedAt: new Date().toISOString(), transportState };
+    fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+    try { fs.chmodSync(filePath, 0o600); } catch {}
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function clearRuntimeConnection(root) {
   try {
     const filePath = runtimeStatusPathForRoot(root);
@@ -1876,6 +1896,82 @@ async function waitForOpenAiTunnelReady(healthUrlFile, child, timeoutMs = 30000)
   throw new Error(`Timed out waiting for OpenAI tunnel-client /readyz: ${lastError}${tail ? `\n\nRecent tunnel-client output:\n${tail}` : ''}`);
 }
 
+
+function openAiTunnelHeartbeatMs() {
+  const raw = Number(process.env.CODEXPRO_OPENAI_TUNNEL_HEARTBEAT_MS ?? DEFAULT_OPENAI_TUNNEL_HEARTBEAT_MS);
+  if (!Number.isFinite(raw) || raw < 50) return DEFAULT_OPENAI_TUNNEL_HEARTBEAT_MS;
+  return Math.min(Math.floor(raw), 300_000);
+}
+
+async function probeOpenAiTunnelReady(healthBase, timeoutMs = 5000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  timer.unref();
+  try {
+    const response = await fetch(`${healthBase}/readyz`, { signal: controller.signal });
+    if (!response.ok) throw new Error(`/readyz returned HTTP ${response.status}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function waitForOpenAiTunnelFailure(child, healthBase, shouldStop) {
+  const heartbeatMs = openAiTunnelHeartbeatMs();
+  const exitPromise = waitForProcessExit(child).then(({ code, signal }) => ({ type: 'exit', code, signal }));
+  let failures = 0;
+  while (!shouldStop()) {
+    const event = await Promise.race([
+      exitPromise,
+      sleep(heartbeatMs).then(() => ({ type: 'heartbeat' }))
+    ]);
+    if (event.type === 'exit') return event;
+    try {
+      await probeOpenAiTunnelReady(healthBase);
+      failures = 0;
+    } catch (error) {
+      failures += 1;
+      if (failures >= OPENAI_TUNNEL_HEARTBEAT_FAILURE_THRESHOLD) {
+        return { type: 'heartbeat', error: error instanceof Error ? error.message : String(error) };
+      }
+    }
+  }
+  return { type: 'stopped' };
+}
+
+async function superviseOpenAiTunnel(initialTunnel, startTunnel, setTransportState, shouldStop) {
+  let current = initialTunnel;
+  let backoffMs = 1000;
+  while (!shouldStop()) {
+    const failure = await waitForOpenAiTunnelFailure(current.child, current.healthBase, shouldStop);
+    if (failure.type === 'stopped' || shouldStop()) return;
+    const reason = failure.type === 'exit'
+      ? `process exited code=${failure.code ?? 'null'} signal=${failure.signal ?? 'null'}`
+      : `heartbeat failed: ${failure.error}`;
+    setTransportState('unavailable');
+    statusLine('warn', `OpenAI tunnel unhealthy (${reason}); restarting tunnel-client only`);
+    if (current.child.exitCode === null && current.child.signalCode === null) {
+      const exited = waitForProcessExit(current.child);
+      killProcess(current.child);
+      await Promise.race([exited, sleep(5000)]);
+    }
+    current.cleanupHealth();
+    while (!shouldStop()) {
+      await sleep(backoffMs);
+      if (shouldStop()) return;
+      try {
+        current = await startTunnel();
+        setTransportState('ready');
+        statusLine('ok', `OpenAI tunnel-client recovered at ${current.healthBase}/readyz`);
+        backoffMs = 1000;
+        break;
+      } catch (error) {
+        statusLine('warn', `OpenAI tunnel recovery failed: ${error instanceof Error ? error.message : String(error)}; retrying`);
+        backoffMs = Math.min(backoffMs * 2, OPENAI_TUNNEL_RECOVERY_MAX_BACKOFF_MS);
+      }
+    }
+  }
+}
+
 function outboundProxyFromEnv(env = process.env) {
   return env.HTTPS_PROXY || env.https_proxy || env.ALL_PROXY || env.all_proxy || env.HTTP_PROXY || env.http_proxy || '';
 }
@@ -2036,6 +2132,9 @@ function openUrl(url) {
 }
 
 function waitForProcessExit(child) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve({ code: child.exitCode, signal: child.signalCode });
+  }
   return new Promise((resolve) => {
     child.once('exit', (code, signal) => resolve({ code, signal }));
   });
@@ -5045,30 +5144,48 @@ async function main() {
   }
 
   if (tunnel === 'openai') {
-    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codexpro-openai-tunnel-'));
-    const healthUrlFile = path.join(tmpRoot, 'health.url');
-    const removeHealthState = () => fs.rmSync(tmpRoot, { recursive: true, force: true });
-    cleanupTunnelCredentials = removeHealthState;
-    const tunnelArgs = [
-      'run',
-      '--control-plane.tunnel-id', openaiTunnelId,
-      '--control-plane.api-key', openaiRuntimeKey.reference,
-      '--mcp.server-url', `channel=main,url=${localBase}/mcp`,
-      '--mcp.extra-headers', 'Authorization: env:CODEXPRO_TUNNEL_MCP_AUTH_HEADER',
-      '--mcp.discovery-extra-headers', 'Authorization: env:CODEXPRO_TUNNEL_MCP_AUTH_HEADER',
-      '--health.listen-addr', '127.0.0.1:0',
-      '--health.url-file', healthUrlFile
-    ];
-    const tunnelEnv = { ...process.env, CODEXPRO_TUNNEL_MCP_AUTH_HEADER: `Bearer ${token}` };
-    delete tunnelEnv.CODEXPRO_HTTP_TOKEN;
-    delete tunnelEnv.CODEBASE_BRIDGE_HTTP_TOKEN;
+    let openAiSupervisorStopping = false;
+    let activeTunnelCleanup = () => {};
+    const startOpenAiTunnel = async () => {
+      const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'codexpro-openai-tunnel-'));
+      const healthUrlFile = path.join(tmpRoot, 'health.url');
+      let cleaned = false;
+      const cleanupHealth = () => {
+        if (cleaned) return;
+        cleaned = true;
+        try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch {}
+      };
+      const tunnelArgs = [
+        'run',
+        '--control-plane.tunnel-id', openaiTunnelId,
+        '--control-plane.api-key', openaiRuntimeKey.reference,
+        '--mcp.server-url', `channel=main,url=${localBase}/mcp`,
+        '--mcp.extra-headers', 'Authorization: env:CODEXPRO_TUNNEL_MCP_AUTH_HEADER',
+        '--mcp.discovery-extra-headers', 'Authorization: env:CODEXPRO_TUNNEL_MCP_AUTH_HEADER',
+        '--mcp.connection-max-ttl', OPENAI_TUNNEL_CONNECTION_MAX_TTL,
+        '--health.listen-addr', '127.0.0.1:0',
+        '--health.url-file', healthUrlFile
+      ];
+      const tunnelEnv = { ...process.env, CODEXPRO_TUNNEL_MCP_AUTH_HEADER: `Bearer ${token}` };
+      delete tunnelEnv.CODEXPRO_HTTP_TOKEN;
+      delete tunnelEnv.CODEBASE_BRIDGE_HTTP_TOKEN;
+      const tunnelChild = spawnLogged('tunnel-client', tunnelClientPath, tunnelArgs, { cwd: root, env: tunnelEnv, verbose: verboseLogs });
+      tunnelChild.once('exit', cleanupHealth);
+      tunnelChild.once('error', cleanupHealth);
+      try {
+        const ready = await waitForOpenAiTunnelReady(healthUrlFile, tunnelChild);
+        return { child: tunnelChild, healthBase: ready.healthBase, uiUrl: ready.uiUrl, cleanupHealth };
+      } catch (error) {
+        if (tunnelChild.exitCode === null && tunnelChild.signalCode === null) killProcess(tunnelChild);
+        cleanupHealth();
+        throw error;
+      }
+    };
+
     statusLine('wait', `Starting OpenAI Secure MCP Tunnel ${openaiTunnelId}`);
-    cloudflared = spawnLogged('tunnel-client', tunnelClientPath, tunnelArgs, { cwd: root, env: tunnelEnv, verbose: verboseLogs });
-    cloudflared.once('exit', removeHealthState);
-    cloudflared.once('error', removeHealthState);
     let tunnelReady;
     try {
-      tunnelReady = await waitForOpenAiTunnelReady(healthUrlFile, cloudflared);
+      tunnelReady = await startOpenAiTunnel();
     } catch (error) {
       const hint = [
         '',
@@ -5082,6 +5199,12 @@ async function main() {
       ].join('\n');
       throw new Error(`${error instanceof Error ? error.message : String(error)}${hint}`);
     }
+    cloudflared = tunnelReady.child;
+    activeTunnelCleanup = tunnelReady.cleanupHealth;
+    cleanupTunnelCredentials = () => {
+      openAiSupervisorStopping = true;
+      activeTunnelCleanup();
+    };
     statusLine('ok', `OpenAI tunnel-client ready at ${tunnelReady.healthBase}/readyz`);
     const details = printOpenAiTunnelBlock(openaiTunnelId, token, {
       localBase,
@@ -5100,9 +5223,20 @@ async function main() {
       requireBashSession
     });
     saveRuntimeConnection(root, details, runtimeOptions);
+    const supervisor = superviseOpenAiTunnel(
+      tunnelReady,
+      async () => {
+        const recovered = await startOpenAiTunnel();
+        cloudflared = recovered.child;
+        activeTunnelCleanup = recovered.cleanupHealth;
+        return recovered;
+      },
+      (state) => updateRuntimeTransportState(root, runtimeOptions.runtimeGenerationId, state),
+      () => openAiSupervisorStopping
+    );
     await Promise.race([
       holdRuntime(server, details, cleanup, headless),
-      waitForUnexpectedRuntimeExit(cloudflared, cleanup, 'OpenAI tunnel-client')
+      supervisor
     ]);
     return;
   }

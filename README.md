@@ -254,7 +254,7 @@ codexpro settings set --tunnel openai --openai-tunnel-id tunnel_0123456789abcdef
 codexpro start
 ```
 
-Do not paste the runtime API key into chat, commit it, or save it in a workspace profile. `codexpro openai-key save` stores it only in a protected per-user secret file; `CONTROL_PLANE_API_KEY` remains the session-only override. `CONTROL_PLANE_TUNNEL_ID` and `TUNNEL_CLIENT_BIN` are optional environment alternatives for the non-secret tunnel ID/client path.
+Do not paste the runtime API key into chat, commit it, or save it in a workspace profile. `codexpro openai-key save` stores it only in a protected per-user secret file; `CONTROL_PLANE_API_KEY` remains the session-only override. `CONTROL_PLANE_TUNNEL_ID` and `TUNNEL_CLIENT_BIN` are optional environment alternatives for the non-secret tunnel ID/client path. The launcher keeps tunnel-client response forwarding longer than CodexPro's maximum bounded tool call and automatically recovers persistent tunnel-client readiness/process failures by replacing only the tunnel child; the local MCP server and workspace runtime stay in place.
 
 HTTP fallbacks remain available:
 

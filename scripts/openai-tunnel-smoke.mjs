@@ -151,6 +151,8 @@ const argsFile = path.join(fixtureDir, 'tunnel-client-args.json');
 const envFile = path.join(fixtureDir, 'tunnel-client-env.json');
 const duplicateArgsFile = path.join(fixtureDir, 'duplicate-tunnel-client-args.json');
 const duplicateEnvFile = path.join(fixtureDir, 'duplicate-tunnel-client-env.json');
+const launchCountFile = path.join(fixtureDir, 'tunnel-client-launch-count.txt');
+const unhealthyTriggerFile = path.join(fixtureDir, 'tunnel-client-unhealthy.trigger');
 
 const fakeTunnelClient = await writeNodeExecutable(path.join(fixtureDir, 'fake-tunnel-client.mjs'), [
   '#!/usr/bin/env node',
@@ -161,12 +163,21 @@ const fakeTunnelClient = await writeNodeExecutable(path.join(fixtureDir, 'fake-t
   "if (args[0] !== 'run') { console.error('expected run'); process.exit(2); }",
   "fs.writeFileSync(process.env.CODEXPRO_FAKE_TUNNEL_ARGS, JSON.stringify(args));",
   "fs.writeFileSync(process.env.CODEXPRO_FAKE_TUNNEL_ENV, JSON.stringify({ auth: process.env.CODEXPRO_TUNNEL_MCP_AUTH_HEADER, runtimeKeyPresent: Boolean(process.env.CONTROL_PLANE_API_KEY) }));",
+  "const launchCountFile = process.env.CODEXPRO_FAKE_TUNNEL_LAUNCH_COUNT || '';",
+  "let launchCount = 1;",
+  "if (launchCountFile) { try { launchCount = Number(fs.readFileSync(launchCountFile, 'utf8')) + 1 || 1; } catch {} fs.writeFileSync(launchCountFile, String(launchCount)); }",
   "const healthIndex = args.indexOf('--health.url-file');",
   "if (healthIndex < 0 || !args[healthIndex + 1]) process.exit(3);",
-  "const server = http.createServer((req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end(req.url === '/readyz' ? 'ready' : 'live'); });",
-  "server.listen(0, '127.0.0.1', () => { const address = server.address(); fs.writeFileSync(args[healthIndex + 1], `http://127.0.0.1:${address.port}`); });",
-  "process.on('SIGTERM', () => server.close(() => process.exit(0)));",
-  "setInterval(() => {}, 1000);",
+  "const healthUrlFile = args[healthIndex + 1];",
+  "const server = http.createServer((req, res) => {",
+  "  const unhealthy = launchCount === 1 && process.env.CODEXPRO_FAKE_TUNNEL_UNHEALTHY_TRIGGER && fs.existsSync(process.env.CODEXPRO_FAKE_TUNNEL_UNHEALTHY_TRIGGER);",
+  "  if (req.url === '/readyz' && unhealthy) { res.writeHead(503, { 'content-type': 'text/plain' }); res.end('not ready'); return; }",
+  "  if (req.url === '/metrics') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end(`commands_poll_last_successful_timestamp_seconds ${Date.now() / 1000}\n`); return; }",
+  "  res.writeHead(200, { 'content-type': 'text/plain' }); res.end(req.url === '/readyz' ? 'ready' : 'live');",
+  "});",
+  "server.listen(0, '127.0.0.1', () => { const address = server.address(); fs.writeFileSync(healthUrlFile, `http://127.0.0.1:${address.port}`); });",
+  "const healthWatch = setInterval(() => { if (!fs.existsSync(healthUrlFile)) { clearInterval(healthWatch); server.close(() => process.exit(0)); } }, 100);",
+  "process.on('SIGTERM', () => { clearInterval(healthWatch); server.close(() => process.exit(0)); });",
   ''
 ]);
 
@@ -237,6 +248,9 @@ const child = spawn(process.execPath, [
     OPENAI_API_KEY: '',
     CODEXPRO_FAKE_TUNNEL_ARGS: argsFile,
     CODEXPRO_FAKE_TUNNEL_ENV: envFile,
+    CODEXPRO_FAKE_TUNNEL_LAUNCH_COUNT: launchCountFile,
+    CODEXPRO_FAKE_TUNNEL_UNHEALTHY_TRIGGER: unhealthyTriggerFile,
+    CODEXPRO_OPENAI_TUNNEL_HEARTBEAT_MS: '100',
     NO_COLOR: '1'
   },
   stdio: ['pipe', 'pipe', 'pipe']
@@ -271,6 +285,7 @@ try {
     '--mcp.server-url', `channel=main,url=http://127.0.0.1:${port}/mcp`,
     '--mcp.extra-headers', 'Authorization: env:CODEXPRO_TUNNEL_MCP_AUTH_HEADER',
     '--mcp.discovery-extra-headers', 'Authorization: env:CODEXPRO_TUNNEL_MCP_AUTH_HEADER',
+    '--mcp.connection-max-ttl', '65m',
     '--health.listen-addr', '127.0.0.1:0', '--health.url-file'
   ]) {
     if (!joinedArgs.includes(expected)) throw new Error(`tunnel-client argv missing ${expected}: ${JSON.stringify(tunnelArgs)}`);
@@ -280,6 +295,29 @@ try {
     throw new Error(`tunnel-client environment contract mismatch: ${JSON.stringify(tunnelEnv)}`);
   }
 
+  const originalRuntimePid = runtime.runtimePid;
+  await fs.writeFile(unhealthyTriggerFile, 'unhealthy');
+  const recoveryDeadline = Date.now() + 8000;
+  let launchCount = 1;
+  let recoveredRuntime = null;
+  while (Date.now() < recoveryDeadline) {
+    try { launchCount = Number(await fs.readFile(launchCountFile, 'utf8')) || 1; } catch {}
+    if (launchCount >= 2) {
+      try {
+        const candidate = JSON.parse(await fs.readFile(runtimePath, 'utf8'));
+        if (candidate.transportState === 'ready') {
+          recoveredRuntime = candidate;
+          break;
+        }
+      } catch {}
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (launchCount < 2) throw new Error('OpenAI tunnel supervisor did not restart a persistently unhealthy tunnel child');
+  if (!recoveredRuntime) throw new Error('OpenAI tunnel supervisor did not restore ready transport state after recovery');
+  if (child.exitCode !== null) throw new Error('OpenAI tunnel recovery exited the CodexPro launcher');
+  if (recoveredRuntime.runtimePid !== originalRuntimePid) throw new Error('OpenAI tunnel recovery restarted the local MCP server instead of only the tunnel child');
+  if (recoveredRuntime.runtimeGenerationId !== runtime.runtimeGenerationId) throw new Error('OpenAI tunnel recovery changed the CodexPro runtime generation');
   const duplicatePort = await getFreePort();
   const duplicate = spawn(process.execPath, [
     'scripts/codexpro.mjs', 'start', '--root', duplicateRoot, '--no-profile', '--headless',
@@ -309,7 +347,7 @@ try {
 
   const alternateTunnelId = 'tunnel_fedcba9876543210fedcba9876543210';
   const alternatePort = await getFreePort();
-  const alternate = spawn(process.execPath, ['scripts/codexpro.mjs', 'start', '--root', duplicateRoot, '--no-profile', '--headless', '--tunnel', 'openai', '--openai-tunnel-id', alternateTunnelId, '--tunnel-client', fakeTunnelClient, '--port', String(alternatePort), '--token', token, '--no-copy-url'], { cwd: path.resolve('.'), env: { ...env, CODEXPRO_FAKE_TUNNEL_ARGS: duplicateArgsFile, CODEXPRO_FAKE_TUNNEL_ENV: duplicateEnvFile, NO_COLOR: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
+  const alternate = spawn(process.execPath, ['scripts/codexpro.mjs', 'start', '--root', duplicateRoot, '--no-profile', '--tunnel', 'openai', '--openai-tunnel-id', alternateTunnelId, '--tunnel-client', fakeTunnelClient, '--port', String(alternatePort), '--token', token, '--no-copy-url'], { cwd: path.resolve('.'), env: { ...env, CODEXPRO_FAKE_TUNNEL_ARGS: duplicateArgsFile, CODEXPRO_FAKE_TUNNEL_ENV: duplicateEnvFile, NO_COLOR: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
   try {
     await waitForJson(await runtimeStatusPath(duplicateRoot, home), (data) => data.tunnel === 'openai' && data.endpoint === alternateTunnelId, 'distinct OpenAI tunnel runtime');
     if (child.exitCode !== null) throw new Error('distinct tunnel runtime disrupted the original runtime');
@@ -345,7 +383,7 @@ try {
 const reusePort = await getFreePort();
 const reuseRuntimePath = await runtimeStatusPath(duplicateRoot, home);
 const reuse = spawn(process.execPath, [
-  'scripts/codexpro.mjs', 'start', '--root', duplicateRoot, '--no-profile', '--headless',
+  'scripts/codexpro.mjs', 'start', '--root', duplicateRoot, '--no-profile',
   '--tunnel', 'openai', '--openai-tunnel-id', tunnelId, '--tunnel-client', fakeTunnelClient,
   '--port', String(reusePort), '--token', token, '--no-copy-url'
 ], {
