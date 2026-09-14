@@ -11,13 +11,13 @@ CodexPro Full is the `PracticalSwan/codexpro` fork. The installed command is sti
 Use the GitHub Release artifact when you want the latest tagged/stable build:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.4/codexpro-full-0.32.4.tgz
 codexpro --version
 ```
 
 ### Latest `main`
 
-`main` can contain verified fixes listed under **Unreleased** before the next GitHub Release is tagged. Current `main` is post-0.32.3 and includes the long-lived OpenAI tunnel heartbeat/child-recovery fix, which is not in the tagged 0.32.3 artifact. Build from source when you specifically need those changes:
+`main` can contain verified fixes listed under **Unreleased** after a GitHub Release is tagged. Stable **0.32.4 already includes the long-lived OpenAI tunnel heartbeat/child-recovery fix and the current continuity/isolation hardening.** Build from source only when you specifically need later Unreleased changes:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -27,7 +27,7 @@ git pull --ff-only origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.4.tgz
 codexpro --version
 ```
 
@@ -103,7 +103,7 @@ When `open_workspace` returns a `workspace_id`, keep using that ID explicitly af
 
 ## 6. Recommended: multiple ChatGPT sessions, multiple projects
 
-For most users, run **one CodexPro runtime** and allow every project you want that runtime to serve. If the multi-session/isolation fixes are still listed under **Unreleased** in `CHANGELOG.md`, install current `main` rather than the older tagged artifact.
+For most users, run **one CodexPro runtime** and allow every project you want that runtime to serve. Stable 0.32.4 includes the current multi-session/isolation fixes. If later changes are listed under **Unreleased** in `CHANGELOG.md`, use current `main` only when you specifically need those newer changes.
 
 Example:
 
@@ -197,7 +197,7 @@ codexpro doctor
 codexpro settings show
 ```
 
-Confirm only one live CodexPro launcher owns a given OpenAI tunnel ID. With current `main`, duplicate ownership is rejected before takeover. Current post-0.32.3 `main` also heartbeats the active tunnel after startup and automatically replaces only the tunnel-client child if it exits or remains not-ready; the local MCP runtime stays in place.
+Confirm only one live CodexPro launcher owns a given OpenAI tunnel ID. In 0.32.4 and later, duplicate tunnel ownership is rejected before takeover. The launcher also heartbeats the active tunnel after startup and automatically replaces only the tunnel-client child if it exits or remains not-ready; the local MCP runtime stays in place.
 
 ## 9. Safe defaults to keep
 
@@ -220,7 +220,7 @@ git pull --ff-only origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.4.tgz
 codexpro --version
 codexpro doctor
 ```

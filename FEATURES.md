@@ -2,7 +2,7 @@
 
 CodexPro Full is PracticalSwan's independently maintained CodexPro fork. It keeps the `codexpro` CLI and MCP compatibility while adding the 0.31–0.32 agentic, continuity, safety, code-intelligence, artifact, and Durable Goal features. The release package is `codexpro-full`; installing it still provides the `codexpro` CLI.
 
-> **Release status:** the latest tagged stable artifact is **0.32.3**. This guide follows current `main`, which is post-0.32.3 and may include verified items listed under **Unreleased** that are not yet in the tagged tarball.
+> **Release status:** the latest tagged stable artifact is **0.32.4**. This guide describes the 0.32.4 release line; current `main` may later contain verified items listed under **Unreleased** before the next tag.
 
 > Repository: `https://github.com/PracticalSwan/codexpro`
 > Upstream lineage: `https://github.com/rebel0789/codexpro`
@@ -195,7 +195,7 @@ CodexPro always has built-in lexical/repository analysis. Optional providers add
 | CodeGraph sync | `codegraph_sync` | Run only when the index is stale and explicit sync is appropriate. |
 | LSP adapter | optional | Available only when explicitly configured and enabled. |
 
-CodexPro 0.32.3 supports CodeGraph 1.6.x, including Windows npm-shim execution without generic shell interpolation. Provider readiness is workspace-specific: an installed but uninitialized CodeGraph workspace is reported unavailable, while built-in analysis remains usable without that index.
+CodexPro 0.32.4 supports CodeGraph 1.6.x, including Windows npm-shim execution without generic shell interpolation. Provider readiness is workspace-specific: an installed but uninitialized CodeGraph workspace is reported unavailable, while built-in analysis remains usable without that index.
 
 ## 11. Codex session navigation
 
@@ -301,7 +301,7 @@ They provide compact UI for selected high-signal results while raw reads/searche
 
 ## 17. Tunnels and remote connection options
 
-CodexPro's primary ChatGPT transport is OpenAI Secure MCP Tunnel. The launcher supervises the official `tunnel-client`, keeps the local MCP server on loopback with CodexPro bearer authentication intact, injects that bearer value through an environment reference rather than argv, and requires tunnel-client `/readyz` before reporting ready. On current post-0.32.3 `main`, CodexPro aligns tunnel-client response forwarding with its own bounded tool-call window (60-minute maximum plus a five-minute transport margin) and heartbeats the tunnel after startup; persistent readiness failure restarts only the tunnel-client child with bounded backoff while the local MCP server and runtime generation remain stable. This recovery behavior is not part of the tagged 0.32.3 artifact.
+CodexPro's primary ChatGPT transport is OpenAI Secure MCP Tunnel. The launcher supervises the official `tunnel-client`, keeps the local MCP server on loopback with CodexPro bearer authentication intact, injects that bearer value through an environment reference rather than argv, and requires tunnel-client `/readyz` before reporting ready. In **0.32.4 and later**, CodexPro aligns tunnel-client response forwarding with its own bounded tool-call window (60-minute maximum plus a five-minute transport margin) and heartbeats the tunnel after startup; persistent readiness failure restarts only the tunnel-client child with bounded backoff while the local MCP server and runtime generation remain stable.
 
 ```text
 OpenAI Secure MCP Tunnel (default for new/no-profile start)
@@ -324,7 +324,7 @@ codexpro tailscale --hostname your-device.your-tailnet.ts.net
 codexpro start --tunnel none
 ```
 
-The OpenAI runtime key is read from `CONTROL_PLANE_API_KEY` (or the official client's `OPENAI_API_KEY` fallback) and is never persisted by CodexPro. Public/non-loopback HTTP fallback use should keep CodexPro authentication enabled.
+The OpenAI runtime key may be stored locally through the masked `codexpro openai-key save` flow in CodexPro's protected per-user secret file, or supplied for one session through `CONTROL_PLANE_API_KEY` (with the official client's `OPENAI_API_KEY` fallback). It is never written to workspace profiles. Public/non-loopback HTTP fallback use should keep CodexPro authentication enabled.
 
 ## 18. Practical Full Access profile
 

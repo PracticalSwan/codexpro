@@ -85,7 +85,7 @@ Use CodexPro. Run bash with pwd, then run bash with a blocked command. Report bo
 
 ## Onboarding Gate
 
-Fresh-user setup should work from the GitHub Release artifact (`https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz`) or a verified source checkout. The upstream `npx codexpro@latest` path is not a fork release channel.
+Fresh-user setup should work from the GitHub Release artifact (`https://github.com/PracticalSwan/codexpro/releases/download/v0.32.4/codexpro-full-0.32.4.tgz`) or a verified source checkout. The upstream `npx codexpro@latest` path is not a fork release channel.
 
 The terminal must clearly show:
 

@@ -12,14 +12,14 @@ CodexPro Full uses the independent distribution package **`codexpro-full`** whil
 
 使用当前能创建或连接自定义 MCP App 的 ChatGPT 账号和 Web 界面。OpenAI 当前文档说明：包含写入和修改操作的完整 MCP 目前面向 Business、Enterprise 和 Edu；Pro 目前可以连接 read/fetch 权限的 MCP App。Beta 期间可用范围、界面标签和权限可能变化，请以当前 ChatGPT Apps / Developer mode 设置为准。
 
-CodexPro 不解锁 Plugins，不解锁模型，不绕过账号限制，也不提供账号访问。它只连接你自己的 ChatGPT Plugins 界面和你自己的本地仓库。
+CodexPro 不解锁自定义 MCP App，不解锁模型，不绕过账号限制，也不提供账号访问。它只连接你账号当前可用的 ChatGPT MCP/App 界面和你自己的本地仓库。
 
 ## CodexPro Full install
 
 Recommended GitHub Release install:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.4/codexpro-full-0.32.4.tgz
 ```
 
 Or build from the PracticalSwan source checkout:
@@ -31,10 +31,10 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.4.tgz
 ```
 
-Then run `codexpro setup` in the workspace you want ChatGPT to access. Daily startup is `codexpro start`. The tagged tarball is stable 0.32.3; current `main` is post-0.32.3 and includes verified Unreleased fixes such as long-lived OpenAI tunnel recovery. Upstream `codexpro@latest` is not the fork release.
+Then run `codexpro setup` in the workspace you want ChatGPT to access. Daily startup is `codexpro start`. The tagged tarball is stable 0.32.4 and includes the verified long-lived OpenAI tunnel recovery and current continuity/isolation fixes. Upstream `codexpro@latest` is not the fork release.
 
 ## CodexPro Full update
 
@@ -46,7 +46,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.4.tgz
 codexpro --version
 ```
 
@@ -58,7 +58,7 @@ Restart `codexpro start` afterward. Saved profiles under `~/.codexpro` remain in
 
 ChatGPT 网页版 Agent 适合浏览、网页研究和通用网页任务。默认情况下，它不能打开你电脑上的本地 Git 仓库，不能读 `AGENTS.md`，不能看当前分支/`git diff`，也不能在你批准的本地工作区内做受控编辑或跑本地验证命令。
 
-CodexPro 是本地 MCP bridge：用你自己的 ChatGPT 会话，通过 Plugins 连接你电脑上明确允许的仓库。Developer mode 只是创建自定义插件所需的设置开关。它不是网页 Agent 的替代品，也不绕过账号限制，更不是远程 shell 服务。
+CodexPro 是本地 MCP bridge：用你自己的 ChatGPT 会话，通过自定义 MCP App/连接访问你电脑上明确允许的仓库。Developer mode 只是启用该自定义 App 工作流所需的设置开关。它不是网页 Agent 的替代品，也不绕过账号限制，更不是远程 shell 服务。
 
 网页工作用网页 Agent；本地仓库是事实来源时用 CodexPro。
 
@@ -94,7 +94,7 @@ Business / Enterprise / Edu
 -> 可能需要 workspace 管理员先启用 Developer mode / custom apps
 ```
 
-创建 Plugin 时填写：
+创建自定义 MCP App/连接时填写：
 
 ```text
 Name: CodexPro
@@ -225,11 +225,11 @@ OpenAI Tunnel 模式先运行 `codexpro doctor`。如果 doctor 报告 tunnel ID
 
 ## CodexPro 运行很久后 OpenAI Tunnel 失效，会自动恢复吗？
 
-当前 post-0.32.3 的 `main` 会自动恢复。CodexPro 会让官方 tunnel-client 的 response-forwarding TTL 长于 CodexPro 最大 bounded synchronous call（60 分钟加 5 分钟传输余量），启动后持续检查 `/readyz`，并监控 tunnel 子进程。
+**0.32.4 及后续版本**会自动恢复。CodexPro 会让官方 tunnel-client 的 response-forwarding TTL 长于 CodexPro 最大 bounded synchronous call（60 分钟加 5 分钟传输余量），启动后持续检查 `/readyz`，并监控 tunnel 子进程。
 
 如果 tunnel 子进程退出，或连续达到 not-ready 失败阈值，CodexPro 会把 runtime transport 标记为 unavailable，只替换 **tunnel-client 子进程**，使用有上限的退避重试；新子进程通过 `/readyz` 后才恢复 ready。Local MCP server、runtime generation、workspace selection、bearer auth 边界和 tunnel lease 都保持不变。
 
-这个恢复机制**不在**已发布的 0.32.3 稳定制品中；在包含该修复的新版本发布前，需要从当前 `main` 构建。
+这个恢复机制已经包含在 **0.32.4** 稳定制品中。
 
 ## ChatGPT 创建 connector 时显示 “Something went wrong” 怎么办？
 
@@ -244,7 +244,7 @@ codexpro connection-test --root /path/to/repo
 这个模式保留 `read`、`tree`、`search` 和 `load_skill`，关闭文件写入、bash
 和 tool cards，并记录请求是否到达本地 MCP endpoint。在 ChatGPT 的 Apps / Developer mode 自定义 MCP 连接界面（不同 plan/client 标签可能不同）创建 HTTP fallback 连接，粘贴完整 Server URL，并选择匹配的认证方式。
 
-- 没有 `POST /mcp received`：请求没有到达 CodexPro，检查 ChatGPT Plugins 页面和 tunnel。
+- 没有 `POST /mcp received`：请求没有到达 CodexPro，检查 ChatGPT 自定义 App/MCP 连接界面和 tunnel。
 - `POST /mcp -> 401`：请粘贴包含 `codexpro_token` 的完整 URL。
 - `POST /mcp -> 2xx`：ChatGPT 已到达 CodexPro，MCP endpoint 也已响应。
 
@@ -309,8 +309,8 @@ codexpro settings set --clear-projects
 项目选择按 MCP session 隔离，但 ChatGPT conversation 不保证和 MCP session 一一对应。需要严格隔离、两个 ChatGPT 账号、或两个 ngrok 域名时，请跑两个 CodexPro 进程，并用不同本地端口和不同公网 hostname：
 
 ```text
-repo A: port 8787, hostname A, ChatGPT plugin URL A
-repo B: port 8788, hostname B, ChatGPT plugin URL B
+repo A: port 8787, hostname A, ChatGPT MCP connection A
+repo B: port 8788, hostname B, ChatGPT MCP connection B
 ```
 
 分别在两个仓库里运行 `codexpro setup` 并保存 profile。不要把同一个 Server URL 给两个账号共用。
@@ -335,7 +335,7 @@ Public documentation is published at `https://practicalswan.github.io/codexpro/`
 
 ## CodexPro 是否违反服务条款？
 
-CodexPro 使用 ChatGPT 的官方 Plugins + MCP 接入路径，让你自己的 ChatGPT 会话连接到你自己的本地工具。Developer mode 只是创建自定义插件所需的设置开关。
+CodexPro 使用 ChatGPT 的官方 MCP / custom app 接入路径，让你自己的 ChatGPT 会话连接到你自己的本地工具。Developer mode 只是启用自定义 MCP App 所需的设置开关。
 
 它不绕过限制，不抓取隐藏接口，不共享账号，不转售模型，不伪造请求来源，也不把第三方模型包装成别的模型。
 

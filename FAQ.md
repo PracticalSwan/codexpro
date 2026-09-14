@@ -14,7 +14,7 @@ The fork is distributed independently as **`codexpro-full`**, while the installe
 
 Use a ChatGPT account and web surface that can create or connect custom MCP apps. OpenAI's current documentation says full MCP, including write/modify actions, is available to Business and Enterprise/Edu, while Pro can connect MCP apps with read/fetch permissions. Availability, UI labels, and permissions can change during the beta, so check the current ChatGPT Apps / Developer mode controls for your plan.
 
-CodexPro does not unlock Plugins, unlock models, bypass account limits, or provide account access. It connects to the ChatGPT plugin surface your account already has.
+CodexPro does not unlock custom MCP apps, unlock models, bypass account limits, or provide account access. It connects only to the ChatGPT MCP/app surface your account already has.
 
 Plan access and model tool support are separate, and availability can change. If CodexPro actions are unavailable in that chat, use another tool-capable ChatGPT surface or the Pro context fallback for that session.
 
@@ -30,7 +30,7 @@ install -> setup in a repo -> connect the OpenAI Tunnel ID in ChatGPT -> inspect
 
 The main differences are:
 
-- CodexPro is ChatGPT Plugins + MCP first, not a generic workspace bridge.
+- CodexPro is ChatGPT custom MCP app + MCP first, not a generic workspace bridge.
 - Bash, write/edit, tool mode, Codex session reads, and handoff execution are separate safety controls.
 - Durable context is repo-backed through `AGENTS.md` and `.ai-bridge/*`, so important project memory stays reviewable in files.
 - The normal workflow emphasizes diffs, `show_changes`, smoke tests, and handoff status files.
@@ -83,10 +83,10 @@ For the full first-time setup, OpenAI tunnel/key steps, and multi-project exampl
 Install the latest tagged/stable artifact directly from GitHub Releases:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.4/codexpro-full-0.32.4.tgz
 ```
 
-If you need fixes listed under **Unreleased** before the next tag is published, build the current post-0.32.3 `main` branch from source. That currently includes long-lived OpenAI tunnel heartbeat/child recovery, which is not in the tagged 0.32.3 tarball:
+Stable **0.32.4 includes the long-lived OpenAI tunnel heartbeat/child recovery and the current continuity/isolation fixes.** If later fixes are listed under **Unreleased** before the next tag, build current `main` from source when you specifically need them:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -95,7 +95,7 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.4.tgz
 ```
 
 Then run setup from the repository you want ChatGPT to work on:
@@ -123,7 +123,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.4.tgz
 codexpro --version
 ```
 
@@ -137,7 +137,7 @@ They solve different jobs.
 
 ChatGPT's web Agent is for browsing, web research, and general web tasks. By default it cannot open a local Git repo on your machine, read `AGENTS.md`, inspect your current branch/`git diff`, run local verification commands, or keep edits inside an allowed workspace.
 
-CodexPro is a local MCP bridge: your ChatGPT session talks to an approved folder on your computer through Plugins. Developer mode is only the ChatGPT settings toggle that lets you create custom plugins. It does not replace the web Agent, bypass account limits, or turn ChatGPT into a remote shell service.
+CodexPro is a local MCP bridge: your ChatGPT session talks to an approved folder on your computer through a custom MCP app/connection. Developer mode is only the ChatGPT setting that enables this custom app workflow. It does not replace the web Agent, bypass account limits, or turn ChatGPT into a remote shell service.
 
 Use the web Agent for web work. Use CodexPro when the source of truth is a local repository.
 
@@ -309,11 +309,11 @@ Cloudflare quick tunnel URLs change on restart. HTTP fallback modes expose a pub
 
 ## Does CodexPro recover the OpenAI tunnel if it fails after running for a while?
 
-On current post-0.32.3 `main`, yes. CodexPro gives the official tunnel-client a response-forwarding TTL longer than CodexPro's maximum bounded synchronous call (60 minutes plus a five-minute transport margin), heartbeats `/readyz` after startup, and watches the tunnel child process.
+Yes, in **0.32.4 and later**. CodexPro gives the official tunnel-client a response-forwarding TTL longer than CodexPro's maximum bounded synchronous call (60 minutes plus a five-minute transport margin), heartbeats `/readyz` after startup, and watches the tunnel child process.
 
 If that child exits or remains not-ready across the failure threshold, CodexPro marks runtime transport unavailable, replaces **only** the tunnel-client child with bounded backoff, and restores `ready` only after the replacement passes `/readyz`. The local MCP server, runtime generation, workspace selection, bearer-auth boundary, and tunnel lease stay in place.
 
-This recovery behavior is **not** in the tagged 0.32.3 stable artifact; build current `main` until a newer release containing it is published.
+This recovery behavior is part of the tagged **0.32.4** stable artifact.
 
 ## Why does ChatGPT show “Something went wrong” when I create a connector?
 
@@ -331,7 +331,7 @@ bash, and tool cards. In ChatGPT, open the custom app/MCP connection UI from App
 The terminal output separates the failure boundary:
 
 - No `POST /mcp received`: the request did not reach CodexPro. Check the ChatGPT
-  Plugins page and the tunnel.
+  custom app/MCP connection UI and the tunnel.
 - `POST /mcp -> 401`: paste the complete URL, including `codexpro_token`.
 - `POST /mcp -> 2xx`: ChatGPT reached CodexPro and the MCP endpoint responded.
 

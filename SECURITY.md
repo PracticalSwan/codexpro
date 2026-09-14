@@ -56,7 +56,7 @@ Review changes against these failure modes before release:
 
 | Failure mode | Expected control |
 | --- | --- |
-| Tunnel path reaches local MCP without intended auth | OpenAI mode keeps MCP loopback-bound and bearer protected; the official tunnel-client injects the bearer from an environment reference. On current `main`, tunnel-child recovery preserves the same local auth boundary, workspace/runtime identity, and launcher-owned tunnel lease. Public/non-loopback HTTP fallbacks fail closed unless a CodexPro token is configured. |
+| Tunnel path reaches local MCP without intended auth | OpenAI mode keeps MCP loopback-bound and bearer protected; the official tunnel-client injects the bearer from an environment reference. In 0.32.4 and later, tunnel-child recovery preserves the same local auth boundary, workspace/runtime identity, and launcher-owned tunnel lease. Public/non-loopback HTTP fallbacks fail closed unless a CodexPro token is configured. |
 | Raw CodexPro, OpenAI runtime, or Cloudflare token appears in UI, argv, logs, docs, profile, or package output | CodexPro tokens are redacted, OpenAI runtime keys stay out of workspace profiles and may be supplied by environment or a protected per-user secret file, tunnel-client receives only a secret reference, and Cloudflare tunnel tokens use local files for persistence. |
 | ChatGPT can edit outside the intended repo | Allowed roots are explicit; path resolution rejects escapes, blocked globs, and symlink traversal. |
 | ChatGPT can run arbitrary shell by default | Bash defaults to safe mode, can be disabled, and full mode is a trusted-local-only choice. Safe mode can still run repo package scripts, so use `--no-bash` for untrusted repos. |
@@ -115,7 +115,7 @@ codexpro start \
   --bash safe
 ```
 
-OpenAI mode keeps the MCP server on loopback, keeps CodexPro bearer authentication enabled, and passes that bearer to the official tunnel-client through an environment reference. The non-secret `tunnel_...` ID and client path may be saved in the workspace profile. A persisted OpenAI runtime API key is stored only in the protected per-user secret file and is passed to tunnel-client by `file:` reference. Persistent runtime keys live only in `~/.codexpro/secrets/openai-runtime-key` with restrictive local permissions. On current post-0.32.3 `main`, launcher-level tunnel supervision may replace an exited or persistently not-ready tunnel-client child while preserving the local MCP runtime/auth boundary; recovery sets transport unavailable until the replacement passes readiness.
+OpenAI mode keeps the MCP server on loopback, keeps CodexPro bearer authentication enabled, and passes that bearer to the official tunnel-client through an environment reference. The non-secret `tunnel_...` ID and client path may be saved in the workspace profile. A persisted OpenAI runtime API key is stored only in the protected per-user secret file and is passed to tunnel-client by `file:` reference. Persistent runtime keys live only in `~/.codexpro/secrets/openai-runtime-key` with restrictive local permissions. In 0.32.4 and later, launcher-level tunnel supervision may replace an exited or persistently not-ready tunnel-client child while preserving the local MCP runtime/auth boundary; recovery sets transport unavailable until the replacement passes readiness.
 
 For stable public hostnames, keep the CodexPro auth token stable but private:
 

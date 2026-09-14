@@ -11,8 +11,8 @@
 <p align="center">
   <a href="https://github.com/PracticalSwan/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/PracticalSwan/codexpro/ci.yml?branch=main&style=flat-square"></a>
   <a href="https://github.com/PracticalSwan/codexpro/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/PracticalSwan/codexpro?style=flat-square"></a>
-  <img alt="Stable release 0.32.3" src="https://img.shields.io/badge/stable-0.32.3-2563eb?style=flat-square">
-  <img alt="Main status post-0.32.3" src="https://img.shields.io/badge/main-post--0.32.3-0f766e?style=flat-square">
+  <img alt="Stable release 0.32.4" src="https://img.shields.io/badge/stable-0.32.4-2563eb?style=flat-square">
+  <img alt="Main release line 0.32.4" src="https://img.shields.io/badge/main-0.32.4-0f766e?style=flat-square">
 </p>
 
 <p align="center">
@@ -29,7 +29,7 @@
 
 `PracticalSwan/codexpro` is the canonical independently maintained fork. It preserves the `codexpro` CLI/MCP/profile compatibility surface while maintaining the 0.31-0.32 feature line. Upstream remains `rebel0789/codexpro` under the existing MIT lineage.
 
-稳定发布版是 **0.32.3**；当前 `main` 已进入 **post-0.32.3**，包含经过验证但尚未发布的新修复，包括长时间 OpenAI Tunnel 自动恢复。
+稳定发布版是 **0.32.4**；当前 `main` 位于 0.32.4 release line。0.32.4 已包含长时间 OpenAI Tunnel 自动恢复、Windows continuity hardening、128-session 容量和 tunnel lease 保护等已验证修复。
 
 CodexPro Full uses the independent distribution package **`codexpro-full`** while the installed CLI remains **`codexpro`**. GitHub Releases are the canonical public release channel. The upstream npm package `codexpro@latest` is not this fork, and `codexpro-full` is not yet published to npm.
 
@@ -46,11 +46,11 @@ ChatGPT 可以读取、搜索、编辑、审查、验证、导入附件，并写
 GitHub Release:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.4/codexpro-full-0.32.4.tgz
 codexpro --version
 ```
 
-上面的 tarball 是稳定版 0.32.3。需要 `CHANGELOG.md` 的 **Unreleased** 修复（包括 Tunnel heartbeat / child recovery）时，从当前 `main` 构建。
+上面的 tarball 是稳定版 0.32.4，并已包含 Tunnel heartbeat / child recovery。只有在明确需要 `CHANGELOG.md` 中 0.32.4 之后新增的 **Unreleased** 项目时，才从当前 `main` 构建。
 
 Source build:
 
@@ -67,7 +67,7 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.4.tgz
 codexpro --version
 ```
 
@@ -77,13 +77,11 @@ codexpro --version
 2. 保持 CSP enforcement 开启（如果当前界面提供该开关），然后打开自定义 App / MCP 连接界面。
 3. 创建名为 `CodexPro` 的自定义 MCP App/连接。
 4. 连接方式优先选择 **Tunnel**，并填写 OpenAI Platform 创建的 `tunnel_...` ID。
-5. 本机 `codexpro start` 会启动并监管官方 `tunnel-client`。当前 `main` 在 tunnel 子进程退出或持续 not-ready 时只替换该子进程，不重启本地 MCP runtime。OpenAI runtime API key 可用 `codexpro openai-key save` 保存到受保护的用户级 secret 文件，或只通过当前会话环境变量提供；不要保存到 workspace profile。
+5. 本机 `codexpro start` 会启动并监管官方 `tunnel-client`。0.32.4 及后续版本在 tunnel 子进程退出或持续 not-ready 时只替换该子进程，不重启本地 MCP runtime。OpenAI runtime API key 可用 `codexpro openai-key save` 保存到受保护的用户级 secret 文件，或只通过当前会话环境变量提供；不要保存到 workspace profile。
 
 OpenAI Tunnel 模式不需要把 CodexPro token 放进 ChatGPT URL。CodexPro 仍在本机 loopback MCP hop 上保持 bearer token 保护，并由 `tunnel-client` 通过环境引用转发该 header。
 
-| 打开 Plugins 并点击 `+` | 填写 New Plugin 表单 |
-| --- | --- |
-| ![打开 Plugins 并点击加号](docs/images/chatgpt-plugins-add.png) | ![填写 New Plugin 表单](docs/images/chatgpt-plugin-details.png) |
+> ChatGPT 的自定义 App / MCP 界面标签会随 plan/client 变化；以当前 Apps / Developer mode 界面为准，选择 Tunnel 并使用与 CodexPro 相同的 `tunnel_...` ID。
 
 同一仓库日常启动：
 
@@ -198,7 +196,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.4.tgz
 codexpro --version
 ```
 

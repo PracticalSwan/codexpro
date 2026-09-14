@@ -11,8 +11,8 @@
 <p align="center">
   <a href="https://github.com/PracticalSwan/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/PracticalSwan/codexpro/ci.yml?branch=main&style=flat-square"></a>
   <a href="https://github.com/PracticalSwan/codexpro/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/PracticalSwan/codexpro?style=flat-square"></a>
-  <img alt="Stable release 0.32.3" src="https://img.shields.io/badge/stable-0.32.3-2563eb?style=flat-square">
-  <img alt="Main status post-0.32.3" src="https://img.shields.io/badge/main-post--0.32.3-0f766e?style=flat-square">
+  <img alt="Stable release 0.32.4" src="https://img.shields.io/badge/stable-0.32.4-2563eb?style=flat-square">
+  <img alt="Main release line 0.32.4" src="https://img.shields.io/badge/main-0.32.4-0f766e?style=flat-square">
 </p>
 
 ## Project status
@@ -22,15 +22,15 @@
 ```text
 Canonical fork: https://github.com/PracticalSwan/codexpro
 Upstream:       https://github.com/rebel0789/codexpro
-Stable release: 0.32.3
-Current main:   post-0.32.3 (verified Unreleased fixes)
+Stable release: 0.32.4
+Current main:   0.32.4 release line
 ```
 
 CodexPro Full uses the independent distribution package **`codexpro-full`** while preserving the installed CLI command **`codexpro`**, MCP protocol, profiles, and workspace model. **GitHub Releases are the canonical public release channel.** The upstream npm package `codexpro` is a different distribution; the `codexpro-full` npm registry package is not published yet.
 
 ## What it is
 
-CodexPro Full is a local MCP server that connects a compatible ChatGPT Plugins session to projects you explicitly allow on your own machine.
+CodexPro Full is a local MCP server that connects a compatible ChatGPT custom MCP app/session to projects you explicitly allow on your own machine.
 
 Depending on the active profile, ChatGPT can:
 
@@ -47,7 +47,7 @@ Depending on the active profile, ChatGPT can:
 - inspect safe ZIP/PDF/OOXML content and export workspace artifacts back to ChatGPT
 - execute opt-in Durable Goals in detached Git worktrees with review/projection authorization
 - use planning-only handoff workflows when direct source editing is not desired
-- on current `main`, supervise the OpenAI tunnel after startup and recover a failed/not-ready tunnel-client child without restarting the local MCP runtime
+- in 0.32.4 and later, supervise the OpenAI tunnel after startup and recover a failed/not-ready tunnel-client child without restarting the local MCP runtime
 
 See **[FEATURES.md](FEATURES.md)** for the complete feature map and short usage examples.
 
@@ -58,11 +58,11 @@ CodexPro Full is not a hosted SaaS service, model proxy, quota bypass, account p
 ### From the GitHub Release
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.3/codexpro-full-0.32.3.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.4/codexpro-full-0.32.4.tgz
 codexpro --version
 ```
 
-This installs the latest tagged/stable artifact. Current `main` is post-0.32.3 and contains verified **Unreleased** fixes that are not in that tarball, including long-lived OpenAI tunnel recovery; build from source when you need those fixes before the next tag.
+This installs the latest tagged/stable artifact. **0.32.4 includes the long-lived OpenAI tunnel recovery, Windows continuity hardening, 128-session capacity, tunnel lease protection, deadline-resilience work, and the other fixes listed in the 0.32.4 changelog.** Build current `main` only when you intentionally need later items listed under **Unreleased**.
 
 ### From a source checkout
 
@@ -73,17 +73,17 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.32.3.tgz
+npm install -g ./codexpro-full-0.32.4.tgz
 codexpro --version
 ```
 
-Expected package version for this branch:
+Expected package version for this release line:
 
 ```text
-0.32.3
+0.32.4
 ```
 
-`main` can be newer than the latest tag while keeping the same package version until the next release; use the Git commit and **Unreleased** changelog entries to distinguish those builds.
+`main` may move ahead of the latest tag after release; use the Git commit and **Unreleased** changelog entries to distinguish later unreleased builds.
 
 For the complete first-time tunnel/key setup and multi-project examples, see **[GETTING_STARTED.md](GETTING_STARTED.md)**.
 
@@ -92,7 +92,7 @@ If you already have a verified fork tarball, install that tarball directly inste
 ### Runtime requirements
 
 - Node.js 20+
-- a ChatGPT surface that can connect to custom MCP plugins
+- a ChatGPT surface that can connect to custom MCP apps/connections
 - the official OpenAI `tunnel-client` plus an OpenAI Platform tunnel/runtime key for the default ChatGPT path; public HTTPS is only needed for HTTP fallback modes
 - Git for Git/Goal features
 - optional CodeGraph 1.6.x or LSP only when those providers are enabled
@@ -107,8 +107,8 @@ If you already have a verified fork tarball, install that tarball directly inste
    ```
 
 2. One time, create an OpenAI Secure MCP Tunnel for the same ChatGPT workspace and provide its `tunnel_...` ID to CodexPro. Run `codexpro openai-key save` once to store the restricted runtime key in CodexPro's protected per-user secret file, or keep using `CONTROL_PLANE_API_KEY` for session-only credentials.
-3. In ChatGPT, enable Developer mode and keep CSP enforcement enabled. Open the custom MCP/plugin connection UI (shown as **Plugins** or **Connectors** depending on the client), choose **Connection: Tunnel**, and select or paste the same Tunnel ID.
-4. Keep CodexPro running while you use the connector. CodexPro launches and supervises the official `tunnel-client`; on current `main`, a failed or persistently not-ready tunnel child is replaced automatically while the local MCP runtime stays in place. The local MCP endpoint remains loopback-only and bearer protected.
+3. In ChatGPT, enable Developer mode and keep CSP enforcement enabled. Open the custom MCP app/connection UI (labels vary by plan/client), choose **Connection: Tunnel**, and select or paste the same Tunnel ID.
+4. Keep CodexPro running while you use the connector. CodexPro launches and supervises the official `tunnel-client`; in 0.32.4 and later, a failed or persistently not-ready tunnel child is replaced automatically while the local MCP runtime stays in place. The local MCP endpoint remains loopback-only and bearer protected.
 5. In chat, start with:
 
    ```text
@@ -119,7 +119,7 @@ For a workspace opened with `open_workspace`, keep its returned `workspace_id`. 
 
 ## Recommended practical Full Access profile
 
-For trusted local repositories, the validated 0.32.3 profile is:
+For trusted local repositories, the validated 0.32.4 profile is:
 
 ```text
 Mode: agent
@@ -330,7 +330,7 @@ Built-in search/analysis always remains available.
 
 Optional providers:
 
-- **CodeGraph**: CodexPro 0.32.3 supports the CodeGraph 1.6.x CLI contract and explicit `codegraph_sync`.
+- **CodeGraph**: CodexPro 0.32.4 supports the CodeGraph 1.6.x CLI contract and explicit `codegraph_sync`.
 - **LSP**: only when separately configured/enabled.
 
 Use `code_intelligence_status` before relying on an optional provider. Do not sync CodeGraph unnecessarily when the index is already current.
