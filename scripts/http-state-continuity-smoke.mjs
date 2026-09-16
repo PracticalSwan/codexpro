@@ -145,7 +145,10 @@ try {
         if (["completed", "failed", "canceled"].includes(asyncStatus.job.state)) break;
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
-      assert.equal(asyncStatus.job.state, "completed");
+      if (asyncStatus.job.state !== "completed") {
+        const output = await callTool(client, "read_job_output", { workspace_id: workspaceId, job_id: asyncVerificationJobId, cursor: 0, max_bytes: 4096 }).catch((error) => ({ read_error: error instanceof Error ? error.message : String(error) }));
+        throw new Error(`async verification job did not complete: ${JSON.stringify({ job: asyncStatus.job, output })}`);
+      }
       assert.equal(asyncStatus.job.result.complete, true);
       assert.equal(asyncStatus.job.result.ok, true);
     } catch (error) { failures.push(`async verification continuity: ${error instanceof Error ? error.message : error}`); }
