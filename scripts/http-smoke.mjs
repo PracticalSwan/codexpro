@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { profileIdForRoot } from '../dist/profileStore.js';
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs/promises';
 import net from 'node:net';
@@ -241,7 +241,7 @@ const runtimeQuerySecret = 'runtimequerysecret1234567890';
 const runtimeAccessSecret = 'runtimeaccesssecret1234567890';
 const runtimeCloudflareSecret = 'eyJhbGciOiJIUzI1NiJ9.eyJ0dW5uZWwiOiJodHRwLXNtb2tlIn0.signature1234567890';
 const staleCloudflareToken = 'eyJhbGciOiJIUzI1NiJ9.eyJ0dW5uZWwiOiJzdGFsZS1odHRwLXNtb2tlIn0.signature1234567890';
-const runtimeId = createHash('sha256').update(root).digest('hex').slice(0, 24);
+const runtimeId = profileIdForRoot(root);
 const realAlternateRoot = await fs.realpath(alternateRoot);
 await fs.mkdir(path.join(profileHome, 'runtime'), { recursive: true });
 await fs.writeFile(path.join(profileHome, 'runtime', `${runtimeId}.json`), JSON.stringify({
