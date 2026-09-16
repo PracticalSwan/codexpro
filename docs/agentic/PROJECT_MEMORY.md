@@ -1,6 +1,6 @@
 # CodexPro Project Memory
 
-Last verified: 2026-09-14 (Asia/Bangkok)
+Last verified: 2026-09-16 (Asia/Bangkok)
 
 ## Canonical workspace
 - Repository: `D:\Side Projects\codexpro`
@@ -78,6 +78,8 @@ The integration branch includes Windows output decoding/runtime fixes, search fa
 - On 2026-09-12, deadline investigation confirmed that `syncCallDeadlineMs` is a per-MCP-call cooperative transport budget, not a cumulative ChatGPT-turn timer. For this operator's observed approximately 25-minute host cutoff, all six saved profiles now use 22 minutes (`1,320,000` ms) while the package default remains 20 minutes; model/admin guidance requires proactive semantic checkpoints before long/high-variance phases when continuation is enabled, and states explicitly that continuation-disabled runtimes do not auto-save semantic checkpoints.
 
 ## Verification baseline
+
+- On 2026-09-16, current upstream `main` was freshly fetched at `d66a2503621fca5b6dd732786a26be855f2c979c` (merged PR #131). The fork reconciles that recovery/handoff/cross-platform hardening semantically rather than wholesale-merging the divergent upstream line: explicit Windows Bash runtime/Git selection, default-blocked standard handoff Git/GitHub remote mutations with explicit opt-in, interruption/orphan-aware handoff receipts, bounded HTTP request correlation/auth-failure telemetry, and diagnostic path labeling are integrated while preserving CodexPro Full's stronger per-workspace policy/continuity seams. Final local verification passed `npm run build`, the complete `npm run smoke`, `npm run stress`, `npm audit --audit-level=high` with 0 vulnerabilities, `npm run release:pack`, documentation/link/status checks, UTF-8/public-doc checks, private/secret diff scan, and `git diff --check`. The protected running 0.32.4 runtime remained untouched throughout (launcher PID 26840, HTTP PID 34444, OpenAI tunnel PID 12476, port 8787; unrelated tunnel PID 29252 also remained alive); source `main` is post-0.32.4/Unreleased and the global installation intentionally remains the stable 0.32.4 artifact until a later authorized lifecycle replacement.
 
 - On 2026-09-14, public release `v0.32.4` was published from verified tag target `da3b667e165491bb20fbc5388d66f5bf24dbba89`. Pre-tag CI run `34854430075` passed Windows Node 24 smoke, Ubuntu Node 20 smoke, and Release Integrity; Pages run `34854428433` passed. Tag-triggered Release run `34855576837` passed its full release gate and created GitHub Release `388463137` with `codexpro-full-0.32.4.tgz` plus SHA-256 sidecar. Canonical tarball SHA-256 is `29054220f73720ce16ad3e5e981d00e6942875872eeaf2489209f69e49130c6a`; it matched the GitHub asset digest and sidecar, and a disposable public-URL install reported `0.32.4`. The live Pages site serves the 0.32.4 install command and tunnel-recovery documentation. The exact public artifact was installed globally under Node 22; critical packaged-file hashes matched the artifact, all six saved profiles retained the 22-minute deadline with continuation and Telegram disabled, the user-global staged-commit safety hook remained enabled while the package default stayed off, and the authorized CSX4213 runtime restart came up on port 8787 with CSX4207/CSX4201 additional roots, OpenAI tunnel `/readyz` 200 `ready`, and `--mcp.connection-max-ttl 65m`; the unrelated tunnel-client process remained untouched.
 

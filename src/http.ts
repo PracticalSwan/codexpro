@@ -29,6 +29,7 @@ import { JobStore } from "./jobs/store.js";
 import { GoalStore } from "./goals/store.js";
 import { BatchStore } from "./batches/store.js";
 import { diagnosticsSnapshot } from "./diagnosticsOps.js";
+import { redactConfigPaths } from "./pathLabels.js";
 import { WorkspaceRegistry } from "./guard.js";
 import { BrowserPairingStore } from "./continuation/browserAuth.js";
 import { browserProfileStatus, existingManagedBrowserProfile, writeBrowserProfileMetadata } from "./continuation/browserProfile.js";
@@ -557,6 +558,9 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
     ...(token ? { token } : {}),
     ...(cloudflareToken ? { cloudflareToken } : {}),
     bash: next.bash,
+    ...(existing.bashRuntime === "native-bash" || existing.bashRuntime === "wsl" ? { bashRuntime: existing.bashRuntime } : {}),
+    ...(typeof existing.bashExecutable === "string" && existing.bashExecutable ? { bashExecutable: existing.bashExecutable } : {}),
+    ...(typeof existing.gitExecutable === "string" && existing.gitExecutable ? { gitExecutable: existing.gitExecutable } : {}),
     ...(next.bashTranscript !== "compact" ? { bashTranscript: next.bashTranscript } : {}),
     ...(next.codexSessions !== "off" ? { codexSessions: next.codexSessions } : {}),
     ...(next.codexDir ? { codexDir: next.codexDir } : {}),
@@ -600,6 +604,9 @@ function profileResponse(config: CodexProConfig): Record<string, unknown> {
       defaultRoot: config.defaultRoot,
       port: config.port,
       bashMode: config.bashMode,
+      bashRuntime: config.bashRuntime,
+      bashExecutable: config.bashExecutable ?? "",
+      gitExecutable: config.gitExecutable ?? "",
       bashTranscript: config.bashTranscript,
       codexSessions: config.codexSessions,
       writeMode: config.writeMode,
@@ -2003,15 +2010,26 @@ async function main(): Promise<void> {
     next();
   }
 
+  function requestCorrelationId(req: Request): string | undefined {
+    const value = (req as Request & { codexproRequestId?: string }).codexproRequestId;
+    return typeof value === "string" ? value : undefined;
+  }
+
   app.use((req, res, next) => {
-    if (!logRequests) {
-      next();
-      return;
-    }
+    const incomingRequestId = Array.isArray(req.headers["x-codexpro-request-id"])
+      ? req.headers["x-codexpro-request-id"][0]
+      : req.headers["x-codexpro-request-id"];
+    const requestId = typeof incomingRequestId === "string" && /^[A-Za-z0-9._:-]{1,96}$/.test(incomingRequestId)
+      ? incomingRequestId
+      : randomUUID();
+    (req as Request & { codexproRequestId?: string }).codexproRequestId = requestId;
+    res.setHeader("X-CodexPro-Request-Id", requestId);
+    if (req.path === "/mcp") telemetry.record({ stage: "request_arrival", status: "ok", backend: "http", entityId: requestId });
+    if (!logRequests) { next(); return; }
     const started = Date.now();
-    console.error(`[CodexPro] ${req.method} ${req.path} received`);
+    console.error(`[CodexPro] ${req.method} ${req.path} received request_id=${requestId}`);
     res.on("finish", () => {
-      console.error(`[CodexPro] ${req.method} ${req.path} -> ${res.statusCode} ${Date.now() - started}ms`);
+      console.error(`[CodexPro] ${req.method} ${req.path} -> ${res.statusCode} ${Date.now() - started}ms request_id=${requestId}`);
     });
     next();
   });
@@ -2044,6 +2062,11 @@ async function main(): Promise<void> {
       return;
     }
 
+    const authRequestId = requestCorrelationId(req);
+    telemetry.record({
+      stage: "backend", status: "degraded", backend: "http", event: "auth_failure",
+      ...(authRequestId ? { entityId: authRequestId } : {})
+    });
     const now = Date.now();
     const key = req.ip || req.socket.remoteAddress || "local";
     const current = authFailureWindow.get(key);
@@ -2068,19 +2091,19 @@ async function main(): Promise<void> {
 
   app.use((req, res, next) => {
     if (req.path !== "/mcp") { next(); return; }
-    telemetry.record({ stage: "request_arrival", status: "ok", backend: "http" });
+    const requestId = requestCorrelationId(req);
     let finished = false;
     res.on("finish", () => {
       finished = true;
-      telemetry.record({ stage: "response", status: res.statusCode >= 500 ? "error" : "ok", backend: "http" });
+      telemetry.record({ stage: "response", status: res.statusCode >= 500 ? "error" : "ok", backend: "http", ...(requestId ? { entityId: requestId } : {}) });
     });
     res.on("close", () => {
       if (finished) return;
       if (req.method === "GET") {
-        telemetry.record({ stage: "response", status: res.statusCode >= 500 ? "error" : "ok", backend: "http", sessionState: "stream_closed" });
+        telemetry.record({ stage: "response", status: res.statusCode >= 500 ? "error" : "ok", backend: "http", sessionState: "stream_closed", ...(requestId ? { entityId: requestId } : {}) });
         return;
       }
-      telemetry.record({ stage: "response", status: "error", backend: "http", errorBoundary: "response closed before finish" });
+      telemetry.record({ stage: "response", status: "error", backend: "http", errorBoundary: "response closed before finish", ...(requestId ? { entityId: requestId } : {}) });
     });
     next();
   });
@@ -2187,7 +2210,7 @@ async function main(): Promise<void> {
     const continuation = await continuationAdminResponse(config) as any;
     const continuationTaskCount = Number.isInteger(continuation.ambiguous_active_tasks) ? Number(continuation.ambiguous_active_tasks) : continuation.task ? 1 : 0;
     const continuationState = String(continuation.task?.state ?? "");
-    res.json(diagnosticsSnapshot(
+    const snapshot = diagnosticsSnapshot(
       config, telemetry.snapshot(), latestRegisteredTools, toolNamesForMode(config), transports.size,
       {
         savedDeadlineMode: saved.syncCallDeadlineMode, savedDeadlineMs: saved.syncCallDeadlineMinutes * 60_000, activeStructuredJobs,
@@ -2209,7 +2232,8 @@ async function main(): Promise<void> {
         runtimeDeadlineMs: Number(continuation.runtime?.deadline?.ms ?? config.syncCallDeadlineMs),
         runtimeTransportState: String(continuation.runtime?.transport ?? "unknown")
       }
-    ));
+    );
+    res.json(redactConfigPaths(config, snapshot, { labelUnknownPaths: true }));
   });
 
   app.get("/admin/profile", (_req, res) => {
@@ -2293,6 +2317,7 @@ async function main(): Promise<void> {
   });
 
   app.post("/mcp", express.json({ limit: "20mb" }), async (req, res) => {
+    const requestId = requestCorrelationId(req);
     try {
       const sessionId = requestSessionId(req);
       let transport: NodeStreamableHTTPServerTransport;
@@ -2336,11 +2361,11 @@ async function main(): Promise<void> {
       }
 
       const dispatchStarted = Date.now();
-      telemetry.record({ stage: "dispatch", status: "ok", backend: "http" });
+      telemetry.record({ stage: "dispatch", status: "ok", backend: "http", ...(requestId ? { entityId: requestId } : {}) });
       await transport.handleRequest(req, res, req.body);
-      telemetry.record({ stage: "completion", status: "ok", backend: "http", durationMs: Date.now() - dispatchStarted });
+      telemetry.record({ stage: "completion", status: "ok", backend: "http", durationMs: Date.now() - dispatchStarted, ...(requestId ? { entityId: requestId } : {}) });
     } catch (error) {
-      telemetry.record({ stage: "completion", status: "error", backend: "http", errorBoundary: error instanceof Error ? error.message : String(error) });
+      telemetry.record({ stage: "completion", status: "error", backend: "http", errorBoundary: error instanceof Error ? error.message : String(error), ...(requestId ? { entityId: requestId } : {}) });
       console.error(error instanceof Error ? error.stack ?? error.message : String(error));
       if (!res.headersSent) {
         res.status(500).json({
@@ -2353,6 +2378,7 @@ async function main(): Promise<void> {
   });
 
   const handleSessionRequest = async (req: express.Request, res: express.Response) => {
+    const requestId = requestCorrelationId(req);
     const sessionId = requestSessionId(req);
     const transport = getTransport(sessionId);
     if (!transport) {
@@ -2360,13 +2386,13 @@ async function main(): Promise<void> {
       return;
     }
     const dispatchStarted = Date.now();
-    telemetry.record({ stage: "dispatch", status: "ok", backend: "http" });
+    telemetry.record({ stage: "dispatch", status: "ok", backend: "http", ...(requestId ? { entityId: requestId } : {}) });
     try {
       await transport.handleRequest(req, res);
       if (req.method === "DELETE" && sessionId) transports.delete(sessionId);
-      telemetry.record({ stage: "completion", status: "ok", backend: "http", durationMs: Date.now() - dispatchStarted });
+      telemetry.record({ stage: "completion", status: "ok", backend: "http", durationMs: Date.now() - dispatchStarted, ...(requestId ? { entityId: requestId } : {}) });
     } catch (error) {
-      telemetry.record({ stage: "completion", status: "error", backend: "http", errorBoundary: error instanceof Error ? error.message : String(error) });
+      telemetry.record({ stage: "completion", status: "error", backend: "http", errorBoundary: error instanceof Error ? error.message : String(error), ...(requestId ? { entityId: requestId } : {}) });
       throw error;
     }
   };

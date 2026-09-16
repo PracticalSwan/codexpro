@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { BashMode, BashTranscriptMode, CodexSessionsMode, ToolMode, WriteMode } from "./config.js";
+import type { BashMode, BashRuntimePreference, BashTranscriptMode, CodexSessionsMode, ToolMode, WriteMode } from "./config.js";
 import { expandHome } from "./config.js";
 import type { SyncCallDeadlineMode } from "./deadline.js";
 import { normalizeContinuationSettings, type ContinuationBrowser } from "./continuation/settings.js";
@@ -30,6 +30,9 @@ export interface WorkspaceProfile {
   cloudflareToken?: string;
   token?: string;
   bash?: BashMode | string;
+  bashRuntime?: BashRuntimePreference | string;
+  bashExecutable?: string;
+  gitExecutable?: string;
   bashTranscript?: BashTranscriptMode | string;
   codexSessions?: CodexSessionsMode | string;
   codexDir?: string;

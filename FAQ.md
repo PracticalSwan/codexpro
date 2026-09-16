@@ -245,14 +245,22 @@ Use `CODEXPRO_WRITE_MODE=off` when you want direct `write` and `edit` tools remo
 
 For Windows-native workspaces, CodexPro prefers Git for Windows Bash when it is installed. It does not silently auto-select `C:\Windows\System32\bash.exe`, because that executable launches WSL and can expose a different Git, Node, npm, path model, and filesystem runtime from the native CodexPro process.
 
-To choose a Bash executable explicitly, set an absolute path before starting CodexPro:
+Current `main` has an explicit runtime selector. `auto` keeps the Windows-native preference, `native-bash` requires a native Bash, and `wsl` is the explicit WSL opt-in:
 
 ```powershell
+$env:CODEXPRO_BASH_RUNTIME = 'auto'       # auto | native-bash | wsl
 $env:CODEXPRO_BASH_EXECUTABLE = 'C:\Program Files\Git\bin\bash.exe'
+$env:CODEXPRO_GIT_EXECUTABLE = 'C:\Program Files\Git\cmd\git.exe'
 codexpro start
 ```
 
-An explicit WSL launcher path is treated as an opt-in rather than an automatic fallback. `server_config` and `codexpro_self_test` report the selected Bash runtime, dedicated Git runtime, shell-visible toolchain, and whether search is using ripgrep or the Node fallback.
+With `CODEXPRO_BASH_RUNTIME=wsl`, CodexPro invokes WSL explicitly as `wsl.exe --exec bash -lc ...`; auto mode never silently turns a Windows-native workspace into a WSL execution environment. `server_config` and `codexpro_self_test` report the selected Bash runtime, dedicated Git runtime, shell-visible toolchain, and whether search is using ripgrep or the Node fallback.
+
+## What happens if a local handoff is interrupted or tries to push remotely?
+
+On current `main`, `execute-handoff`, `watch-handoff`, and `loop-handoff` treat remote publication as a separate side effect. Standard Git/GitHub remote mutations are blocked in the guarded executor environment by default, inherited `GH_TOKEN` / `GITHUB_TOKEN` values are removed, and an authorized workflow must opt in with `--allow-remote-mutations`. This is a guard around standard `git` / `gh` paths, not a substitute for reviewing arbitrary custom executors.
+
+Handoff receipts record the parent and child PIDs. A parent signal first records `interrupting`, then `interrupted` only after child teardown. If `wait_for_handoff` sees an old `running` / `interrupting` receipt whose recorded processes are gone, it reports `orphaned`. Interrupted/orphaned results require reconciliation: inspect Git and the target system before retrying a material operation because its external outcome may be ambiguous.
 
 ## Can CodexPro bind bash to a specific session id?
 

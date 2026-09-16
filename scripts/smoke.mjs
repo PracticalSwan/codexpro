@@ -311,6 +311,13 @@ if (diagnosticConfig.structuredContent.executionBackend !== 'host' || diagnostic
 if (process.platform === 'win32' && diagnosticConfig.structuredContent.bashRuntime.runtime === 'wsl' && diagnosticConfig.structuredContent.bashRuntime.source !== 'configured') {
   throw new Error(`server_config silently auto-selected WSL: ${JSON.stringify(diagnosticConfig.structuredContent.bashRuntime)}`);
 }
+if (process.platform === 'win32' && diagnosticConfig.structuredContent.bashRuntime.runtime === 'native-bash' && /[\\/]Git[\\/]bin[\\/]bash\.exe$/i.test(diagnosticConfig.structuredContent.bashRuntime.executable || '')) {
+  const bashExe = diagnosticConfig.structuredContent.bashRuntime.executable;
+  const expectedGit = path.win32.join(path.win32.dirname(path.win32.dirname(bashExe)), 'cmd', 'git.exe');
+  if (String(diagnosticConfig.structuredContent.gitRuntime?.executable || '').toLowerCase() !== expectedGit.toLowerCase()) {
+    throw new Error(`dedicated Git did not follow selected Git-for-Windows Bash: ${JSON.stringify(diagnosticConfig.structuredContent.gitRuntime)}`);
+  }
+}
 const toolCardUri = 'ui://widget/codexpro-tool-card-v10.html';
 const toolsByName = new Map(tools.tools.map((tool) => [tool.name, tool]));
 function hasWidgetMeta(name) {
@@ -1325,6 +1332,22 @@ const waitTimedOut = await client.request('tools/call', {
 });
 if (waitTimedOut.structuredContent.awaited_terminal !== true || waitTimedOut.structuredContent.awaited_completed !== false || waitTimedOut.structuredContent.succeeded !== false || waitTimedOut.structuredContent.state !== 'timed_out') {
   throw new Error(`wait_for_handoff did not report timed-out terminal state: ${JSON.stringify(waitTimedOut.structuredContent)}`);
+}
+await fs.writeFile(path.join(tmp, '.ai-bridge', 'handoff-run-state.json'), `${JSON.stringify({
+  ...runStatePayload,
+  state: 'running',
+  plan_hash: 'orphaned-plan',
+  pid: 99999999,
+  child_pid: 99999998,
+  finished_at: null
+}, null, 2)}\n`, 'utf8');
+const waitOrphaned = await client.request('tools/call', {
+  name: 'wait_for_handoff',
+  arguments: { workspace_id: ws, max_wait_seconds: 1, poll_ms: 250, plan_hash: 'orphaned-plan' }
+});
+
+if (waitOrphaned.structuredContent.awaited_terminal !== true || waitOrphaned.structuredContent.state !== 'orphaned' || waitOrphaned.structuredContent.reconcile_required !== true || waitOrphaned.structuredContent.effective_run_state !== 'orphaned') {
+  throw new Error(`wait_for_handoff did not report orphaned reconciliation state: ${JSON.stringify(waitOrphaned.structuredContent)}`);
 }
 await fs.rm(path.join(tmp, '.ai-bridge', 'handoff-run-state.json'), { force: true });
 await client.request('tools/call', { name: 'handoff_to_codex', arguments: { workspace_id: ws, title: 'Smoke Codex plan', plan: '- Verify demo.txt contains write.', append: true } });

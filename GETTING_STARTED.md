@@ -17,7 +17,7 @@ codexpro --version
 
 ### Latest `main`
 
-`main` can contain verified fixes listed under **Unreleased** after a GitHub Release is tagged. Stable **0.32.4 already includes the long-lived OpenAI tunnel heartbeat/child-recovery fix and the current continuity/isolation hardening.** Build from source only when you specifically need later Unreleased changes:
+`main` can contain verified fixes listed under **Unreleased** after a GitHub Release is tagged. Stable **0.32.4 already includes the long-lived OpenAI tunnel heartbeat/child-recovery fix and the current continuity/isolation hardening.** Current post-0.32.4 `main` additionally carries verified maintenance such as explicit Windows Bash runtime selection, interruption/orphan-aware local handoff recovery with default remote-mutation blocking, and bounded HTTP request-correlation/diagnostic hardening. Build from source only when you specifically need those later Unreleased changes:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -205,6 +205,7 @@ Confirm only one live CodexPro launcher owns a given OpenAI tunnel ID. In 0.32.4
 - Keep CodexPro authentication enabled.
 - Allow only repositories you actually want ChatGPT to access.
 - Keep Git push disabled unless you explicitly need it.
+- On post-0.32.4 `main`, keep local handoff remote mutation blocked unless the exact workflow explicitly authorizes `--allow-remote-mutations`; reconcile interrupted/orphaned receipts before retrying material side effects.
 - Never reuse one OpenAI tunnel ID across two simultaneous CodexPro runtimes.
 - Never paste runtime API keys, MCP bearer tokens, private keys, or `.env` contents into chat.
 

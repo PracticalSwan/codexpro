@@ -190,7 +190,7 @@ codexpro setup</code>
             Handoff mode keeps ChatGPT planning-only. ChatGPT writes <code>.ai-bridge/current-plan.md</code>, then you decide whether to run a local implementation agent from your terminal.
           </p>
           <p>
-            <code>codexpro execute-handoff</code> runs the saved plan through OpenCode, Pi, Codex, or a custom command, then collects status, stdout/stderr excerpts, and the final git diff back into <code>.ai-bridge</code> for ChatGPT review.
+            <code>codexpro execute-handoff</code> runs the saved plan through OpenCode, Pi, Codex, or a custom command, then collects status, stdout/stderr excerpts, and the final git diff back into <code>.ai-bridge</code> for ChatGPT review. On current post-0.32.4 <code>main</code>, standard Git/GitHub remote mutations are blocked inside the handoff executor unless the operator explicitly opts in, and interrupted/orphaned receipts require reconciliation before retry.
           </p>
         </div>
         <div class="command-stack">

@@ -12,6 +12,7 @@ export interface BackendStartRequest {
   cwdAbs: string;
   cwdRel: string;
   hostExecutable?: string;
+  hostArgs?: string[];
   hostEnv?: NodeJS.ProcessEnv;
 }
 

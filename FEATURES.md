@@ -2,7 +2,7 @@
 
 CodexPro Full is PracticalSwan's independently maintained CodexPro fork. It keeps the `codexpro` CLI and MCP compatibility while adding the 0.31–0.32 agentic, continuity, safety, code-intelligence, artifact, and Durable Goal features. The release package is `codexpro-full`; installing it still provides the `codexpro` CLI.
 
-> **Release status:** the latest tagged stable artifact is **0.32.4**. This guide describes the 0.32.4 release line; current `main` may later contain verified items listed under **Unreleased** before the next tag.
+> **Release status:** the latest tagged stable artifact is **0.32.4**. This guide covers that stable line plus behavior explicitly labeled **Unreleased main**; those later items require a source build until the next tag.
 
 > Repository: `https://github.com/PracticalSwan/codexpro`
 > Upstream lineage: `https://github.com/rebel0789/codexpro`
@@ -50,6 +50,7 @@ CodexPro exposes tools according to the active configuration and optional `.code
 | MCP compatibility | SDK v2 / legacy protocol | Uses the stable split MCP v2 packages, but defaults to the 2025 protocol era; interactive `ask` and Tasks stay disabled until separately verified client capabilities exist. |
 | Write mode | `off`, `handoff`, `workspace` | Controls direct workspace mutation. |
 | Bash mode | `off`, `safe`, `full` | Removes Bash entirely, allows restricted verification, or permits trusted full shell use. |
+| Windows Bash runtime — **Unreleased main** | `auto`, `native-bash`, `wsl` | `auto` prefers Git for Windows and never silently selects WSL; explicit WSL uses `wsl.exe --exec bash -lc`. Optional Bash/Git executable overrides keep the toolchain association explicit. |
 | Synchronous tool deadline | bounded 5-60 min / Unlimited observe-only | Tool-time awareness defaults to a 20-minute per-call transport budget. The budget restarts for every MCP tool invocation and is not a whole-turn host timer. Observe mode keeps elapsed diagnostics but removes only CodexPro's cooperative cutoff; it never changes task-quality or safety requirements. |
 | Deadline diagnostics | `connection_diagnostics`, `tool_surface_diagnostics`, `local_telemetry`, `tool_time_probe` | Shows bounded/redacted resilience events, current/default/min/max deadline state, timeout-risk alternatives, active-job operator status, and an observe-only mutation-free host-window probe. |
 | Execution routing hints | derived from finite deadline reference | `sync_preferred=min(5 min,25% D)` and `async_preferred=75% D`; explicit duration/risk metadata can recommend `proc_*`, `job_*`, or `goal_*` without auto-escalating permission or reducing scope. |
@@ -273,6 +274,8 @@ Handoff mode is for planning when ChatGPT should not directly edit source.
 | Wait for handoff | `wait_for_handoff` | Wait for a handoff/status update. |
 | Write agent handoff | `handoff_to_agent`, `handoff_to_codex` | Save a bounded plan/status handoff without remotely executing the local agent. |
 | Execute locally | `codexpro execute-handoff` | User-started terminal execution of the saved plan. |
+| Remote mutation guard — **Unreleased main** | `--allow-remote-mutations` | Standard `git` / `gh` remote mutations are blocked and inherited GitHub tokens removed by default; opt in only for an explicitly authorized remote side effect. |
+| Interruption recovery — **Unreleased main** | receipt + `wait_for_handoff` | Records parent/child PIDs, distinguishes `interrupting`, `interrupted`, and stale `orphaned` runs, and requires reconciliation before retrying ambiguous material side effects. |
 | Watch locally | `codexpro watch-handoff` | User-started watcher for new handoff plan hashes. |
 | Bounded loop | `codexpro loop-handoff` | User-started execute/review loop with explicit commands and iteration limits. |
 
@@ -282,7 +285,7 @@ The executor/watch/loop commands remain local CLI features; they are not exposed
 
 | Capability | Tools | How to use it |
 | --- | --- | --- |
-| Connection diagnostics | `connection_diagnostics` | Check current MCP/HTTP health while retaining bounded historical failure counters. `active_sessions` is the retained transport count and may include recently closed clients until deletion/TTL pruning. |
+| Connection diagnostics | `connection_diagnostics` | Check current MCP/HTTP health while retaining bounded historical failure counters. `active_sessions` is the retained transport count and may include recently closed clients until deletion/TTL pruning. On **Unreleased main**, HTTP transport events also carry bounded correlation IDs/authentication-failure counts, and diagnostic reports label absolute paths by default unless trusted local debugging sets `CODEXPRO_EXPOSE_ABSOLUTE_PATHS=1`. |
 | Tool-surface diagnostics | `tool_surface_diagnostics` | Compare expected vs registered tools for the current gates. |
 | Local telemetry | `local_telemetry` | Inspect bounded tool timing/count/error metadata without prompts/source contents. |
 | Activity/evidence ledger | `activity_log` | Read bounded sanitized per-workspace evidence. Ledger reads are observational and do not append themselves. |

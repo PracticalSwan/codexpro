@@ -12,7 +12,7 @@
   <a href="https://github.com/PracticalSwan/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/PracticalSwan/codexpro/ci.yml?branch=main&style=flat-square"></a>
   <a href="https://github.com/PracticalSwan/codexpro/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/PracticalSwan/codexpro?style=flat-square"></a>
   <img alt="Stable release 0.32.4" src="https://img.shields.io/badge/stable-0.32.4-2563eb?style=flat-square">
-  <img alt="Main release line 0.32.4" src="https://img.shields.io/badge/main-0.32.4-0f766e?style=flat-square">
+  <img alt="Main post-0.32.4 / Unreleased" src="https://img.shields.io/badge/main-Unreleased-0f766e?style=flat-square">
 </p>
 
 ## Project status
@@ -23,7 +23,7 @@
 Canonical fork: https://github.com/PracticalSwan/codexpro
 Upstream:       https://github.com/rebel0789/codexpro
 Stable release: 0.32.4
-Current main:   0.32.4 release line
+Current main:   post-0.32.4 (verified Unreleased maintenance)
 ```
 
 CodexPro Full uses the independent distribution package **`codexpro-full`** while preserving the installed CLI command **`codexpro`**, MCP protocol, profiles, and workspace model. **GitHub Releases are the canonical public release channel.** The upstream npm package `codexpro` is a different distribution; the `codexpro-full` npm registry package is not published yet.
@@ -409,7 +409,7 @@ codexpro watch-handoff
 codexpro loop-handoff
 ```
 
-They are not unrestricted remote MCP executors.
+They are not unrestricted remote MCP executors. On current `main`, local handoff executors block standard Git/GitHub remote mutations by default, remove inherited GitHub tokens from the guarded child environment, and require the explicit `--allow-remote-mutations` flag when a remote side effect is authorized. Interrupted or stale in-flight handoffs are reported as `interrupted` / `orphaned` with reconciliation required before retrying material side effects.
 
 ## Diagnostics
 
@@ -423,7 +423,7 @@ codexpro_self_test
 effective_policy
 ```
 
-Diagnostics are designed to expose bounded health/configuration metadata without prompts, source-file contents, raw command transcripts, or authentication tokens. `server_config` reports the installed package name/version plus the current HTTP session limit/TTL. `connection_diagnostics.active_sessions` is the retained server-side MCP transport count, so recently closed clients can remain counted until explicit session deletion or idle-TTL pruning. Historical failure counters remain visible even after current connection health recovers.
+Diagnostics are designed to expose bounded health/configuration metadata without prompts, source-file contents, raw command transcripts, authentication tokens, or absolute diagnostic paths by default. Current `main` also correlates HTTP requests with bounded `X-CodexPro-Request-Id` values and counts authentication failures in the existing bounded telemetry. Set `CODEXPRO_EXPOSE_ABSOLUTE_PATHS=1` only for trusted local debugging. `server_config` reports the installed package name/version plus the current HTTP session limit/TTL. `connection_diagnostics.active_sessions` is the retained server-side MCP transport count, so recently closed clients can remain counted until explicit session deletion or idle-TTL pruning. Historical failure counters remain visible even after current connection health recovers.
 
 `activity_log` provides a bounded, sanitized per-workspace chronological ledger outside the workspace; it never stores prompts or raw tool output. The authenticated local control page can save non-secret next-run profile settings. Authentication tokens remain hidden.
 

@@ -11,7 +11,9 @@ export interface ConnectionDiagnostics {
   responses: number;
   dispatch_failures: number;
   response_failures: number;
+  auth_failures: number;
   active_sessions: number;
+  last_request_id?: string;
   last_event_at?: string;
 }
 
@@ -51,6 +53,8 @@ export function connectionDiagnostics(snapshot: TelemetrySnapshot, activeSession
   const responses = count(snapshot, "stage:response");
   const dispatchFailures = count(snapshot, "stage:dispatch:error") + count(snapshot, "stage:dispatch:timeout");
   const responseFailures = count(snapshot, "stage:response:error") + count(snapshot, "stage:response:timeout");
+  const authFailures = count(snapshot, "event:auth_failure");
+  const latestArrival = [...snapshot.events].reverse().find((event) => event.stage === "request_arrival");
   const latestResponse = [...snapshot.events].reverse().find((event) => event.stage === "response");
   const latestDispatch = [...snapshot.events].reverse().find((event) => event.stage === "dispatch");
   const latestCompletion = [...snapshot.events].reverse().find((event) => event.stage === "completion");
@@ -71,7 +75,9 @@ export function connectionDiagnostics(snapshot: TelemetrySnapshot, activeSession
     responses,
     dispatch_failures: dispatchFailures,
     response_failures: responseFailures,
+    auth_failures: authFailures,
     active_sessions: Math.max(0, Math.floor(activeSessions)),
+    ...(latestArrival?.entityId ? { last_request_id: latestArrival.entityId } : {}),
     ...(snapshot.events.at(-1)?.timestamp ? { last_event_at: snapshot.events.at(-1)!.timestamp } : {})
   };
 }

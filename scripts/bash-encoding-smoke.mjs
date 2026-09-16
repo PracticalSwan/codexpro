@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import iconv from 'iconv-lite';
 import { PathGuard } from '../dist/guard.js';
-import { decodeBashOutput, runBash } from '../dist/bashOps.js';
+import { decodeBashOutput, resolveBashRuntime, runBash } from '../dist/bashOps.js';
 
 function mustNotDetect() {
   throw new Error('encoding detection must not run');
@@ -73,6 +74,16 @@ assert.equal(
 );
 
 if (process.platform === 'win32') {
+  const wslPath = path.join(process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows', 'System32', 'wsl.exe');
+  if (existsSync(wslPath)) {
+    const explicitWsl = resolveBashRuntime({ bashRuntime: 'wsl', bashExecutable: wslPath });
+    assert.equal(explicitWsl.available, true, `explicit WSL runtime was unavailable: ${JSON.stringify(explicitWsl)}`);
+    assert.equal(explicitWsl.runtime, 'wsl');
+    const rejectedAutoWsl = resolveBashRuntime({ bashRuntime: 'auto', bashExecutable: wslPath });
+    assert.equal(rejectedAutoWsl.available, false, 'auto silently accepted a WSL launcher');
+    assert.match(rejectedAutoWsl.error || '', /WSL launcher/i);
+  }
+
   const rootRaw = await mkdtemp(path.join(os.tmpdir(), 'codexpro-bash-encoding-'));
   const root = await realpath(rootRaw);
   try {

@@ -282,6 +282,11 @@ try {
     throw new Error(`expected unauthenticated healthz to return 401, got ${unauthorized.status}`);
   }
 
+  const unauthorizedRequestId = unauthorized.headers.get('x-codexpro-request-id');
+  if (!unauthorizedRequestId || unauthorizedRequestId.length > 96) {
+    throw new Error(`unauthenticated response omitted bounded request correlation id: ${unauthorizedRequestId}`);
+  }
+
   const unauthDiagnostics = await fetch(`${baseUrl}/admin/diagnostics`);
   if (unauthDiagnostics.status !== 401) {
     throw new Error(`expected unauthenticated diagnostics to return 401, got ${unauthDiagnostics.status}`);
@@ -333,6 +338,14 @@ try {
     throw new Error(`authentication throttling blocked a valid token, got ${validAfterThrottle.status}`);
   }
 
+  const clientCorrelationId = 'http-smoke-client-correlation';
+  const correlatedHealth = await fetch(`${baseUrl}/healthz`, {
+    headers: { Authorization: `Bearer ${token}`, 'X-CodexPro-Request-Id': clientCorrelationId }
+  });
+  if (correlatedHealth.status !== 200 || correlatedHealth.headers.get('x-codexpro-request-id') !== clientCorrelationId) {
+    throw new Error(`request correlation id was not preserved: ${correlatedHealth.status} ${correlatedHealth.headers.get('x-codexpro-request-id')}`);
+  }
+
   const initialDiagnostics = await fetch(`${baseUrl}/admin/diagnostics?codexpro_token=${encodeURIComponent(token)}`);
   const initialDiagnosticsJson = await initialDiagnostics.json();
   if (initialDiagnostics.status !== 200 || initialDiagnosticsJson.connection?.state !== 'no_requests') {
@@ -341,6 +354,10 @@ try {
   if (JSON.stringify(initialDiagnosticsJson).includes(token)) {
     throw new Error('admin diagnostics leaked the raw auth token');
   }
+  if ((initialDiagnosticsJson.telemetry?.counters?.['event:auth_failure'] ?? 0) < 1) {
+    throw new Error(`admin diagnostics omitted auth-failure telemetry: ${JSON.stringify(initialDiagnosticsJson.telemetry)}`);
+  }
+
   if (initialDiagnosticsJson.operator?.current_effective_deadline?.ms !== 1_200_000 || initialDiagnosticsJson.operator?.current_effective_deadline?.mode !== 'bounded') throw new Error('admin diagnostics omitted current effective deadline');
   if (!Number.isFinite(initialDiagnosticsJson.operator?.saved_next_run_deadline?.ms)) throw new Error('admin diagnostics omitted saved next-run deadline');
   if (!Number.isInteger(initialDiagnosticsJson.operator?.active_structured_jobs) || initialDiagnosticsJson.operator.active_structured_jobs < 0) throw new Error('admin diagnostics omitted active structured job count');
@@ -548,7 +565,10 @@ try {
     tunnel: 'cloudflare-named',
     hostname: 'stale.example.com',
     cloudflareToken: staleCloudflareToken,
-    cloudflareTokenFile: path.join(root, 'stale-cloudflare-token')
+    cloudflareTokenFile: path.join(root, 'stale-cloudflare-token'),
+    bashRuntime: 'native-bash',
+    bashExecutable: path.join(root, 'saved-bash.exe'),
+    gitExecutable: path.join(root, 'saved-git.exe')
   }, null, 2), 'utf8');
 
   const profileSave = await fetch(`${baseUrl}/admin/profile`, {
@@ -607,6 +627,9 @@ try {
   if (
     savedProfile.tunnel !== 'ngrok' ||
     savedProfile.hostname !== 'codexpro-http-smoke.ngrok-free.app' ||
+    savedProfile.bashRuntime !== 'native-bash' ||
+    savedProfile.bashExecutable !== path.join(root, 'saved-bash.exe') ||
+    savedProfile.gitExecutable !== path.join(root, 'saved-git.exe') ||
     savedProfile.bashTranscript !== 'full' ||
     savedProfile.codexSessions !== 'metadata' ||
     savedProfile.bashSession !== 'http-main' ||

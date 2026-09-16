@@ -1175,4 +1175,46 @@ if (!implicitDeletedPlanState.includes('"nextPlanChanged": true') || !implicitDe
   throw new Error(`loop did not fail closed after implicit reviewer deleted the plan\nstate:\n${implicitDeletedPlanState}\nlog:\n${implicitDeletedPlanLog}`);
 }
 
+const remoteGuardRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-handoff-remote-guard-'));
+const remoteBareRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-handoff-remote-bare-'));
+await fs.mkdir(path.join(remoteGuardRoot, '.ai-bridge'), { recursive: true });
+await fs.writeFile(path.join(remoteGuardRoot, '.ai-bridge', 'current-plan.md'), '# Remote mutation guard plan\n\nTry one local-repository push.\n', 'utf8');
+await fs.writeFile(path.join(remoteGuardRoot, 'app.txt'), 'base\n', 'utf8');
+await fs.writeFile(path.join(remoteGuardRoot, 'push-agent.mjs'), `
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+const result = spawnSync('git push origin HEAD:refs/heads/guarded', { encoding: 'utf8', shell: true });
+fs.writeFileSync('push-status.json', JSON.stringify({ status: result.status, stderr: result.stderr, mode: process.env.CODEXPRO_REMOTE_MUTATIONS || '', inheritedGithubToken: Boolean(process.env.GH_TOKEN || process.env.GITHUB_TOKEN) }));
+`, 'utf8');
+
+requireSuccess(spawnSync('git', ['init', '--bare', remoteBareRoot], { encoding: 'utf8' }), 'remote mutation bare git init');
+requireSuccess(spawnSync('git', ['init'], { cwd: remoteGuardRoot, encoding: 'utf8' }), 'remote mutation worktree git init');
+requireSuccess(spawnSync('git', ['config', 'user.email', 'codexpro@example.invalid'], { cwd: remoteGuardRoot, encoding: 'utf8' }), 'remote mutation git email');
+requireSuccess(spawnSync('git', ['config', 'user.name', 'CodexPro Smoke'], { cwd: remoteGuardRoot, encoding: 'utf8' }), 'remote mutation git name');
+requireSuccess(spawnSync('git', ['add', 'app.txt'], { cwd: remoteGuardRoot, encoding: 'utf8' }), 'remote mutation git add');
+requireSuccess(spawnSync('git', ['commit', '-m', 'base'], { cwd: remoteGuardRoot, encoding: 'utf8' }), 'remote mutation git commit');
+requireSuccess(spawnSync('git', ['remote', 'add', 'origin', remoteBareRoot], { cwd: remoteGuardRoot, encoding: 'utf8' }), 'remote mutation git remote');
+
+const remoteBlocked = run(['execute-handoff', '--root', remoteGuardRoot, '--agent', 'custom', '--command', `${quoteArg(process.execPath)} push-agent.mjs --task-file {{plan_file}}`, '--yes'], {
+  env: { ...process.env, GH_TOKEN: 'synthetic-secret', GITHUB_TOKEN: 'synthetic-secret' }
+});
+requireSuccess(remoteBlocked, 'execute-handoff remote mutation blocked run');
+const blockedPush = JSON.parse(await fs.readFile(path.join(remoteGuardRoot, 'push-status.json'), 'utf8'));
+if (blockedPush.status !== 126 || blockedPush.mode !== 'blocked_standard_cli' || blockedPush.inheritedGithubToken !== false) {
+  throw new Error(`remote mutation guard did not fail closed: ${JSON.stringify(blockedPush)}`);
+}
+const blockedRemoteRef = spawnSync('git', ['--git-dir', remoteBareRoot, 'rev-parse', '--verify', 'refs/heads/guarded'], { encoding: 'utf8' });
+if (blockedRemoteRef.status === 0) throw new Error('default handoff unexpectedly created the guarded remote ref');
+
+const remoteAllowed = run(['execute-handoff', '--root', remoteGuardRoot, '--agent', 'custom', '--command', `${quoteArg(process.execPath)} push-agent.mjs --task-file {{plan_file}}`, '--allow-remote-mutations', '--yes']);
+requireSuccess(remoteAllowed, 'execute-handoff remote mutation allowed run');
+const allowedPush = JSON.parse(await fs.readFile(path.join(remoteGuardRoot, 'push-status.json'), 'utf8'));
+
+if (allowedPush.status !== 0 || allowedPush.mode !== 'allow') {
+  throw new Error(`explicit remote mutation opt-in did not restore push: ${JSON.stringify(allowedPush)}`);
+}
+requireSuccess(spawnSync('git', ['--git-dir', remoteBareRoot, 'rev-parse', '--verify', 'refs/heads/guarded'], { encoding: 'utf8' }), 'allowed remote ref exists');
+await fs.rm(remoteGuardRoot, { recursive: true, force: true });
+await fs.rm(remoteBareRoot, { recursive: true, force: true });
+
 console.log('✓ execute-handoff, watch-handoff, and loop-handoff smoke test passed');

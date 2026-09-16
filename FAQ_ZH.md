@@ -169,6 +169,24 @@ Normal coding 模式下，ChatGPT 可以在配置的工作区内写入和精确�
 
 如果你只想让 ChatGPT 规划，不想让它直接改源码，用 handoff 模式。
 
+## Windows 上 CodexPro 如何选择 Bash？
+
+当前 `main` 支持显式 runtime selector：`auto | native-bash | wsl`。`auto` 优先使用 Git for Windows Bash，绝不会静默切换到 WSL；需要 WSL 时必须显式选择：
+
+```powershell
+$env:CODEXPRO_BASH_RUNTIME = 'auto'
+$env:CODEXPRO_BASH_EXECUTABLE = 'C:\\Program Files\\Git\\bin\\bash.exe'
+$env:CODEXPRO_GIT_EXECUTABLE = 'C:\\Program Files\\Git\\cmd\\git.exe'
+```
+
+`CODEXPRO_BASH_RUNTIME=wsl` 会显式使用 `wsl.exe --exec bash -lc ...`。`server_config` / `codexpro_self_test` 会报告实际 Bash、Git 和 search runtime。
+
+## 本地 handoff 被中断或尝试 push 会怎样？
+
+当前 `main` 的 handoff executor 默认阻止标准 Git/GitHub 远程 mutation，并从 guarded child environment 中移除继承的 GitHub token。只有已明确授权远程副作用时才使用 `--allow-remote-mutations`。
+
+Handoff receipt 会记录 parent/child PID。中断时先进入 `interrupting`，child 真正结束后才成为 `interrupted`；如果 `wait_for_handoff` 发现旧的 `running` / `interrupting` receipt 对应进程已经不存在，则报告 `orphaned`。`interrupted` / `orphaned` 都要求先核对 Git 和目标系统状态，再重试可能产生持久或远程副作用的操作。
+
 ## CodexPro 能把 bash 绑定到某个会话 id 吗？
 
 CodexPro 不能附加到、读取或复用某一个 Codex App 聊天会话或终端会话。

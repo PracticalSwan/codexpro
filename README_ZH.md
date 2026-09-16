@@ -12,7 +12,7 @@
   <a href="https://github.com/PracticalSwan/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/PracticalSwan/codexpro/ci.yml?branch=main&style=flat-square"></a>
   <a href="https://github.com/PracticalSwan/codexpro/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/PracticalSwan/codexpro?style=flat-square"></a>
   <img alt="Stable release 0.32.4" src="https://img.shields.io/badge/stable-0.32.4-2563eb?style=flat-square">
-  <img alt="Main release line 0.32.4" src="https://img.shields.io/badge/main-0.32.4-0f766e?style=flat-square">
+  <img alt="Main post-0.32.4 / Unreleased" src="https://img.shields.io/badge/main-Unreleased-0f766e?style=flat-square">
 </p>
 
 <p align="center">
@@ -29,7 +29,7 @@
 
 `PracticalSwan/codexpro` is the canonical independently maintained fork. It preserves the `codexpro` CLI/MCP/profile compatibility surface while maintaining the 0.31-0.32 feature line. Upstream remains `rebel0789/codexpro` under the existing MIT lineage.
 
-稳定发布版是 **0.32.4**；当前 `main` 位于 0.32.4 release line。0.32.4 已包含长时间 OpenAI Tunnel 自动恢复、Windows continuity hardening、128-session 容量和 tunnel lease 保护等已验证修复。
+稳定发布版是 **0.32.4**；当前 `main` 已进入 post-0.32.4 的 **Unreleased** 维护阶段。0.32.4 已包含长时间 OpenAI Tunnel 自动恢复、Windows continuity hardening、128-session 容量和 tunnel lease 保护；后续 `main` 还包含已验证但尚未打 tag 的维护修复。
 
 CodexPro Full uses the independent distribution package **`codexpro-full`** while the installed CLI remains **`codexpro`**. GitHub Releases are the canonical public release channel. The upstream npm package `codexpro@latest` is not this fork, and `codexpro-full` is not yet published to npm.
 
@@ -186,6 +186,8 @@ chmod 600 ~/.codexpro/http-token
 - 默认 safe bash
 - 拦截 `.env`、密钥、`.git`、构建缓存等路径
 - 附件导入只接受已批准 HTTPS 主机上的 ChatGPT Apps SDK 文件对象
+- 当前 `main` 的本地 handoff executor 默认阻止标准 Git/GitHub 远程 mutation；只有显式授权后才使用 `--allow-remote-mutations`
+- interrupted/orphaned handoff 必须先核对 Git 和目标状态，再重试可能产生远程或持久副作用的操作
 
 公网暴露前先读 [SECURITY.md](SECURITY.md)。
 

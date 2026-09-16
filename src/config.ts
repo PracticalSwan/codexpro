@@ -7,6 +7,7 @@ import { normalizeContinuationSettings, type ContinuationSettings } from "./cont
 
 export type BashMode = "off" | "safe" | "full";
 export type BashTranscriptMode = "compact" | "full";
+export type BashRuntimePreference = "auto" | "native-bash" | "wsl";
 export type CodexSessionsMode = "off" | "metadata" | "read";
 export type WriteMode = "off" | "handoff" | "workspace";
 export type ToolMode = "minimal" | "standard" | "full";
@@ -21,7 +22,9 @@ export interface CodexProConfig extends ContinuationSettings {
   authToken?: string;
   requireHttpToken: boolean;
   bashMode: BashMode;
+  bashRuntime: BashRuntimePreference;
   bashExecutable?: string;
+  gitExecutable?: string;
   executionBackend: "host" | "docker";
   dockerExecutable: string;
   dockerImage?: string;
@@ -35,6 +38,7 @@ export interface CodexProConfig extends ContinuationSettings {
   codexDir: string;
   writeMode: WriteMode;
   toolMode: ToolMode;
+  exposeAbsolutePaths: boolean;
   inheritEnv: boolean;
   maxReadBytes: number;
   maxWriteBytes: number;
@@ -211,6 +215,11 @@ function bashModeFrom(value: string | undefined): BashMode {
   return "safe";
 }
 
+function bashRuntimeFrom(value: string | undefined): BashRuntimePreference {
+  if (value === "auto" || value === "native-bash" || value === "wsl") return value;
+  return "auto";
+}
+
 function bashExecutableFrom(value: string | undefined): string | undefined {
   const raw = value?.trim();
   if (!raw) return undefined;
@@ -222,6 +231,18 @@ function bashExecutableFrom(value: string | undefined): string | undefined {
   if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
     throw new Error(`CODEXPRO_BASH_EXECUTABLE does not point to a file: ${resolved}`);
   }
+  return fs.realpathSync.native(resolved);
+}
+
+function gitExecutableFrom(value: string | undefined): string | undefined {
+  const raw = value?.trim();
+  if (!raw) return undefined;
+  const expanded = expandHome(raw);
+  if (!path.isAbsolute(expanded) && !path.win32.isAbsolute(expanded)) {
+    throw new Error("CODEXPRO_GIT_EXECUTABLE must be an absolute path to a Git executable.");
+  }
+  const resolved = path.resolve(expanded);
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) throw new Error(`CODEXPRO_GIT_EXECUTABLE does not point to a file: ${resolved}`);
   return fs.realpathSync.native(resolved);
 }
 
@@ -381,6 +402,9 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   const portArg = typeof args.port === "string" ? args.port : undefined;
   const hostArg = typeof args.host === "string" ? args.host : undefined;
   const bashArg = typeof args.bash === "string" ? args.bash : undefined;
+  const bashRuntimeArg = typeof args["bash-runtime"] === "string" ? args["bash-runtime"] : undefined;
+  const bashExecutableArg = typeof args["bash-executable"] === "string" ? args["bash-executable"] : undefined;
+  const gitExecutableArg = typeof args["git-executable"] === "string" ? args["git-executable"] : undefined;
   const bashTranscriptArg = typeof args["bash-transcript"] === "string" ? args["bash-transcript"] : undefined;
   const bashSessionArg = typeof args["bash-session"] === "string" ? args["bash-session"] : undefined;
   const codexSessionsArg = typeof args["codex-sessions"] === "string" ? args["codex-sessions"] : undefined;
@@ -460,7 +484,9 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     authToken,
     requireHttpToken,
     bashMode: bashModeFrom(bashArg ?? process.env.CODEXPRO_BASH_MODE),
-    bashExecutable: bashExecutableFrom(process.env.CODEXPRO_BASH_EXECUTABLE),
+    bashRuntime: bashRuntimeFrom(bashRuntimeArg ?? process.env.CODEXPRO_BASH_RUNTIME),
+    bashExecutable: bashExecutableFrom(bashExecutableArg ?? process.env.CODEXPRO_BASH_EXECUTABLE),
+    gitExecutable: gitExecutableFrom(gitExecutableArg ?? process.env.CODEXPRO_GIT_EXECUTABLE),
     executionBackend,
     dockerExecutable: dockerExecutableFrom(process.env.CODEXPRO_DOCKER_EXECUTABLE),
     dockerImage,
@@ -474,6 +500,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     codexDir: expandHome(codexDirArg || process.env.CODEXPRO_CODEX_DIR || path.join(os.homedir(), ".codex")),
     writeMode: writeModeFrom(writeArg ?? process.env.CODEXPRO_WRITE_MODE),
     toolMode: toolModeFrom(toolModeArg ?? process.env.CODEXPRO_TOOL_MODE),
+    exposeAbsolutePaths: boolFrom(process.env.CODEXPRO_EXPOSE_ABSOLUTE_PATHS, false),
     inheritEnv: process.env.CODEXPRO_INHERIT_ENV === "1",
     maxReadBytes,
     maxWriteBytes: numberFrom(process.env.CODEXPRO_MAX_WRITE_BYTES, 1_000_000, 1_000, 10_000_000),

@@ -24,7 +24,7 @@ export class HostExecutionBackend implements ExecutionBackend {
 
   start(request: BackendStartRequest): BackendProcessHandle {
     if (!request.hostExecutable) throw new CodexProError("Host Bash executable is unavailable.");
-    const child = spawn(request.hostExecutable, ["-lc", request.command], {
+    const child = spawn(request.hostExecutable, request.hostArgs ?? ["-lc", request.command], {
       cwd: request.cwdAbs,
       env: request.hostEnv,
       stdio: ["ignore", "pipe", "pipe"],

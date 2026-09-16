@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import type { CodexProConfig } from "./config.js";
+import { resolveBashRuntime } from "./bashOps.js";
 import type { Workspace } from "./guard.js";
 import { CodexProError, PathGuard } from "./guard.js";
 import { redactSensitiveText } from "./redact.js";
@@ -21,7 +22,17 @@ export interface GitCommitSummary {
   date: string;
 }
 
-function resolveGitExecutable(): string | null {
+function resolveGitExecutable(config?: CodexProConfig): string | null {
+  if (config?.gitExecutable) return config.gitExecutable;
+  if (process.platform === "win32" && config) {
+    try {
+      const bash = resolveBashRuntime(config);
+      if (bash.available && bash.runtime === "native-bash" && bash.executable && /[\\/]Git[\\/]bin[\\/]bash\.exe$/i.test(bash.executable)) {
+        const candidate = path.win32.join(path.win32.dirname(path.win32.dirname(bash.executable)), "cmd", "git.exe");
+        if (fs.existsSync(candidate)) return fs.realpathSync.native(candidate);
+      }
+    } catch {}
+  }
   const lookup = process.platform === "win32"
     ? spawnSync("where.exe", ["git"], { encoding: "utf8", windowsHide: true })
     : spawnSync("/bin/sh", ["-lc", "command -v git"], { encoding: "utf8" });
@@ -29,11 +40,11 @@ function resolveGitExecutable(): string | null {
   return String(lookup.stdout ?? "").split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? null;
 }
 
-export function gitRuntimeInfo(): GitRuntimeInfo {
-  const executable = resolveGitExecutable();
+export function gitRuntimeInfo(config?: CodexProConfig): GitRuntimeInfo {
+  const executable = resolveGitExecutable(config);
   const versionResult = executable
     ? spawnSync(executable, ["--version"], { encoding: "utf8", windowsHide: true })
-    : spawnSync("git", ["--version"], { encoding: "utf8", windowsHide: true });
+    : spawnSync(resolveGitExecutable(config) ?? "git", ["--version"], { encoding: "utf8", windowsHide: true });
   if (versionResult.error || versionResult.status !== 0) {
     return {
       available: false,
@@ -49,8 +60,8 @@ export function gitRuntimeInfo(): GitRuntimeInfo {
   };
 }
 
-function runGit(cwd: string, args: string[], maxOutputBytes: number): string {
-  const result = spawnSync("git", args, {
+function runGit(config: CodexProConfig, cwd: string, args: string[], maxOutputBytes: number): string {
+  const result = spawnSync(resolveGitExecutable(config) ?? "git", args, {
     cwd,
     encoding: "utf8",
     maxBuffer: maxOutputBytes,
@@ -88,7 +99,7 @@ function pathIsInside(root: string, candidate: string): boolean {
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
-function pathScopedGitContext(workspace: Workspace, guard: PathGuard, filePath: string): { cwd: string; relPath: string } {
+function pathScopedGitContext(config: CodexProConfig, workspace: Workspace, guard: PathGuard, filePath: string): { cwd: string; relPath: string } {
   const resolved = guard.resolve(workspace, filePath);
   let start = resolved.absPath;
   try {
@@ -96,7 +107,7 @@ function pathScopedGitContext(workspace: Workspace, guard: PathGuard, filePath: 
   } catch {
     start = path.dirname(start);
   }
-  const topLevel = spawnSync("git", ["-C", start, "rev-parse", "--show-toplevel"], {
+  const topLevel = spawnSync(resolveGitExecutable(config) ?? "git", ["-C", start, "rev-parse", "--show-toplevel"], {
     encoding: "utf8",
     maxBuffer: 64_000,
     env: { ...process.env, NO_COLOR: "1" }
@@ -119,11 +130,11 @@ export function gitStatus(config: CodexProConfig, workspace: Workspace, guard?: 
   let cwd = workspace.root;
   if (filePath?.trim()) {
     if (!guard) return "path-scoped git status requires a path guard";
-    const context = pathScopedGitContext(workspace, guard, filePath);
+    const context = pathScopedGitContext(config, workspace, guard, filePath);
     cwd = context.cwd;
     args.push("--", context.relPath);
   }
-  return runGit(cwd, args, config.maxOutputBytes);
+  return runGit(config, cwd, args, config.maxOutputBytes);
 }
 
 export function gitDiff(config: CodexProConfig, guard: PathGuard, workspace: Workspace, filePath?: string, staged = false): string {
@@ -131,11 +142,11 @@ export function gitDiff(config: CodexProConfig, guard: PathGuard, workspace: Wor
   if (staged) args.push("--staged");
   let cwd = workspace.root;
   if (filePath?.trim()) {
-    const context = pathScopedGitContext(workspace, guard, filePath);
+    const context = pathScopedGitContext(config, workspace, guard, filePath);
     cwd = context.cwd;
     args.push("--", context.relPath);
   }
-  return runGit(cwd, args, config.maxOutputBytes);
+  return runGit(config, cwd, args, config.maxOutputBytes);
 }
 
 export function gitDiffStats(
@@ -149,11 +160,11 @@ export function gitDiffStats(
   if (staged) args.push("--staged");
   let cwd = workspace.root;
   if (filePath?.trim()) {
-    const context = pathScopedGitContext(workspace, guard, filePath);
+    const context = pathScopedGitContext(config, workspace, guard, filePath);
     cwd = context.cwd;
     args.push("--", context.relPath);
   }
-  const output = runGit(cwd, args, config.maxOutputBytes);
+  const output = runGit(config, cwd, args, config.maxOutputBytes);
   if (isGitFailure(output)) return { additions: 0, deletions: 0, changed: false, error: output };
   const lines = outputLines(output);
   let additions = 0;
@@ -172,14 +183,14 @@ export function gitDiffStatus(config: CodexProConfig, guard: PathGuard, workspac
   const untrackedArgs = ["status", "--short", "--untracked-files=normal", "--ignore-submodules=all"];
   let cwd = workspace.root;
   if (filePath?.trim()) {
-    const context = pathScopedGitContext(workspace, guard, filePath);
+    const context = pathScopedGitContext(config, workspace, guard, filePath);
     cwd = context.cwd;
     args.push("--", context.relPath);
     untrackedArgs.push("--", context.relPath);
   }
-  const diffStatus = runGit(cwd, args, config.maxOutputBytes);
+  const diffStatus = runGit(config, cwd, args, config.maxOutputBytes);
   if (staged || isGitFailure(diffStatus)) return diffStatus;
-  const untracked = runGit(cwd, untrackedArgs, config.maxOutputBytes);
+  const untracked = runGit(config, cwd, untrackedArgs, config.maxOutputBytes);
   if (isGitFailure(untracked)) return diffStatus;
   const untrackedLines = outputLines(untracked).filter((line) => line.startsWith("?? "));
   const lines = [...outputLines(diffStatus), ...untrackedLines];
@@ -188,12 +199,12 @@ export function gitDiffStatus(config: CodexProConfig, guard: PathGuard, workspac
 
 export function gitLog(config: CodexProConfig, workspace: Workspace, maxCount = 8): string {
   const count = Math.max(1, Math.min(Math.floor(maxCount), 30));
-  return runGit(workspace.root, ["log", `--max-count=${count}`, "--oneline", "--decorate"], config.maxOutputBytes);
+  return runGit(config, workspace.root, ["log", `--max-count=${count}`, "--oneline", "--decorate"], config.maxOutputBytes);
 }
 
 export function gitRecentCommits(config: CodexProConfig, workspace: Workspace, maxCount = 8): GitCommitSummary[] {
   const count = Math.max(1, Math.min(Math.floor(maxCount), 30));
-  const result = spawnSync("git", [
+  const result = spawnSync(resolveGitExecutable(config) ?? "git", [
     "log",
     `--max-count=${count}`,
     "--format=%H%x1f%h%x1f%an%x1f%aI%x1f%s%x1e"
@@ -244,7 +255,7 @@ export function gitHistory(config: CodexProConfig, guard: PathGuard, workspace: 
   const args = ["log", `--max-count=${count}`, "--format=%H%x1f%h%x1f%P%x1f%an%x1f%aI%x1f%s%x1e"];
   let relPath: string | undefined;
   if (options.path?.trim()) { relPath = guard.resolve(workspace, options.path).relPath; args.push("--", relPath); }
-  const result = spawnSync("git", args, { cwd: workspace.root, encoding: "utf8", maxBuffer: config.maxOutputBytes, env: { ...process.env, NO_COLOR: "1" } });
+  const result = spawnSync(resolveGitExecutable(config) ?? "git", args, { cwd: workspace.root, encoding: "utf8", maxBuffer: config.maxOutputBytes, env: { ...process.env, NO_COLOR: "1" } });
   if (result.error || result.status !== 0) throw new CodexProError(redactSensitiveText(result.error?.message || result.stderr?.trim() || `git log exited ${result.status}`));
   const commits = String(result.stdout ?? "").split("\x1e").map(r=>r.trim()).filter(Boolean).map(record=>{
     const [sha="",shortSha="",parents="",author="",date="",...subject]=record.split("\x1f");
@@ -255,7 +266,7 @@ export function gitHistory(config: CodexProConfig, guard: PathGuard, workspace: 
 
 export function gitShow(config: CodexProConfig, guard: PathGuard, workspace: Workspace, options: { revision?: string; path?: string }): GitShowResult {
   const revision = safeRevision(options.revision); const args=["show","--no-color","--no-ext-diff","--no-textconv","--format=medium",revision]; let relPath:string|undefined;
-  if(options.path?.trim()){relPath=guard.resolve(workspace,options.path).relPath; args.push("--",relPath);} const text=runGit(workspace.root,args,config.maxOutputBytes); if(isGitFailure(text)) throw new CodexProError(text);
+  if(options.path?.trim()){relPath=guard.resolve(workspace,options.path).relPath; args.push("--",relPath);} const text=runGit(config, workspace.root,args,config.maxOutputBytes); if(isGitFailure(text)) throw new CodexProError(text);
   return {revision,...(relPath?{path:relPath}:{}),text};
 }
 

@@ -312,6 +312,9 @@ function isWindowsWslLauncher(executable: string, env: NodeJS.ProcessEnv): boole
   return (
     normalized === path.win32.join(systemRoot, "System32", "bash.exe").toLowerCase() ||
     normalized === path.win32.join(systemRoot, "Sysnative", "bash.exe").toLowerCase() ||
+    normalized === path.win32.join(systemRoot, "System32", "wsl.exe").toLowerCase() ||
+    normalized === path.win32.join(systemRoot, "Sysnative", "wsl.exe").toLowerCase() ||
+    normalized.endsWith("\\wsl.exe") ||
     normalized.includes("\\windowsapps\\bash.exe")
   );
 }
@@ -332,23 +335,32 @@ function gitForWindowsBashCandidates(env: NodeJS.ProcessEnv): string[] {
 }
 
 export function resolveBashRuntime(config: CodexProConfig, env: NodeJS.ProcessEnv = process.env): BashRuntimeInfo {
+  if (process.platform !== "win32" && config.bashRuntime === "wsl") {
+    return { available: false, executable: null, runtime: "unavailable", source: "unavailable", error: "CODEXPRO_BASH_RUNTIME=wsl is supported only on Windows." };
+  }
+
   if (config.bashExecutable) {
     const executable = usableExecutableFile(config.bashExecutable);
-    if (!executable) {
-      return {
-        available: false,
-        executable: null,
-        runtime: "unavailable",
-        source: "configured",
-        error: `Configured Bash executable is unavailable: ${config.bashExecutable}`
-      };
+    if (!executable) return { available: false, executable: null, runtime: "unavailable", source: "configured", error: `Configured Bash executable is unavailable: ${config.bashExecutable}` };
+    const isWsl = process.platform === "win32" && isWindowsWslLauncher(executable, env);
+    if (process.platform === "win32" && isWsl && config.bashRuntime !== "wsl") {
+      return { available: false, executable: null, runtime: "unavailable", source: "configured", error: "CODEXPRO_BASH_EXECUTABLE points to a Windows WSL launcher. Set CODEXPRO_BASH_RUNTIME=wsl to opt into WSL, or configure Git for Windows Bash." };
     }
-    return {
-      available: true,
-      executable,
-      runtime: process.platform === "win32" && isWindowsWslLauncher(executable, env) ? "wsl" : process.platform === "win32" ? "native-bash" : "unix-bash",
-      source: "configured"
-    };
+    if (process.platform === "win32" && config.bashRuntime === "wsl" && !isWsl) {
+      return { available: false, executable: null, runtime: "unavailable", source: "configured", error: "CODEXPRO_BASH_RUNTIME=wsl requires CODEXPRO_BASH_EXECUTABLE to point to wsl.exe/System32 bash.exe, or omit CODEXPRO_BASH_EXECUTABLE for automatic WSL lookup." };
+    }
+    return { available: true, executable, runtime: process.platform === "win32" ? (isWsl ? "wsl" : "native-bash") : "unix-bash", source: "configured" };
+  }
+
+  if (process.platform === "win32" && config.bashRuntime === "wsl") {
+    const candidates = [
+      ...commandPaths("wsl.exe"),
+      ...commandPaths("wsl"),
+      path.win32.join(env.SystemRoot || env.WINDIR || "C:\\Windows", "System32", "wsl.exe")
+    ];
+    const executable = candidates.map((candidate) => usableExecutableFile(candidate)).find(Boolean);
+    if (executable) return { available: true, executable, runtime: "wsl", source: "path" };
+    return { available: false, executable: null, runtime: "unavailable", source: "unavailable", error: "CODEXPRO_BASH_RUNTIME=wsl was requested but no WSL launcher was found." };
   }
 
   if (process.platform === "win32") {
@@ -361,18 +373,7 @@ export function resolveBashRuntime(config: CodexProConfig, env: NodeJS.ProcessEn
       if (!executable || isWindowsWslLauncher(executable, env)) continue;
       return { available: true, executable, runtime: "native-bash", source: "path" };
     }
-    const wslLauncher = commandPaths("bash")
-      .map((candidate) => usableExecutableFile(candidate))
-      .find((candidate): candidate is string => Boolean(candidate && isWindowsWslLauncher(candidate, env)));
-    return {
-      available: false,
-      executable: null,
-      runtime: "unavailable",
-      source: "unavailable",
-      error: wslLauncher
-        ? "Only the Windows WSL bash launcher was found. CodexPro does not auto-select WSL for a Windows-native workspace; install Git for Windows or set CODEXPRO_BASH_EXECUTABLE explicitly to opt in."
-        : "No Bash executable was found. Install Git for Windows or set CODEXPRO_BASH_EXECUTABLE to an absolute Bash path."
-    };
+    return { available: false, executable: null, runtime: "unavailable", source: "unavailable", error: "No native Bash executable was found on Windows. Install Git for Windows, configure CODEXPRO_BASH_EXECUTABLE, or set CODEXPRO_BASH_RUNTIME=wsl to explicitly use WSL." };
   }
 
   const systemBash = usableExecutableFile("/bin/bash");
@@ -382,9 +383,14 @@ export function resolveBashRuntime(config: CodexProConfig, env: NodeJS.ProcessEn
   return { available: false, executable: null, runtime: "unavailable", source: "unavailable", error: "No Bash executable was found." };
 }
 
+function bashInvocationArgs(runtime: BashRuntimeInfo, command: string): string[] {
+  if (runtime.runtime === "wsl" && runtime.executable && /(?:^|[\\/])wsl(?:\.exe)?$/i.test(runtime.executable)) return ["--exec", "bash", "-lc", command];
+  return ["-lc", command];
+}
+
 function probeThroughBash(runtime: BashRuntimeInfo, cwd: string, env: NodeJS.ProcessEnv, command: string): string | null {
   if (!runtime.available || !runtime.executable) return null;
-  const result = spawnSync(runtime.executable, ["-lc", command], {
+  const result = spawnSync(runtime.executable, bashInvocationArgs(runtime, command), {
     cwd,
     env,
     encoding: "utf8",
@@ -527,7 +533,7 @@ export async function runBash(
   return new Promise((resolve, reject) => {
     const backendHandle = backend.start({
       config, workspace, command, cwdAbs: cwd, cwdRel,
-      ...(backend.kind === "host" ? { hostExecutable: bashExecutable, hostEnv: makeEnv(config) } : {})
+      ...(backend.kind === "host" ? { hostExecutable: bashExecutable, hostArgs: bashInvocationArgs(bashRuntime, command), hostEnv: makeEnv(config) } : {})
     });
     const child = backendHandle.child;
 
