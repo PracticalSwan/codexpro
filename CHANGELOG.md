@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Hardened Durable Goal persistence on Windows: atomic goal-record and runtime-snapshot replacement now retries transient `EPERM`/`EACCES`/`EBUSY` rename failures with bounded backoff, with a Windows exclusive-lock regression covering the hosted filesystem/AV race.
 - Reconciled upstream hardening commit `d66a250` / PR #131 semantically instead of wholesale-merging the divergent fork: added explicit Windows Bash runtime/Git selection, interruption/orphan-aware local handoff receipts, default blocking of standard handoff Git/GitHub remote mutations, bounded HTTP request correlation/auth telemetry, and diagnostic path labels while preserving CodexPro Full's stronger existing continuity and workspace contracts.
 - Fixed local handoff process cleanup so timeout/interruption uses the owned process-tree terminator, stubborn children can still escalate after a prior signal, and timed-out receipts retain `exit_code=null` with reconciliation-required semantics rather than treating forced Windows teardown as a normal executor exit.
 - Refreshed the verified dependency lock within existing semver ranges: @types/node 24.13.4, minimatch 10.2.6, tsx 4.23.13, and zod 4.6.5; TypeScript remains on the supported 5.x line rather than taking the 7.x major upgrade.

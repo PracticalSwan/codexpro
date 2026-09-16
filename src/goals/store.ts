@@ -15,6 +15,18 @@ function pidAlive(pid: number): boolean {
   try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
 }
 async function delay(ms: number): Promise<void> { await new Promise((resolve) => setTimeout(resolve, ms)); }
+const WINDOWS_RENAME_RETRY_CODES = new Set(["EPERM", "EACCES", "EBUSY"]);
+async function replaceFileAtomic(temp: string, target: string): Promise<void> {
+  const attempts = process.platform === "win32" ? 10 : 1;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try { await fsp.rename(temp, target); return; }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (attempt + 1 >= attempts || process.platform !== "win32" || !WINDOWS_RENAME_RETRY_CODES.has(code)) throw error;
+      await delay(Math.min(200, 25 * (attempt + 1)));
+    }
+  }
+}
 
 export interface GoalStoreOptions { baseDir: string; maxGoals?: number; }
 export class GoalStore {
@@ -48,7 +60,7 @@ export class GoalStore {
     const target = this.recordPath(record.id);
     const temp = `${target}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
     await fsp.writeFile(temp, json, { encoding: "utf8", mode: 0o600 });
-    try { await fsp.rename(temp, target); }
+    try { await replaceFileAtomic(temp, target); }
     catch (error) { await fsp.rm(temp, { force: true }).catch(() => undefined); throw error; }
     await this.prune();
     return record;
@@ -70,7 +82,7 @@ export class GoalStore {
     if (Buffer.byteLength(json, "utf8") > MAX_GOAL_BYTES) throw new Error("Goal runtime snapshot exceeded bounded storage limit.");
     const target=this.runtimePath(id), temp=`${target}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
     await fsp.writeFile(temp,json,{encoding:"utf8",mode:0o600});
-    try { await fsp.rename(temp,target); } catch(error) { await fsp.rm(temp,{force:true}).catch(()=>undefined); throw error; }
+    try { await replaceFileAtomic(temp,target); } catch(error) { await fsp.rm(temp,{force:true}).catch(()=>undefined); throw error; }
   }
 
   async readRuntime(id: string): Promise<CodexProConfig> {
