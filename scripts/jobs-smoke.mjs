@@ -57,6 +57,20 @@ async function settle(id, attempts = Math.ceil(STRUCTURED_JOB_ATTESTATION_GRACE_
   return store.require(id);
 }
 
+async function holdExclusive(filePath, milliseconds) {
+  const escaped = filePath.replaceAll("'", "''");
+  const script = `$f=[System.IO.File]::Open('${escaped}',[System.IO.FileMode]::Open,[System.IO.FileAccess]::ReadWrite,[System.IO.FileShare]::None); [Console]::Out.WriteLine('LOCKED'); Start-Sleep -Milliseconds ${milliseconds}; $f.Dispose()`;
+  const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+  await new Promise((resolve, reject) => {
+    let out = '', err = '';
+    const timer = setTimeout(() => reject(new Error(`lock timeout ${err}`)), 5_000);
+    child.stdout.on('data', (chunk) => { out += String(chunk); if (out.includes('LOCKED')) { clearTimeout(timer); resolve(); } });
+    child.stderr.on('data', (chunk) => { err += String(chunk); });
+    child.on('exit', (code) => { if (!out.includes('LOCKED')) { clearTimeout(timer); reject(new Error(`lock process exited ${code}: ${err}`)); } });
+  });
+  return child;
+}
+
 async function boundedStep(label, operation, timeoutMs = 15_000) {
   console.log(`[jobs smoke] ${label}`);
   let timer;
@@ -76,6 +90,19 @@ async function boundedStep(label, operation, timeoutMs = 15_000) {
   assert.equal(job.state, 'queued');
   assert.equal((await store.requireForWorkspace(job.id, workspace)).id, job.id);
   await assert.rejects(() => store.requireForWorkspace(job.id, { ...workspace, id: 'ws_other' }), /belong/i);
+
+  if (process.platform === 'win32') {
+    const target = path.join(stateDir, 'records', `${job.id}.json`);
+    const current = await store.require(job.id);
+    const locker = await holdExclusive(target, 350);
+    const retryStarted = Date.now();
+    current.progress.phase = 'atomic-retry-probe';
+    current.updatedAt = new Date().toISOString();
+    await store.save(current);
+    assert(Date.now() - retryStarted >= 200, 'job atomic replacement did not exercise the Windows retry path');
+    if (locker.exitCode === null) await new Promise((resolve) => locker.once('exit', resolve));
+    assert.equal((await store.require(job.id)).progress.phase, 'atomic-retry-probe');
+  }
 
   await Promise.all([
     store.update(job.id, (record) => { record.progress.completed += 1; return record; }),

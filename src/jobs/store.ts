@@ -32,6 +32,18 @@ function pidAlive(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
 }async function delay(ms: number): Promise<void> { await new Promise((resolve) => setTimeout(resolve, ms)); }
+const WINDOWS_RENAME_RETRY_CODES = new Set(["EPERM", "EACCES", "EBUSY"]);
+async function replaceFileAtomic(temp: string, target: string): Promise<void> {
+  const attempts = process.platform === "win32" ? 10 : 1;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try { await fsp.rename(temp, target); return; }
+    catch (error) {
+      const code = (error as NodeJS.ErrnoException).code ?? "";
+      if (attempt + 1 >= attempts || process.platform !== "win32" || !WINDOWS_RENAME_RETRY_CODES.has(code)) throw error;
+      await delay(Math.min(200, 25 * (attempt + 1)));
+    }
+  }
+}
 
 export interface JobStoreOptions {
   baseDir: string;
@@ -73,7 +85,7 @@ export class JobStore {
     if (Buffer.byteLength(json, "utf8") > maxBytes) throw new Error("Job state exceeded bounded storage limit.");
     const temp = `${filePath}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
     await fsp.writeFile(temp, json, { encoding: "utf8", mode: 0o600 });
-    try { await fsp.rename(temp, filePath); }
+    try { await replaceFileAtomic(temp, filePath); }
     catch (error) { await fsp.rm(temp, { force: true }).catch(() => undefined); throw error; }
   }
 
