@@ -63,7 +63,12 @@ async function holdExclusive(filePath, milliseconds) {
   const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
   await new Promise((resolve, reject) => {
     let out = '', err = '';
-    const timer = setTimeout(() => reject(new Error(`lock timeout ${err}`)), 5_000);
+    const timeoutMs = 20_000;
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`lock process readiness timeout after ${timeoutMs} ms: ${err}`));
+    }, timeoutMs);
+    child.once('error', (error) => { clearTimeout(timer); reject(error); });
     child.stdout.on('data', (chunk) => { out += String(chunk); if (out.includes('LOCKED')) { clearTimeout(timer); resolve(); } });
     child.stderr.on('data', (chunk) => { err += String(chunk); });
     child.on('exit', (code) => { if (!out.includes('LOCKED')) { clearTimeout(timer); reject(new Error(`lock process exited ${code}: ${err}`)); } });

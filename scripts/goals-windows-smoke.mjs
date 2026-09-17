@@ -13,7 +13,15 @@ async function holdExclusive(filePath, milliseconds) {
   const escaped=filePath.replaceAll("'", "''");
   const script=`$f=[System.IO.File]::Open('${escaped}',[System.IO.FileMode]::Open,[System.IO.FileAccess]::ReadWrite,[System.IO.FileShare]::None); [Console]::Out.WriteLine('LOCKED'); Start-Sleep -Milliseconds ${milliseconds}; $f.Dispose()`;
   const child=spawn("powershell.exe",["-NoProfile","-NonInteractive","-Command",script],{stdio:["ignore","pipe","pipe"],windowsHide:true});
-  await new Promise((resolve,reject)=>{let out="",err="";const timer=setTimeout(()=>reject(new Error(`lock timeout ${err}`)),5000);child.stdout.on("data",(c)=>{out+=String(c);if(out.includes("LOCKED")){clearTimeout(timer);resolve();}});child.stderr.on("data",(c)=>{err+=String(c)});child.on("exit",(code)=>{if(!out.includes("LOCKED")){clearTimeout(timer);reject(new Error(`lock process exited ${code}: ${err}`));}});});
+  await new Promise((resolve,reject)=>{
+    let out="",err="";
+    const timeoutMs=20_000;
+    const timer=setTimeout(()=>{child.kill();reject(new Error(`lock process readiness timeout after ${timeoutMs} ms: ${err}`));},timeoutMs);
+    child.once("error",(error)=>{clearTimeout(timer);reject(error);});
+    child.stdout.on("data",(c)=>{out+=String(c);if(out.includes("LOCKED")){clearTimeout(timer);resolve();}});
+    child.stderr.on("data",(c)=>{err+=String(c)});
+    child.on("exit",(code)=>{if(!out.includes("LOCKED")){clearTimeout(timer);reject(new Error(`lock process exited ${code}: ${err}`));}});
+  });
   return child;
 }
 try {
