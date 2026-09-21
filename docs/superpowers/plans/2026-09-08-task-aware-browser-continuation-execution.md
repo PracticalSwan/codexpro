@@ -21,7 +21,7 @@
 - No Codex CLI usage.
 - Preserve running CodexPro lifecycle: do not stop without explicit stop approval and never start/restart CodexPro automatically.
 - Publication/release remains separately authorized.
-- Product defaults remain `continuationEnabled=false` and `continuationTelegramEnabled=false`. **Current operator acceptance preference:** during this user's future authorized local implementation/setup, save both as enabled for their local profile after the features exist; this planning pass does not mutate runtime/profile state.
+- Product defaults remain `continuationEnabled=false` and `continuationTelegramEnabled=false`. Current implementation exists, but Plan 36 fresh-session acceptance is still deferred. Do not enable continuation/Telegram in a saved profile unless the operator explicitly requests that live setup in the current task.
 
 ## Dependency Order
 

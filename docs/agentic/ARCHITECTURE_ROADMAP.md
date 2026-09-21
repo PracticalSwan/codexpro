@@ -1,292 +1,168 @@
-# CodexPro Further-Development Architecture Roadmap
+# CodexPro Full — Consolidation-First Architecture Roadmap
 
-Created: 2026-09-05
+Last reconciled: 2026-09-22
 
-## Target architecture
+## Current direction
+
+CodexPro Full already has the core capabilities needed for serious local development: guarded workspace/file mutation, Git intelligence, processes/checks/jobs, resumable analysis, Durable Goals, policy/trust controls, CodeGraph/LSP adapters, artifact I/O, diagnostics, and optional task continuation.
+
+The current engineering risk is no longer missing breadth. It is **feature density**: every additional scheduler, browser state machine, protocol bridge, UI, or execution subsystem multiplies cross-platform tests and maintenance cost.
+
+The roadmap therefore changes from expansion-first to **consolidation-first**:
+
+1. finish the one remaining continuation acceptance gate;
+2. improve operator lifecycle and provenance;
+3. improve the existing admin/diagnostics UX;
+4. deepen existing context/provider integration;
+5. add one narrowly scoped missing read-only notebook capability;
+6. then use real project evidence before adding more features.
+
+`PLAN_INDEX.md` is the authoritative status router. This document records architecture direction, not implementation status.
+
+## Current architecture
+
 ```text
 ChatGPT / MCP
       |
       v
-Tool registration + mode gates (`server.ts`)
+MCP compatibility + tool registration
       |
+      +--> Policy / PathGuard / project trust
+      +--> Files / Git / artifacts
       +--> Context / repository intelligence
-      +--> Verification / workspace processes
-      +--> File / Git / artifact operations
+      +--> Processes / checks / jobs / batches
+      +--> Durable Goals
       +--> Diagnostics / local admin
-      +--> Goal orchestration
-                  |
-                  v
-         Operation + Policy Core
-          /        |        \
-     PathGuard   Leases    Journal/Budgets
-```
-
-## Dependency order
-1. Reconcile/release the current maintenance baseline.
-2. Add workspace policy and the operation/concurrency core.
-3. Add diagnostics/observability.
-4. Build process verification and context continuity on those foundations.
-5. Expand Git/repository intelligence and Codex-session navigation.
-6. Add optional code-intelligence providers and artifact I/O.
-7. Build durable Goal orchestration only after operation/process/Git foundations are proven.
-
-## Feature mapping
-| # | Feature | Priority | Plan | Depends on plan(s) |
-|---:|---|---|---|---|
-| 5 | 0.31 Maintenance Release | P0 | 01 — 0.31 Maintenance Baseline | baseline |
-| 6 | Per-workspace policy file | P0 | 02 — Workspace Policy | 01 |
-| 1 | Operation Receipts | P0 | 03 — Operation Journal and Concurrency Core | 01, 02 |
-| 2 | operation_status | P0 | 03 — Operation Journal and Concurrency Core | 01, 02 |
-| 26 | Transactional change sets | P0 | 03 — Operation Journal and Concurrency Core | 01, 02 |
-| 27 | Revert operation | P0 | 03 — Operation Journal and Concurrency Core | 01, 02 |
-| 35 | Resource budgeting | P0 | 03 — Operation Journal and Concurrency Core | 01, 02 |
-| 36 | Workspace concurrency coordinator | P0 | 03 — Operation Journal and Concurrency Core | 01, 02 |
-| 3 | Connection Diagnostics | P0 | 04 — Observability and Diagnostics | 01, 03 |
-| 4 | Tool-Surface Diagnostics | P0 | 04 — Observability and Diagnostics | 01, 03 |
-| 20 | Local telemetry | P0 | 04 — Observability and Diagnostics | 01, 03 |
-| 21 | Admin diagnostics dashboard | P0 | 04 — Observability and Diagnostics | 01, 03 |
-| 7 | Workspace Process Manager | P1 | 05 — Workspace Processes and Verification | 03, 04 |
-| 8 | run_checks | P1 | 05 — Workspace Processes and Verification | 03, 04 |
-| 9 | verify_changes | P1 | 05 — Workspace Processes and Verification | 03, 04 |
-| 10 | Structured Test Results | P1 | 05 — Workspace Processes and Verification | 03, 04 |
-| 11 | read_many | P1 | 06 — Context, Instructions, Events, and Task Continuity | 02, 04 |
-| 12 | search_many | P1 | 06 — Context, Instructions, Events, and Task Continuity | 02, 04 |
-| 13 | gather_context | P1 | 06 — Context, Instructions, Events, and Task Continuity | 02, 04 |
-| 14 | instructions_for_path | P1 | 06 — Context, Instructions, Events, and Task Continuity | 02, 04 |
-| 22 | Workspace event cursor | P1 | 06 — Context, Instructions, Events, and Task Continuity | 02, 04 |
-| 23 | Durable task checkpoint | P1 | 06 — Context, Instructions, Events, and Task Continuity | 02, 04 |
-| 17 | Read-only Git history tools | P1 | 07 — Git and Repository Intelligence | 03, 05, 06 |
-| 18 | Monorepo / package graph | P1 | 07 — Git and Repository Intelligence | 03, 05, 06 |
-| 19 | Change Impact Tool | P1 | 07 — Git and Repository Intelligence | 03, 05, 06 |
-| 24 | Guarded Git write tools | P1 | 07 — Git and Repository Intelligence | 03, 05, 06 |
-| 25 | Pre-commit safety scan | P1 | 07 — Git and Repository Intelligence | 03, 05, 06 |
-| 15 | Codex Session Search | P1 | 08 — Codex Session Navigation | 01 |
-| 16 | read_codex_session_around | P1 | 08 — Codex Session Navigation | 01 |
-| 28 | Optional CodeGraph integration | P2 | 09 — Optional Code Intelligence Backends | 06, 07 |
-| 29 | find_files / fuzzy file search | P2 | 09 — Optional Code Intelligence Backends | 06, 07 |
-| 30 | LSP intelligence adapter | P2 | 09 — Optional Code Intelligence Backends | 06, 07 |
-| 31 | Dependency-aware context selection | P2 | 09 — Optional Code Intelligence Backends | 06, 07 |
-| 32 | Safe archive import | P2 | 10 — Archive, Document, and Artifact I/O | 03, 06 |
-| 33 | Document inspection | P2 | 10 — Archive, Document, and Artifact I/O | 03, 06 |
-| 34 | File export back to ChatGPT | P2 | 10 — Archive, Document, and Artifact I/O | 03, 06 |
-| 37 | Durable Goal orchestration | P3 | 11 — Durable Goal Orchestration | 03, 04, 05, 07 |
-| 38 | Windows Goal execution | P3 | 11 — Durable Goal Orchestration | 03, 04, 05, 07 |
-| 39 | Isolated execution environments | P3 | 11 — Durable Goal Orchestration | 03, 04, 05, 07 |
-| 40 | Task dependency scheduler | P3 | 11 — Durable Goal Orchestration | 03, 04, 05, 07 |
-
-## Cross-cutting acceptance criteria
-- Preserve CodexPro as a local MCP bridge for explicitly allowed workspaces; do not add model proxying, quota bypass, or hosted source-code storage.
-- All filesystem paths pass through PathGuard and existing blocked-path/redaction rules before use or disclosure.
-- New external binaries are optional adapters; CodexPro shall not silently install them unless an existing explicit installer flow already owns that dependency.
-- Windows, macOS, and Linux behavior must be explicit; Windows is a first-class target rather than a best-effort fallback.
-- Prefer deep modules with small interfaces; keep src/server.ts as registration/orchestration glue rather than adding subsystem business logic there.
-- Use existing dependencies first. Any dependency addition requires a documented reason, lockfile review, npm audit, and package-size review.
-- Every state-changing feature must preserve unrelated dirty, staged, and untracked user work.
-- Tests must prove failure before the fix/feature where practical, then cover the real MCP or CLI path and important platform edge cases.
-- Commit and push steps in plans are conditional on explicit execution authorization; planning alone never commits or publishes.
-
-## Non-goals
-- No model-provider proxying, model unlocking, rate-limit/quota bypass, or account pooling.
-- No automatic approval bypass or hidden external side effects.
-- No generic full-machine remote desktop/process-control API.
-- No default cloud persistence of workspace source, prompts, transcripts, or secrets.
-- No mandatory CodeGraph/LSP/container dependency.
-- No autonomous push/merge/deploy path without explicit policy and user authorization.
-
-## 2026-09-06 research-driven roadmap extension
-
-Plans 01–11 are the verified 0.31–0.32 foundation. The following extension was derived from comparison with current Codex, Claude Code, Gemini CLI, OpenCode, Cline, OpenHands, Aider, ZCode/Z-CODE, goose, and current MCP protocol/SDK direction. It deliberately prioritizes deterministic boundaries and interoperability over adding another agent/model orchestration layer.
-
-### Extension architecture
-```text
-ChatGPT / MCP
+      +--> Optional human-gated continuation
       |
       v
-MCP compatibility + capability negotiation (12, 18, 19)
-      |
-      v
-Tool registration + granular policy + trusted hooks (13, 14)
-      |
-      +--> Context selection / subtask bundles (16)
-      +--> Verification + repair evidence (20)
-      +--> Activity/evidence ledger (17)
-      +--> Safe file checkpoints (15)
-      |
-      v
-Existing Operation / Process / Git / Goal cores
-      |
-      +--> host execution (default)
-      +--> optional Docker adapter (21, deferred)
+Local explicitly allowed workspaces
 ```
 
-### Extension feature mapping
-| # | Feature | Priority | Plan | Main dependency |
-|---:|---|---|---|---|
-| 41 | MCP SDK maintenance + compatibility seam | P0 | 12 | 01, 04 |
-| 42 | Granular action/resource allow-deny policy | P0 | 13 | 02, 03, 12 |
-| 43 | Minimal lifecycle hooks | P0 | 14 | 03, 04, 13 |
-| 44 | Project trust + hook fingerprints | P0 | 14 | 03, 04, 13 |
-| 45 | Durable touched-file checkpoints | P1 | 15 | 03, 06 |
-| 46 | Budgeted `gather_context` v2 | P1 | 16 | 06, 09 |
-| 47 | Bounded subtask context bundles | P1 | 16 | 06, 09 |
-| 48 | Unified activity/evidence ledger | P1 | 17 | 03, 04, 05, 11 |
-| 49 | MCP v2 compatibility + one-shot approvals | P2 | 18 | 12, 13 |
-| 50 | Optional MCP Tasks bridge | P3 | 19 | 18 |
-| 51 | Structured verification repair metadata | P1 | 20 | 05, 07, 16 |
-| 52 | Optional Docker execution backend | P3 | 21 | 03, 05, 11, 13 |
-### Recommended sequence
-`12 → 13 → 14 → 15 → 16 → 17 → 20 → 18 → 19 → 21`
+## What is already sufficient
 
-The sequence is conservative rather than dependency-minimal: stabilize MCP imports first, then policy/trust, then rollback/context/evidence quality, and only then experimental protocol/container capabilities.
+Do not create parallel replacements for these areas:
 
-### Extension design rules
-- Deepen existing modules before inventing parallel subsystems: improve `gather_context`, `verify_changes`, operation/process/Goal state, and policy seams in place.
-- Keep semantic reasoning in the host model; CodexPro supplies deterministic evidence, execution, policy, persistence, and bounded recovery primitives.
-- Project configuration may tighten but never widen profile/global authority.
-- Hooks cannot override denies and cannot execute until project/config fingerprints are trusted outside the repository.
-- Checkpoints capture only CodexPro-touched allowed files; never snapshot an entire repository by default.
-- Activity history stores bounded sanitized evidence, not prompts, source dumps, hidden reasoning, or raw secrets.
-- MCP v2/input-required/Tasks behavior is capability-gated and must be live-validated against ChatGPT before release claims.
-- Docker remains optional, host execution remains default, no image pull/install occurs automatically, and Goal Docker support may remain unavailable if safe worktree semantics cannot be proven.
+- **Context:** `gather_context`, dependency ranking, instructions, Git evidence, cache, resumable batches.
+- **Long work:** `proc_*`, `job_*`, `batch_*`, Durable Goals.
+- **Verification:** `run_checks`, `verify_changes`, repair metadata, change impact, preflight, activity evidence.
+- **UI/operations:** authenticated local admin page + optional MCP tool cards.
+- **Repository intelligence:** built-in analysis plus optional CodeGraph/LSP provider seam.
+- **Task continuity:** snapshots plus optional continuation lifecycle.
+- **Execution isolation:** host default plus verified optional Windows Docker Stage A.
 
-### Explicitly rejected scope
-- model/provider routing or quota/account pooling
-- a second workflow YAML/recipe engine beside Durable Goals
-- unrestricted recursive subagent orchestration inside CodexPro
-- automatic edit/test/self-healing model loops
-- plugin marketplace infrastructure
-- mandatory Docker, CodeGraph, LSP, or other external runtime
-- automatic deployment/publication/merge approval bypass
+New designs should reuse these seams before proposing another public abstraction.
 
-Authoritative specs/plans for this extension live under `docs/superpowers/specs/2026-09-06-*` and `docs/superpowers/plans/2026-09-06-*`; `docs/agentic/PLAN_INDEX.md` is the routing/status source of truth.
+## Active roadmap
 
-### Unified execution bundle
-When the user explicitly authorizes implementing Plans 12–21 together, use `docs/superpowers/plans/2026-09-06-roadmap-12-21-execution.md` as the controller plan. It preserves the sequence above on one isolated cumulative integration worktree/branch while keeping every subsystem's spec, focused tests, review, verification, and milestone commit independent. Integration to `main`, push, and global reinstall occur only after final cumulative verification rather than after every milestone.
+### Plan 36 — Close continuation acceptance, then freeze
 
-Runtime ownership remains outside the roadmap implementation itself: a running CodexPro session must not be stopped without explicit user approval, and agents may never start or restart CodexPro. If a required global reinstall is blocked by the running process and stop approval is absent, the reinstall remains pending while source integration/push may complete when otherwise authorized.
+Plan 36 remains the only unfinished work from the browser/Telegram continuation program. Perform the documented installed-runtime fresh-session acceptance exactly once when intentionally authorized.
 
-## 2026-09-08 deadline-resilience roadmap extension
+After it passes, continuation is feature-frozen except for evidence-backed defects. Do not expand it into generic browser automation, UI testing, automatic login/Retry/model switching, extra messaging transports, or remote desktop control.
 
-This extension addresses host-side tool-call windows without attempting to bypass them. Tool-time awareness is planned **on by default**: normal bounded mode is exactly 1,200,000 ms (20 minutes), finite values are 5–60 minutes, and explicit Unlimited/observe exists only for temporary harmless host-window discovery. The effective value is a transport boundary only: user goals, requested scope, acceptance criteria, reasoning/review quality, and required verification must remain intact across continuation calls.
+### Plan 38 — Runtime Lifecycle and Build Provenance (P0)
 
-### Extension architecture
+Problem solved: operators currently lack supported runtime `status`/guarded `stop`, and source builds after a release are hard to distinguish from the tagged SemVer.
+
+Design direction:
+
+- reuse existing runtime records and process ownership evidence;
+- add local CLI `status` and exact-owner `stop`;
+- graceful termination first, exact Windows tree fallback only after ownership proof;
+- never add agent restart/start authority;
+- embed non-secret build revision/channel at package/build time;
+- expose provenance through version, doctor, `server_config`, and local diagnostics.
+
+### Plan 39 — Operator UX and Diagnostics Polish (P0)
+
+Problem solved: the existing admin/profile/diagnostic state is powerful but too raw for simple operational questions.
+
+Design direction:
+
+- improve the existing authenticated admin page instead of creating a second dashboard;
+- show a compact current-runtime overview;
+- separate current runtime from saved-next-launch settings;
+- explain why major capabilities are unavailable using deterministic reason codes;
+- add read-only profile list/show CLI commands;
+- never auto-enable permissions or bypass workspace policy.
+
+### Plan 40 — Context and Code-Intelligence Provider Integration (P1)
+
+Problem solved: optional CodeGraph/LSP evidence is already used by structured search but is not deeply reused by symbol-oriented `gather_context`.
+
+Design direction:
+
+- reuse the current provider seam;
+- merge bounded guarded provider matches/reasons into existing context candidates;
+- preserve built-in fallback and ranking priority;
+- no persistent LSP manager, no editor protocol platform, no new context database, and no new public context tool.
+
+### Plan 41 — Structured Notebook Inspection (P1)
+
+Problem solved: `.ipynb` files are currently noisy raw JSON to CodexPro.
+
+Design direction:
+
+- add one read-only `read_notebook` tool;
+- parse notebook JSON, selected cells, metadata, text/error outputs, and MIME names;
+- never start a kernel or execute/edit notebooks in v1;
+- no Python/Jupyter dependency or dataframe engine.
+
+## Deliberately retired or frozen scope
+
+### Interactive MCP approvals / Tasks bridge
+
+The already delivered MCP SDK v2 compatibility seam remains. The unfinished interactive-approval bridge and MCP Tasks bridge are retired as active implementation plans because they are host-dependent and duplicate mature CodexPro primitives without a current concrete benefit.
+
+Protocol evolution remains a research/watch item. Reopen only when the connected client exposes a stable capability that materially improves over existing `proc_*`, `job_*`, `batch_*`, Goals, and policy fingerprints.
+
+### Docker expansion
+
+Keep the verified optional Windows Stage A backend for one-shot Bash/workspace processes. Goals remain host-only. Linux-host validation and Goal Docker work are not active roadmap items. Reopen from an actual portability/isolation requirement, not completeness pressure.
+
+### Browser automation
+
+The managed browser exists only for optional human-gated continuation. It is not a general browser testing or remote-control foundation.
+
+## Explicitly rejected scope
+
+- model/provider routing, quota/account pooling, or model unlocking;
+- autonomous recursive model/subagent loops inside CodexPro;
+- another YAML/workflow scheduler beside Durable Goals;
+- generic browser automation or remote desktop;
+- debugger/profiler platform;
+- full IDE/LSP lifecycle platform;
+- notebook execution/kernel/dataframe platform;
+- mandatory Docker, CodeGraph, LSP, browser, or external service;
+- automatic push/merge/deploy/publish or approval bypass;
+- default cloud storage of source, prompts, transcripts, or secrets.
+
+## Design rules for future proposals
+
+1. **Demonstrate the gap from real use.** A feature should solve a repeated observed limitation, not merely match another agent product.
+2. **Deepen before adding.** Prefer an option/helper/provider integration inside an existing public tool over another top-level tool.
+3. **One state machine per problem.** Do not create new task/job/work-session abstractions that mirror existing durable state.
+4. **Keep semantic reasoning in the host model.** CodexPro supplies bounded evidence, execution, persistence, policy, and recovery.
+5. **Fail closed at external capability boundaries.** Host/client/platform uncertainty is not permission to emulate unsupported protocol behavior.
+6. **Keep Windows first-class without making Windows-only assumptions in shared interfaces.**
+7. **No dependency for convenience.** New dependencies require a concrete capability gap, lockfile/audit/package review, and a simpler-standard-library rejection reason.
+8. **Measure surface growth.** New public tools and new persistent stores need explicit justification because Full mode is already large.
+
+## Recommended execution order
 
 ```text
-settings CLI / authenticated local profile editor
-        |  saved syncCallDeadlineMs (next launch)
-        v
-MCP dispatch -> DeadlineBudget(effective runtime value; default 20 min)
-        |              |
-        |              +--> cooperative sync/composite work
-        |
-        +--> execution routing
-              +--> proc_*  long shell/process work
-              +--> job_*   structured long verification/jobs
-              +--> goal_*  multi-stage isolated engineering
-              +--> batch_* resumable in-process analysis
+Plan 36 acceptance closure
+        ↓
+Plan 38 runtime lifecycle/provenance
+        ↓
+Plan 39 operator UX/diagnostics
+        ↓
+Plan 40 context/provider integration
+        ↓
+Plan 41 notebook inspection
+        ↓
+real-project usage / defect evidence
 ```
 
-### Feature mapping
-
-| # | Feature | Priority | Plan | Main dependency |
-|---:|---|---|---|---|
-| 53 | Configurable synchronous call budget (20-minute default) | P0 | 22 | 03, 04 |
-| 63 | CLI/local-admin deadline profile setting | P0 | 22 | 53 |
-| 54 | Quality/material-progress deadline invariant | P0 | 22, 26 | 22 |
-| 55 | Composite verification deadline propagation | P0 | 23 | 05, 22 |
-| 56 | Durable structured `job_*` core | P1 | 24 | 03, 04, 22 |
-| 57 | Persistent job progress/recovery/short polling | P1 | 24 | 24 |
-| 58 | Asynchronous verification jobs | P1 | 25 | 23, 24 |
-| 59 | Duration-aware execution routing | P0 | 26 | 22–25 |
-| 60 | Quality-preserving ChatGPT continuation guidance | P0 | 26 | 22–25 |
-| 61 | Resumable non-process `batch_*` continuation | P1 | 27 | 16, 22 |
-| 62 | Deadline/job/batch observability and risk diagnostics | P1 | 28 | 22–27 |
-| 83 | Per-user host-window discovery / Unlimited observe mode | P1 | 22, 28 | 22 |
-
-### Recommended sequence
-
-`22 → 23 → 24 → 25 → 26 → 27 → 28`
-
-### Extension design rules
-
-- Bounded 20 minutes is the normal default, not a universal host assumption. Users may choose 5–60 minutes; first-time users may temporarily use Unlimited/observe with the harmless probe to discover their own ChatGPT cutoff, then restore a finite safety-margin value. Tool-time awareness does not depend on continuation.
-- Near the effective configured deadline, stop starting new synchronous phases, persist a truthful continuation, and continue the same goal in later calls.
-- Reuse the existing `WorkspaceProcessManager` for long shell commands and Durable Goals for multi-stage isolated work.
-- Structured jobs are producer-registered and are not a second generic command runner.
-- Polling/status tools return promptly and use condition-based progress rather than long blocking waits.
-- Resumable batch cursors do no background work and invalidate safely when source/request fingerprints change.
-- Diagnostics report the internal contract and recovery evidence without implying control over the host platform's external limit.
-
-Authoritative design: `docs/superpowers/specs/2026-09-08-tool-deadline-resilience-design.md`.
-Controller plan: `docs/superpowers/plans/2026-09-08-deadline-resilience-execution.md`.
-
-## 2026-09-08 task-aware browser-continuation roadmap extension
-
-This extension adds an **optional, default-off** human-gated conversation-resume layer after the default-on deadline-resilience foundations. It does not bypass the host tool window: actual long work remains in `proc_*`, `job_*`, `batch_*`, and Durable Goals; the browser companion only preserves task awareness, signals when another model turn is useful, and lets the user explicitly continue the one bound chat.
-
-### Extension architecture
-
-```text
-ChatGPT semantic controller
-   -> continuation task state (29)
-   -> loopback browser bridge + MV3 companion (30)
-   -> dedicated persistent Chrome/Edge profile + manual auth (31)
-   -> explicit chat bind + user Continue task action (32)
-   -> conservative watchdog / anti-loop (33)
-   -> settings/admin controls (34)
-   -> deadline/proc/job/batch/Goal integration (35)
-   -> Telegram remote user authorization (37)
-   -> security/package/fresh-session live QA (36)
-```
-
-### Feature mapping
-
-| # | Feature | Priority | Plan | Main dependency |
-|---:|---|---|---|---|
-| 64 | Durable continuation task state | P0 | 29 | 06, 22 |
-| 65 | Semantic continuation MCP lifecycle API | P0 | 29 | 64 |
-| 66 | Narrow MV3 browser companion | P0 | 30 | 29 |
-| 67 | Loopback least-privilege browser pairing | P0 | 30 | 29 |
-| 68 | Dedicated durable ChatGPT browser profile | P0 | 31 | 30 |
-| 69 | Manual auth/re-auth hard-stop workflow | P0 | 31 | 68 |
-| 70 | Explicit ChatGPT conversation binding | P0 | 32 | 29–31 |
-| 71 | User-gated continuation dispatch | P0 | 32 | 70 |
-| 72 | Conservative interruption readiness | P0 | 33 | 22, 29–32 |
-| 73 | Nonce/cooldown/ack anti-loop controls | P0 | 33 | 72 |
-| 74 | Continuation CLI/profile/admin UX | P1 | 34 | 29–33 |
-| 75 | Deadline/process/job/batch/Goal integration | P0 | 35 | 22–34 |
-| 76 | ChatGPT continuation/recovery guidance | P0 | 35 | 75 |
-| 77 | Browser-continuation threat/redaction controls | P0 | 36 | 29–35 |
-| 78 | Extension/package privacy integrity | P0 | 36 | 30–35 |
-| 79 | Live managed-browser regression matrix | P0 | 36 | 31–35 |
-| 80 | Telegram private-bot continuation notification/authorization | P0 | 37 | 29–35 |
-| 81 | Bounded focused continuation intents | P0 | 29, 32, 37 | 29, 32 |
-| 82 | Fresh-ChatGPT-session acceptance report handoff | P0 | 36 | 29–37 |
-| 84 | Manual-user-turn semantic reconciliation | P0 | 29, 32, 33, 35 | 29, 32 |
-| 85 | Continuation opt-in/default-off dependency gating | P0 | 34, 35, 37 | 22, 29 |
-
-### Recommended sequence
-
-`29 → 30 → 31 → 32 → 33 → 34 → 35 → 37 → 36`
-
-### Extension design rules
-
-- Version 1 never auto-submits ChatGPT messages and never scrapes conversation/output text.
-- Continuation is disabled by default and is never required for tool-time awareness; Telegram setup is skipped unless continuation and Telegram are both explicitly enabled.
-- Every continuation dispatch requires a contemporaneous explicit user authorization from the managed-browser **Continue task** button or, when configured, the paired private Telegram bot. Telegram callbacks remain one-shot and cannot bypass browser/transport/task safety checks.
-- Browser authentication/security verification is always manual; implementation/live QA stops until the user authenticates and sends `continue`.
-- Use a dedicated browser profile and separate continuation credential; do not import a personal browser profile or expose MCP authority to the extension.
-- Browser state never decides semantic task completion; completed/canceled record revisions invalidate stale continuation authorization.
-- Watchdog timing uses the current runtime deadline/generation/transport snapshot only; saved/default deadlines, stopped tunnels, restart/sleep/reconnect gaps, manual user turns/Stop actions, and generic platform busy/error/retry/unknown UI cannot manufacture readiness.
-- Unlimited/observe mode has no finite watchdog cutoff, so timeout-inferred continuation is disabled until bounded mode is restored.
-- If the user manually prompts instead of pressing a ready continuation action, stale browser/Telegram actions are invalidated and the next semantic turn reconciles resume/redirect/supersede/cancel without browser prompt capture.
-- Stable conversation identity is required for binding; full private routes remain extension-local and route changes fail closed.
-- The continuation layer never auto-Retries ChatGPT, switches models, dismisses blocking/safety UI, or starts/restarts CodexPro/tunnels.
-- Actual long-running execution remains in Plans 22–28/existing durable primitives.
-- Telegram v1 uses outbound Bot API long polling with a dedicated private bot; no webhook/group/arbitrary-command surface is planned. Bot setup/token/pairing are manual user stop gates and secrets remain outside profiles/logs/packages.
-- Final acceptance includes a new ChatGPT session using installed CodexPro Full that produces a sanitized copyable test report for maintenance review.
-- Current operator acceptance: during future authorized local setup, enable continuation + Telegram for this user's profile while leaving package defaults disabled.
-- Current service terms/policies relevant to browser automation/output extraction/restriction circumvention/authentication must be rechecked before implementation/live/release claims without extrapolating unrelated rules.
-
-Authoritative design: `docs/superpowers/specs/2026-09-08-task-aware-browser-continuation-design.md`.
-Controller plan: `docs/superpowers/plans/2026-09-08-task-aware-browser-continuation-execution.md`.
+Do not schedule another broad roadmap extension until these items are either completed or deliberately dropped and real-world usage identifies the next high-value gap.

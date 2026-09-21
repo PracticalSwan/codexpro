@@ -122,3 +122,23 @@
 ## D-030 — Continuation lifecycle state is semantic, bounded, and revision-authoritative
 **Decision:** Durable continuation records store only bounded task facts, evidence, remaining-work references, intent metadata, liveness, and opaque authorization state. They never store raw prompts, transcripts, browser cookies/credentials, or chain-of-thought. Record revision plus workspace/session binding is the stale-action authority; completed/canceled states are terminal, and only semantic-controller operations may mark completion.
 **Why:** Browser/watchdog/remote authorization needs durable coordination without becoming a second source of semantic task truth or a store for private conversation content.
+
+## D-031 — Future roadmap is consolidation-first
+**Decision:** After the 2026-09-22 feature-density review, CodexPro Full deepens existing tools/modules before adding new public tools, stores, state machines, or integration platforms. A new top-level subsystem requires a repeated evidence-backed gap from real use and a clear reason existing seams cannot solve it.
+**Why:** The current product already has broad execution, persistence, policy, context, Git, diagnostics, and continuation capability. Additional parallel abstractions now increase regression surface faster than they increase practical value.
+
+## D-032 — Retire unfinished interactive MCP approval and Tasks bridges
+**Decision:** Keep the delivered MCP SDK v2 compatibility seam and verified legacy protocol behavior, but retire the unfinished interactive-approval extension and MCP Tasks bridge as active implementation work. Treat future MCP interaction/task capabilities as research-only until stable connected-client support gives a concrete benefit over current policy fingerprints, `proc_*`, `job_*`, `batch_*`, and Goals.
+**Why:** Host-dependent protocol emulation would duplicate mature internal primitives and create a high-maintenance compatibility matrix without a current user-facing payoff.
+
+## D-033 — Freeze optional Docker at proven scope
+**Decision:** Retain the verified Windows Stage A Docker adapter for one-shot Bash/workspace processes as optional functionality. Goals remain host-only; Linux-host validation and Goal-Docker expansion are not active roadmap work.
+**Why:** The existing safe detached-worktree mount gate already showed that expanding container coverage can require broader mounts/metadata authority. Completeness alone does not justify that complexity or trust-surface growth.
+
+## D-034 — Close continuation once, then freeze feature scope
+**Decision:** Plan 36 performs the already-defined installed-runtime fresh-session acceptance once. After it passes, browser/Telegram continuation receives only evidence-backed defect fixes; CodexPro will not grow it into generic browser automation, UI testing, automatic Retry/model switching/login, extra messaging transports, or remote desktop.
+**Why:** Continuation is already a large, security-sensitive state machine. Its purpose is bounded human-gated task resumption, not browser control.
+
+## D-035 — Current active roadmap is Plans 38–41
+**Decision:** The next planned implementation sequence is runtime lifecycle/build provenance, operator UX/diagnostics polish, context-provider integration, and read-only notebook inspection. These features reuse existing runtime records, admin/profile state, analysis providers, and guarded read patterns respectively.
+**Why:** They address concrete operational and AI-context gaps while avoiding new schedulers, model loops, browser platforms, debugger stacks, or notebook execution infrastructure.

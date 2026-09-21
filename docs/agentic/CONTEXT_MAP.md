@@ -1,40 +1,47 @@
 # CodexPro Context Map
 
-## Likely extension seams
-| File / area | Current responsibility | Roadmap use |
+Last reconciled: 2026-09-22
+
+This is a compact architecture-navigation aid. Runtime source/tests remain authoritative; current future work is routed through `PLAN_INDEX.md`.
+
+## Core extension seams
+
+| Area | Current responsibility | Current guidance |
 |---|---|---|
-| `src/server.ts` | MCP registration, schemas, mode gating, result shaping | Register new tools only; avoid placing subsystem logic here |
-| `src/config.ts` | Runtime modes, limits, environment/CLI parsing | New opt-in flags, bounded defaults, capability gates |
-| `src/guard.ts` | Allowed roots and path safety | Reuse for every path-bearing feature; do not bypass |
-| `src/fsOps.ts` | File I/O and per-file locking | Integrate operation journal/concurrency, batch reads, change sets |
-| `src/bashOps.ts` | Shell execution and runtime/toolchain selection | Process/check integration; preserve safe/full semantics |
-| `src/gitOps.ts` | Read-only Git queries | Extend history; keep mutating Git in a separate module |
-| `src/searchOps.ts` | Lexical search and analysis bridge | Backend routing, fuzzy find, batch search |
-| `src/analysis/*` | Built-in structural repository analysis | Package graph, provider adapters, dependency-aware ranking, impact |
-| `src/codexSessions.ts` | Bounded Codex transcript discovery/read | Transcript search and read-around |
-| `src/http.ts` | HTTP MCP transport and local admin | Correlation telemetry, diagnostics dashboard, process/goal status |
-| `src/toolCardWidget.ts` | Optional compact UI cards | Add only high-signal diagnostics/process/goal projections |
-| `src/importOps.ts` | ChatGPT attachment imports | Archive ingestion integration |
-| `src/imageOps.ts` | Native workspace image content | Pattern for bounded binary result handling |
-| `src/capabilitiesOps.ts` | Skill/MCP inventory | Instruction/context discovery integration only if needed |
-| `scripts/*-smoke.mjs` | End-to-end feature verification | One focused smoke per new subsystem, then shared smoke inclusion |
-| `scripts/stress.mjs` | Resource/concurrency edge cases | Operation locks, processes, budgets, goals |
+| `src/server.ts` | MCP schemas, registration, mode gates, result shaping | Keep orchestration-only; deepen existing tools before adding top-level tools |
+| `src/config.ts` | Runtime modes, limits, environment/CLI config | Add bounded opt-in settings only when a plan requires them |
+| `src/guard.ts` | Workspace identity, containment, blocked paths | Every path-bearing feature/provider must reuse it |
+| `src/fsOps.ts`, `src/operations/*`, `src/checkpoints/*` | Guarded mutation, leases, receipts, rollback | Reuse for state-changing file work; preserve unrelated work |
+| `src/policyOps.ts`, `src/policyRules.ts` | Tightening-only workspace policy | Repository configuration never widens profile/global authority |
+| `src/bashOps.ts`, `src/processOps.ts` | Shell and owned processes | Preserve safe/full mode and exact-owner process semantics |
+| `src/checksOps.ts`, `src/jobs/*` | Trusted checks, verification, durable structured jobs | `job_*` is registered-producer-only, not another command runner |
+| `src/contextOps.ts`, `src/contextRanking.ts`, `src/contextBatch.ts` | Ranked/bounded/resumable context | Plan 40 extends this seam; do not create a replacement context engine |
+| `src/analysis/*` | Built-in analysis + CodeGraph/LSP adapters | Optional provider evidence only; no mandatory index/LSP platform |
+| `src/gitOps.ts`, `src/gitWriteOps.ts`, `src/packageGraph.ts`, `src/preflightOps.ts` | Git/repository intelligence and guarded writes | Expected-HEAD/branch/staged-set and no-force boundaries remain authoritative |
+| `src/archiveOps.ts`, `src/documentOps.ts`, `src/imageOps.ts`, `src/exportOps.ts` | Bounded artifact I/O | Pattern for Plan 41 read-only notebook inspection |
+| `src/goals/*` | Durable isolated Goal DAG execution/review/projection | Reuse for multi-stage isolated engineering; no second workflow engine |
+| `src/http.ts` | Streamable HTTP + authenticated local admin | Plan 39 improves this existing UI/control surface; no second dashboard |
+| `src/diagnosticsOps.ts` | Sanitized connection/tool/operator diagnostics | Plan 39 adds deterministic capability explanations here/nearby |
+| `src/continuation/*`, `browser-extension/` | Optional human-gated task continuation | Plan 36 acceptance only, then feature freeze except defects |
+| `scripts/codexpro.mjs` | Launcher, profiles, tunnels, operator CLI | Plan 38 adds status/guarded stop/provenance without daemon/restart authority |
+| `scripts/*-smoke.mjs` | Integration/regression verification | Add focused smoke per implemented plan, then shared smoke when public runtime surfaces change |
+
+## Active roadmap touch points
+
+- **Plan 38:** `scripts/codexpro.mjs`, `src/packageIdentity.ts`/new build-identity helper, diagnostics/server/admin projections.
+- **Plan 39:** existing profile/diagnostics/admin surfaces plus one pure capability-explanation helper.
+- **Plan 40:** `contextOps` + existing analysis provider seam only.
+- **Plan 41:** new focused `notebookOps.ts`, one read-only tool registration, tool-surface expectations.
 
 ## High-risk neighbors
-- Authentication/tunnel behavior in `src/http.ts` and launcher scripts.
-- Workspace/path security and redaction in `guard.ts`, `redact.ts`, `importOps.ts`.
-- Cross-platform process execution in `bashOps.ts`, release scripts, and future process/goal modules.
-- Any persistent journal/task/goal storage: permissions, bounded growth, crash consistency, and secret avoidance.
-- Git mutation/projection: unrelated dirty/staged/untracked work and expected-HEAD checks.
-- Tool descriptors/mode lists: ChatGPT may cache schemas, so compatibility and stable naming matter.
 
-## Existing verification patterns to reuse
-- `scripts/smoke.mjs`: real MCP tool registration/calls and safety regressions.
-- `scripts/http-smoke.mjs`: transport/auth/admin behavior.
-- `scripts/analysis-smoke.mjs`: repository-analysis contracts.
-- `scripts/execute-handoff-smoke.mjs`: owned process/handoff lifecycle patterns.
-- `scripts/settings-smoke.mjs`: CLI/profile/config precedence.
-- `scripts/stress.mjs`: concurrency, output, large/dirty workspace bounds.
+- Authentication/tunnel behavior in `src/http.ts` and launcher code.
+- Path security/redaction/private metadata in `guard.ts`, `redact.ts`, import/export and continuation surfaces.
+- Windows PID/start-identity, child teardown, file-lock/atomic-store behavior.
+- Git projection/mutation around unrelated dirty/staged/untracked user work.
+- Tool descriptors/mode lists because clients may cache schemas.
+- Any persistent state or browser/Telegram change: bounded growth, crash consistency, ownership, privacy, and stale-authority handling.
 
-## Design pressure
-`src/server.ts` is already large. New roadmap subsystems should expose small typed functions/classes and let `server.ts` perform schema validation, mode gating, invocation, and result formatting only. Shared mutation lifecycle belongs in the operation core rather than being reimplemented in write, Git, process, and Goal tools.
+## Current design pressure
+
+CodexPro already has a large Full-mode surface and multiple durable execution roles. New work should normally follow: **reuse existing module → extend existing tool/schema compatibly → add a focused helper/provider → add a new public tool only for a genuinely distinct operation**.

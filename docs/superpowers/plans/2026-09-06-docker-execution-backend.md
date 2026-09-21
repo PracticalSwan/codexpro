@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Execution status:** Stage A implemented and live-verified on Windows on 2026-09-07 in the authorized Plans 12-21 batch. The Goal worktree compatibility gate resolves to host-only with the required workspace-only mount boundary. Linux-host live validation remains pending because the available WSL environment has Docker but no Node runtime, and this plan forbids installing missing tooling.
+**Execution status:** Stage A is implemented and live-verified on Windows. As of the 2026-09-22 consolidation review, this is the frozen supported scope: the Goal worktree compatibility gate remains host-only with the required workspace-only mount boundary, and Linux-host/Goal-Docker expansion is not active roadmap work. Reopen only for a concrete authorized portability/isolation requirement with fresh safety evidence.
 
 **Goal:** Add an opt-in Docker execution backend for one-shot Bash and workspace processes, then enable Goal task execution only where a live worktree/Git compatibility gate proves it safe.
 

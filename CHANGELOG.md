@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Simplified the future roadmap around consolidation and operator reliability: added detailed Plans 38–41, retired speculative MCP approval/Tasks work, froze Docker at its verified Windows Stage A scope, reduced durable project memory to current facts, and removed completed roadmap-controller/local packaging residue without changing runtime behavior.
 - Hardened structured Job persistence on Windows: atomic job-state replacement now retries transient `EPERM`/`EACCES`/`EBUSY` rename failures with bounded backoff, and the normal job smoke forces an exclusive-file lock to cover the exact hosted Windows failure path.
 - Hardened Durable Goal persistence on Windows: atomic goal-record and runtime-snapshot replacement now retries transient `EPERM`/`EACCES`/`EBUSY` rename failures with bounded backoff, with a Windows exclusive-lock regression covering the hosted filesystem/AV race.
 - Reconciled upstream hardening commit `d66a250` / PR #131 semantically instead of wholesale-merging the divergent fork: added explicit Windows Bash runtime/Git selection, interruption/orphan-aware local handoff receipts, default blocking of standard handoff Git/GitHub remote mutations, bounded HTTP request correlation/auth telemetry, and diagnostic path labels while preserving CodexPro Full's stronger existing continuity and workspace contracts.

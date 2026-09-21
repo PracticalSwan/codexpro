@@ -1,21 +1,24 @@
 # CodexPro Agentic Development Workspace
 
-This directory is the durable navigation layer for future CodexPro development.
+This directory is the durable navigation layer for CodexPro Full development.
 
 ## Read order
-1. Repository `AGENTS.md` — always-loaded operating rules.
-2. `PROJECT_MEMORY.md` — verified durable state and architecture facts.
-3. `DEVELOPMENT_WORKFLOW.md` — lifecycle, review, verification, and stop gates.
-4. `PLAN_INDEX.md` — choose one subsystem.
-5. The linked design + implementation plan for that subsystem.
-6. `CONTEXT_MAP.md` and `DECISIONS.md` when architecture/risk context is needed.
+1. Repository `AGENTS.md` — operating, security, release, and runtime-lifecycle rules.
+2. `PROJECT_MEMORY.md` — verified durable state and current external baselines.
+3. `DEVELOPMENT_WORKFLOW.md` — implementation/review/verification contract.
+4. `PLAN_INDEX.md` — authoritative roadmap/status router.
+5. The selected subsystem's linked design + implementation plan.
+6. `DECISIONS.md` and `ARCHITECTURE_ROADMAP.md` when architecture trade-offs matter.
 
 ## Sources of truth
 - Runtime behavior: source + tests + current execution evidence.
-- Repository history/state: Git and current upstream/PR data.
-- Architecture decisions: `DECISIONS.md`.
-- Durable working context: `PROJECT_MEMORY.md`.
-- Future work: subsystem specs/plans. A plan is not evidence that a feature exists.
+- Repository state: current Git/local/origin/upstream evidence.
+- Architecture choices: `DECISIONS.md`.
+- Durable current state: `PROJECT_MEMORY.md`.
+- Future work/status: `PLAN_INDEX.md` plus linked specs/plans.
+- A plan is never evidence that its feature exists.
 
-## Planning baseline
-The roadmap was generated on 2026-09-05 from local integration HEAD `01f0130`, upstream main `587f7fd`, current source layout, and the existing upstream issue/PR backlog. Refresh all moving state before implementation.
+## Current roadmap
+The expansion-heavy 2026-09-05/08 roadmap is complete or retired except for Plan 36 fresh-session continuation acceptance. Current planned implementation is the consolidation-first sequence Plans 38–41: runtime lifecycle/provenance, operator UX/diagnostics, context-provider integration, and read-only notebook inspection.
+
+Refresh moving external state before implementation. Do not resurrect retired protocol/Tasks/Docker-expansion work from Git history unless a new concrete requirement and current evidence justify it.

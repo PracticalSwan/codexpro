@@ -1,4 +1,6 @@
-# Maintenance Reconciliation ? 2026-09-05
+# Maintenance Reconciliation — 2026-09-05
+
+> **Historical record:** this captures the 2026-09-05 integration baseline only. It is retained because Plan 01 references it; do not use its upstream/branch/PR state as current authority. Recover current Git/GitHub state and `PROJECT_MEMORY.md` first.
 
 ## Baseline
 
