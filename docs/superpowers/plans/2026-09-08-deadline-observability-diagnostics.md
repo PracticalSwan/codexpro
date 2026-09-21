@@ -47,7 +47,7 @@ Use existing request/completion telemetry points and job/batch state transitions
 - Modify: `scripts/deadline-diagnostics-smoke.mjs`
 
 **Interfaces:**
-- Extends `tool_surface_diagnostics`/`connection_diagnostics` structured output with deadline and continuation capabilities.
+- Extends `tool_surface_diagnostics`/`connection_diagnostics` structured output with deadline and resumable-work capabilities.
 
 - [x] **Step 1: Add failing diagnostics assertions**
 
@@ -98,7 +98,7 @@ CLI/admin/help workflow: use a disposable new ChatGPT chat, temporarily set the 
 
 - [x] **Step 1: Add non-secret status summaries**
 
-Show the currently running synchronous deadline, the saved next-run deadline when different, number of active structured jobs, and whether a recent operation yielded to continuation. Do not display job command text, source paths beyond existing sanitized conventions, or auth values.
+Show the currently running synchronous deadline, the saved next-run deadline when different, number of active structured jobs, and whether a recent operation yielded to resumable state. Do not display job command text, source paths beyond existing sanitized conventions, or auth values.
 
 - [x] **Step 2: Keep current runtime and saved next-run settings separate**
 
@@ -134,10 +134,6 @@ Expected: PASS.
 git add src/telemetry.ts src/diagnosticsOps.ts src/server.ts src/http.ts scripts/deadline-diagnostics-smoke.mjs scripts/tool-time-probe-smoke.mjs scripts/diagnostics-smoke.mjs scripts/settings-smoke.mjs README.md FEATURES.md docs/agentic/PROJECT_MEMORY.md
 git commit -m "feat: expose deadline resilience diagnostics"
 ```
-
-## Task-aware browser continuation integration
-
-After Plans 29–37 exist, diagnostics may additionally report continuation feature/browser availability, user-action-required state, current runtime generation/transport availability, and current-runtime vs saved-next-run deadline mismatch. They must keep browser credentials, account identity, full conversation URLs, and ChatGPT output out of diagnostics and telemetry. If the runtime snapshot is absent, report `transport_unavailable/unknown` rather than fabricating the 20-minute default as an active deadline.
 
 ## Acceptance Criteria
 

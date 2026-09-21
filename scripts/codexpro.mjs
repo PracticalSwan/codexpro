@@ -46,7 +46,6 @@ Usage:
   codexpro start
   codexpro start --root /path/to/repo
   codexpro start --tunnel openai --openai-tunnel-id tunnel_...
-  codexpro continuation browser pair --profile default
   codexpro settings
   codexpro doctor
   codexpro connection-test --root /path/to/repo
@@ -738,24 +737,10 @@ function codexProHome() {
   return customHome ? path.resolve(expandHome(customHome)) : path.join(os.homedir(), '.codexpro');
 }
 
-function continuationProcessAlive(pid) {
+function runtimeProcessAlive(pid) {
   if (!Number.isInteger(Number(pid)) || Number(pid) <= 0) return false;
   try { process.kill(Number(pid), 0); return true; }
   catch (error) { return error?.code === 'EPERM'; }
-}
-
-function sameContinuationRoot(left, right) {
-  const a = path.resolve(String(left ?? ''));
-  const b = path.resolve(String(right ?? ''));
-  return process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b;
-}
-
-function liveRuntimeConnection(root) {
-  const runtime = readJsonFile(runtimeStatusPathForRoot(root));
-  if (!runtime || !Object.keys(runtime).length || (runtime.root && !sameContinuationRoot(runtime.root, root))) return null;
-  if (!continuationProcessAlive(runtime.pid)) return null;
-  if (runtime.runtimePid && !continuationProcessAlive(runtime.runtimePid)) return null;
-  return runtime;
 }
 
 let activeOpenAiTunnelLeasePath = '';
@@ -804,14 +789,14 @@ function acquireOpenAiTunnelLease(tunnelId, root, port) {
       const existingPid = Number(existing?.pid);
       const ownerRoot = typeof existing?.root === 'string' && existing.root ? existing.root : '';
       let matchingRuntime = false;
-      if (ownerRoot && continuationProcessAlive(existingPid)) {
+      if (ownerRoot && runtimeProcessAlive(existingPid)) {
         try {
           const runtime = readJsonFile(runtimeStatusPathForRoot(ownerRoot));
           matchingRuntime = Number(runtime?.pid) === existingPid && runtime?.tunnel === 'openai' && runtime?.endpoint === tunnelId;
         } catch {}
       }
       const createdMs = Date.parse(String(existing?.createdAt ?? ''));
-      const recentlyAcquired = continuationProcessAlive(existingPid) && Number.isFinite(createdMs) && Date.now() - createdMs < 300_000;
+      const recentlyAcquired = runtimeProcessAlive(existingPid) && Number.isFinite(createdMs) && Date.now() - createdMs < 300_000;
       if (matchingRuntime || recentlyAcquired) {
         const ownerLabel = ownerRoot || 'another workspace';
         const ownerPort = existing?.port ? ` on local port ${existing.port}` : '';
@@ -823,400 +808,6 @@ function acquireOpenAiTunnelLease(tunnelId, root, port) {
   throw new Error(`Could not acquire the OpenAI tunnel lease for ${tunnelId}. Retry after the other CodexPro launcher exits.`);
 }
 
-function continuationDeadlineLabel(mode, milliseconds) {
-  if (mode === 'observe') return 'Unlimited (observe only)';
-  const value = Number(milliseconds);
-  return Number.isFinite(value) && value > 0 ? `${Math.round(value / 60_000)} min` : 'unavailable';
-}
-
-async function printContinuationCliStatus(root, settings) {
-  const homeDir = codexProHome();
-  const continuationRoot = path.join(homeDir, 'continuation');
-  const runtime = liveRuntimeConnection(root);
-  const typesUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'types.js')).href;
-  const storeUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'store.js')).href;
-  const profileUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'browserProfile.js')).href;
-  const launcherUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'browserLauncher.js')).href;
-  const authUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'browserAuth.js')).href;
-  const [{ TERMINAL_CONTINUATION_STATES }, { ContinuationStore }, profileModule, launcherModule, { BrowserPairingStore }] = await Promise.all([
-    import(typesUrl), import(storeUrl), import(profileUrl), import(launcherUrl), import(authUrl)
-  ]);
-  let records = [];
-  if (fs.existsSync(path.join(continuationRoot, 'records'))) {
-    const store = new ContinuationStore(continuationRoot, 128);
-    records = (await store.list()).filter((record) => sameContinuationRoot(record.workspaceRoot, root));
-  }
-  const active = records.filter((record) => !TERMINAL_CONTINUATION_STATES.has(record.state));
-  const task = active[0] ?? records[0] ?? null;
-  let browserState = { running: false, paired: false, auth_state: 'unknown' };
-  if (settings.continuationEnabled) {
-    const managed = await profileModule.existingManagedBrowserProfile(homeDir, settings.continuationProfile);
-    if (managed) {
-      const pairingRoot = path.join(continuationRoot, 'browser');
-      const clients = fs.existsSync(pairingRoot) ? await new BrowserPairingStore(pairingRoot).listPublicClients() : [];
-      const paired = clients.some((entry) => entry.profile_label === settings.continuationProfile && entry.active === true);
-      browserState = await profileModule.browserProfileStatus({ profile: managed, paired, processIdentity: launcherModule.managedBrowserProcessStartIdentity });
-    }
-  }
-  const savedDeadline = continuationDeadlineLabel(settings.syncCallDeadlineMode ?? 'bounded', settings.syncCallDeadlineMs ?? DEFAULT_SYNC_CALL_DEADLINE_MS);
-  const runtimeDeadline = runtime ? continuationDeadlineLabel(runtime.syncCallDeadlineMode, runtime.syncCallDeadlineMs) : 'unavailable';
-  printBox('CodexPro task continuation', [
-    labelValue('Workspace', root),
-    labelValue('Task continuation', settings.continuationEnabled ? 'enabled (saved next run)' : 'disabled (saved next run)'),
-    labelValue('Current continuation', runtime ? (typeof runtime.continuationEnabled === 'boolean' ? (runtime.continuationEnabled ? 'enabled' : 'disabled') : 'unavailable') : 'unavailable'),
-    labelValue('Saved next run continuation', settings.continuationEnabled ? 'enabled' : 'disabled'),
-    labelValue('Current runtime', runtime ? runtimeDeadline : 'unavailable'),
-    labelValue('Transport', runtime ? 'ready' : 'unavailable'),
-    ...(runtime && runtimeDeadline !== savedDeadline ? [labelValue('Saved next run deadline', savedDeadline)] : []),
-    ...(!runtime ? [labelValue('Saved next run deadline', savedDeadline)] : []),
-    labelValue('Browser setup', settings.continuationEnabled ? 'required when continuation is used' : 'not required'),
-    labelValue('Browser profile', settings.continuationProfile),
-    labelValue('Browser paired', browserState.paired ? 'yes' : 'no'),
-    labelValue('Browser auth', browserState.auth_state ?? 'unknown'),
-    labelValue('Active tasks', String(active.length)),
-    ...(task ? [
-      labelValue('Task', `${task.id.replace(/^continuation_/, '').slice(0, 8)} ${task.title}`),
-      labelValue('Task revision', String(task.revision)),
-      labelValue('Task state', task.state),
-      labelValue('Current phase', task.currentPhase ?? 'not set'),
-      labelValue('Remaining work', String(task.remainingWork.length)),
-      labelValue('Bound chat', task.conversationFingerprint ? 'yes' : 'no'),
-      labelValue('Continuation ready', task.state === 'continuation_ready' ? 'yes' : 'no'),
-      labelValue('Dispatch count', String(task.continuationCount))
-    ] : []),
-    labelValue('Local durable work', 'unknown until runtime integration (Plan 35)')
-  ]);
-}
-
-async function readMaskedTelegramSecret(promptText) {
-  if (!process.stdin.isTTY) throw new Error('Telegram bot token save requires CODEXPRO_TELEGRAM_BOT_TOKEN or an interactive masked prompt.');
-  return new Promise((resolve, reject) => {
-    const input = process.stdin; const output = process.stdout; const wasRaw = Boolean(input.isRaw); let value = '';
-    const cleanup = () => { input.off('data', onData); if (input.setRawMode) input.setRawMode(wasRaw); input.pause(); };
-    const onData = (chunk) => { for (const ch of String(chunk)) {
-      if (ch === '\u0003') { output.write('\n'); cleanup(); reject(new Error('Cancelled.')); return; }
-      if (ch === '\r' || ch === '\n') { output.write('\n'); cleanup(); resolve(value.trim()); return; }
-      if (ch === '\u007f' || ch === '\b') { if (value) { value = value.slice(0, -1); output.write('\b \b'); } }
-      else if (ch >= ' ') { value += ch; output.write('*'); }
-    }};
-    output.write(promptText); input.setEncoding('utf8'); if (input.setRawMode) input.setRawMode(true); input.resume(); input.on('data', onData);
-  });
-}
-
-async function runTelegramTokenCommand(argv) {
-  const action = argv[0] ?? 'status';
-  const parsed = parseArgs(argv.slice(1));
-  if (parsed.token !== undefined || parsed.telegramBotToken !== undefined) throw new Error('Telegram bot token command-line arguments are forbidden; use the masked prompt or CODEXPRO_TELEGRAM_BOT_TOKEN.');
-  if (!['save', 'status', 'clear'].includes(action)) throw new Error('Telegram token supports only: save, status, clear.');
-  const moduleUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'telegramSecrets.js')).href;
-  const secrets = await import(moduleUrl); const homeDir = codexProHome();
-  if (action === 'status') {
-    const resolved = secrets.resolveTelegramBotToken(homeDir, process.env);
-    console.log(`Telegram bot token: ${resolved.token ? `configured (${resolved.source})` : 'not configured'}`); return;
-  }
-  if (action === 'save') {
-    const fromEnv = String(process.env.CODEXPRO_TELEGRAM_BOT_TOKEN ?? '').trim();
-    const token = fromEnv || await readMaskedTelegramSecret('Telegram bot token (masked): ');
-    await secrets.saveTelegramBotToken(homeDir, token);
-    console.log('OK Telegram bot token saved to protected per-user storage.'); console.log('   Workspace profiles never store the token value.'); return;
-  }
-  if (!parsed.yes) {
-    if (!process.stdin.isTTY) throw new Error('Use --yes to clear the protected Telegram bot token in non-interactive shells.');
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
-    try { const answer = await ask(rl, 'Clear the protected Telegram bot token?', 'no'); if (!['y','yes'].includes(answer.trim().toLowerCase())) { console.log('Telegram token clear cancelled.'); return; } }
-    finally { rl.close(); }
-  }
-  await secrets.clearTelegramBotToken(homeDir); console.log('OK Protected Telegram bot token file cleared.');
-}
-
-async function runTelegramContinuationCommand(argv) {
-  if ((argv[0] ?? 'status') === 'token') { await runTelegramTokenCommand(argv.slice(1)); return; }
-  const action = argv[0] ?? 'status';
-  if (!['setup', 'pair', 'status', 'test', 'doctor', 'disable', 'revoke'].includes(action)) {
-    throw new Error('Telegram continuation supports: setup, pair, status, test, doctor, disable, revoke, token save|status|clear.');
-  }
-  const parsed = parseArgs(argv.slice(1));
-  const root = realDir(parsed.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
-  const savedProfile = parsed.noProfile ? {} : loadWorkspaceProfile(root);
-  const settings = await continuationProfileEntries({}, savedProfile);
-  const secretsUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'telegramSecrets.js')).href;
-  const pairingUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'telegramPairing.js')).href;
-  const stateUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'telegramNotifications.js')).href;
-  const runtimeStatusUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'telegramStatus.js')).href;
-  const [{ resolveTelegramBotToken }, { TelegramPairingStore }, telegramState, telegramRuntimeStatus] = await Promise.all([
-    import(secretsUrl), import(pairingUrl), import(stateUrl), import(runtimeStatusUrl)
-  ]);
-  const homeDir = codexProHome();
-  const stateDir = path.join(homeDir, 'continuation', 'telegram');
-  const token = resolveTelegramBotToken(homeDir, process.env);
-  const pairingStore = new TelegramPairingStore(stateDir);
-  const paired = await pairingStore.paired();
-  const runtimeDisabled = await telegramState.telegramRuntimeAuthorizationDisabled(stateDir);
-  const runtimeStatus = await telegramRuntimeStatus.readTelegramRuntimeStatus(stateDir);
-
-  if (action === 'disable') {
-    const { profilePath: _profilePath, ...profileValues } = savedProfile;
-    saveWorkspaceProfile(root, { ...profileValues, continuationTelegramEnabled: false });
-    await telegramState.setTelegramRuntimeAuthorizationDisabled(stateDir, true);
-    await telegramState.invalidateTelegramActions(stateDir);
-    await telegramState.invalidateTelegramDispatchGrants(stateDir);
-    console.log('OK Telegram continuation disabled. Browser Continue remains available when task continuation is enabled.');
-    console.log('   Existing Telegram pairing and bot token were preserved. Pending Telegram actions and dispatch grants were invalidated.');
-    return;
-  }
-
-  if (action === 'revoke') {
-    await pairingStore.revoke();
-    await telegramState.invalidateTelegramNotificationState(stateDir);
-    console.log('OK Telegram private-chat authorization revoked.');
-    console.log('   Bot token, browser pairing, continuation tasks, processes, jobs, Goals, runtime, and tunnel were not changed.');
-    return;
-  }
-
-  if (action === 'status') {
-    printBox('CodexPro Telegram continuation', [
-      labelValue('Task continuation', settings.continuationEnabled ? 'enabled' : 'disabled'),
-      labelValue('Telegram continuation', settings.continuationTelegramEnabled ? 'enabled' : 'disabled'),
-      labelValue('Live authorization', runtimeDisabled ? 'disabled' : settings.continuationTelegramEnabled ? 'available when runtime is ready' : 'disabled'),
-      labelValue('Token', token.token ? 'configured' : 'not configured'),
-      labelValue('Bot identity', runtimeStatus.botUsername ? `@${runtimeStatus.botUsername}` : 'not checked'),
-      labelValue('Paired private chat', paired ? 'yes' : 'no'),
-      labelValue('Worker', runtimeStatus.workerState),
-      labelValue('Webhook conflict', runtimeStatus.webhookConflict ? 'yes' : 'no'),
-      labelValue('Last Bot API contact', runtimeStatus.lastSuccessfulContactAt ?? 'none'),
-      labelValue('Notifications', !runtimeDisabled && paired && runtimeStatus.notificationAvailable ? 'available' : 'unavailable')
-    ]);
-    return;
-  }
-
-  if ((action === 'setup' || action === 'pair' || action === 'test') && !settings.continuationEnabled) {
-    console.log('Telegram continuation requires task continuation to be enabled first. No Telegram action was started.');
-    return;
-  }
-  if ((action === 'setup' || action === 'pair' || action === 'test') && !settings.continuationTelegramEnabled) {
-    console.log('Telegram continuation is disabled in saved settings. No Telegram action was started.');
-    return;
-  }
-  if (!token.token) {
-    if (action === 'doctor') {
-      printBox('CodexPro Telegram doctor', [labelValue('Token', 'not configured'), labelValue('Paired private chat', paired ? 'yes' : 'no'), labelValue('Bot API', 'not checked')]);
-      return;
-    }
-    console.log('WAITING_FOR_TELEGRAM_BOT_TOKEN');
-    console.log('Create a dedicated private-control bot with @BotFather, then save its token locally with: codexpro continuation telegram token save');
-    console.log('Do not paste the Telegram bot token into ChatGPT. After saving it locally, return to this conversation and send: continue');
-    return;
-  }
-
-  const clientUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'telegramClient.js')).href;
-  const { TelegramBotApiClient } = await import(clientUrl);
-  const client = new TelegramBotApiClient(token.token);
-  const bot = await client.getMe();
-  if (!bot?.is_bot || !/^\w{5,32}$/.test(String(bot?.username ?? ''))) throw new Error('Telegram getMe did not return a usable bot identity.');
-  const botLabel = `@${String(bot.username)}`;
-
-  if (action === 'doctor') {
-    const webhook = await client.getWebhookInfo();
-    let pairingState = paired ? 'paired' : 'not paired';
-    if (paired) {
-      try { await pairingStore.assertBotIdentity(bot.id); }
-      catch { pairingState = 'paired identity mismatch'; }
-    }
-    printBox('CodexPro Telegram doctor', [
-      labelValue('Bot', botLabel),
-      labelValue('Token', 'configured'),
-      labelValue('Paired private chat', pairingState),
-      labelValue('Webhook conflict', String(webhook?.url ?? '').trim() ? 'yes (long polling blocked)' : 'no'),
-      labelValue('Live authorization', runtimeDisabled ? 'disabled' : 'enabled'),
-      labelValue('Bot API', 'reachable')
-    ]);
-    return;
-  }
-
-  if (action === 'test') {
-    if (runtimeDisabled) throw new Error('telegram_disabled: enable Telegram continuation before testing notifications.');
-    if (!paired) throw new Error('Telegram private chat is not paired.');
-    await pairingStore.assertBotIdentity(bot.id);
-    const webhook = await client.getWebhookInfo();
-    if (String(webhook?.url ?? '').trim()) throw new Error('telegram_webhook_conflict: long polling is unavailable while a webhook is configured.');
-    await client.sendMessage({ chat_id: paired.privateChatId, text: 'CodexPro Telegram continuation test: private notification channel is available.', disable_web_page_preview: true });
-    console.log(`OK Telegram continuation test notification sent by ${botLabel}.`);
-    return;
-  }
-
-  if (paired) {
-    await pairingStore.assertBotIdentity(bot.id);
-    console.log('Telegram private chat is already paired to this bot.');
-    return;
-  }
-  if (action === 'pair') {
-    const pairingModule = await import(pairingUrl);
-    const updates = await client.getUpdates({ timeout: 0, allowed_updates: ['message'] });
-    const claimed = await pairingModule.claimPairingFromUpdates(pairingStore, Array.isArray(updates) ? updates : [], bot.id);
-    if (!claimed) {
-      console.log('WAITING_FOR_TELEGRAM_PAIR');
-      console.log('No matching Start update has been received for the active pairing yet. Open the existing pairing link and press Start, then send: continue');
-      return;
-    }
-    console.log('OK Telegram private chat paired successfully.');
-    return;
-  }
-  const pending = await pairingStore.createPairing(bot);
-  const username = String(bot.username);
-  console.log(`Telegram bot: @${username}`);
-  console.log(`Pairing link: https://t.me/${username}?start=${pending.code}`);
-  console.log(`Expires: ${pending.expiresAt}`);
-  console.log('WAITING_FOR_TELEGRAM_PAIR');
-  console.log('Open the pairing link in Telegram and press Start. Do not share the pairing link. Then return here and send: continue');
-}
-
-async function runContinuationCommand(argv) {
-  if (argv.includes('--help') || argv.includes('-h') || argv[0] === 'help') {
-    console.log([
-      'Usage:',
-      '  codexpro continuation status [--root <dir>]',
-      '  codexpro continuation arm-status [--root <dir>]',
-      '  codexpro continuation disarm --task <id|short-id> [--root <dir>]',
-      '  codexpro continuation browser status|pair|open|auth [--profile <label>] [--root <dir>]',
-      '  codexpro continuation browser clear-profile --profile <label> --yes [--root <dir>]',
-      '  codexpro continuation telegram setup|pair|status|test|doctor|disable|revoke [--root <dir>]',
-      '  codexpro continuation telegram token save|status|clear [--yes]',
-      '',
-      'Saved continuation settings are next-run defaults. Status reports current runtime state separately when available.'
-    ].join('\n'));
-    return;
-  }
-  const command = argv[0] ?? 'status';
-  if (!['status', 'arm-status', 'disarm', 'browser', 'telegram'].includes(command)) {
-    throw new Error('Supported continuation commands: status, arm-status, disarm, browser, telegram.');
-  }
-  if (command === 'telegram') { await runTelegramContinuationCommand(argv.slice(1)); return; }
-  const optionStart = command === 'browser' ? 2 : 1;
-  const parsed = parseArgs(argv.slice(optionStart));
-  const root = realDir(parsed.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
-  const savedProfile = parsed.noProfile ? {} : loadWorkspaceProfile(root);
-  const deadline = syncCallDeadlineOption({}, savedProfile);
-  const settings = { ...(await continuationProfileEntries({}, savedProfile)), syncCallDeadlineMode: deadline.mode, syncCallDeadlineMs: deadline.deadlineMs };
-  if (command === 'status' || command === 'arm-status') {
-    await printContinuationCliStatus(root, settings);
-    return;
-  }
-  if (command === 'disarm') {
-    const taskRef = String(parsed.task ?? '').trim();
-    if (!taskRef) throw new Error('continuation disarm requires --task <id|short-id>.');
-    const continuationRoot = path.join(codexProHome(), 'continuation');
-    const storeUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'store.js')).href;
-    const opsUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'ops.js')).href;
-    const { ContinuationStore } = await import(storeUrl);
-    const { cancelContinuation } = await import(opsUrl);
-    const store = new ContinuationStore(continuationRoot, 128);
-    const records = await store.list();
-    const matches = records.filter((record) => sameContinuationRoot(record.workspaceRoot, root) && (record.id === taskRef || record.id.startsWith(`continuation_${taskRef}`) || record.id.startsWith(taskRef)));
-    if (matches.length !== 1) throw new Error(matches.length ? 'continuation task reference is ambiguous.' : 'continuation task was not found for this workspace.');
-    const current = matches[0];
-    const binding = { workspace: { id: current.workspaceId, root: current.workspaceRoot }, ...(current.mcpSessionId ? { sessionId: current.mcpSessionId } : {}) };
-    const canceled = await cancelContinuation({ store, binding, continuationId: current.id, expectedRevision: current.revision, reason: 'user_canceled' });
-    printBox('CodexPro continuation disarmed', [
-      labelValue('Task', canceled.id.replace(/^continuation_/, '').slice(0, 8)),
-      labelValue('State', canceled.state),
-      labelValue('Revision', String(canceled.revision)),
-      'Continuation automation only was canceled. Local processes, jobs, Goals, browser processes, runtime, tunnel, and Git state were not stopped.'
-    ]);
-    return;
-  }
-  const continuationEnabled = settings.continuationEnabled;
-  const action = argv[1];
-  if (!["pair", "open", "status", "auth", "clear-profile"].includes(action)) throw new Error("Supported browser actions: pair, open, status, auth, clear-profile.");
-  const profile = parsed.profile ?? settings.continuationProfile;
-  if (!continuationEnabled && action === 'status') {
-    printBox('CodexPro browser continuation', [
-      labelValue('Task continuation', 'disabled (saved next run)'),
-      labelValue('Profile', profile),
-      labelValue('Browser setup', 'not required while continuation is disabled')
-    ]);
-    return;
-  }
-  if (!continuationEnabled) throw new Error('continuation_disabled: enable task continuation before browser setup.');
-  const browser = parsed.browser ?? settings.continuationBrowser;
-  const executable = parsed.executable;
-  const homeDir = codexProHome();
-  const extensionPath = path.join(projectRoot, "browser-extension");
-  const authModuleUrl = pathToFileURL(path.join(projectRoot, "dist", "continuation", "browserAuth.js")).href;
-  const profileModuleUrl = pathToFileURL(path.join(projectRoot, "dist", "continuation", "browserProfile.js")).href;
-  const launcherModuleUrl = pathToFileURL(path.join(projectRoot, "dist", "continuation", "browserLauncher.js")).href;
-  const { BrowserPairingStore } = await import(authModuleUrl);
-  const pairingStore = new BrowserPairingStore(path.join(homeDir, "continuation", "browser"));
-  if (action === "pair") {
-    const pairing = await pairingStore.createPairing(profile);
-    let bridge = "not running";
-    try {
-      const runtime = JSON.parse(fs.readFileSync(path.join(homeDir, "continuation", "browser", "runtime.json"), "utf8"));
-      if (typeof runtime.url === "string" && /^http:\/\/127\.0\.0\.1:\d+$/.test(runtime.url)) bridge = runtime.url;
-    } catch {}
-    console.log("CodexPro browser continuation pairing");
-    console.log(`Profile: ${pairing.profileLabel}`);
-    console.log(`Pairing code: ${pairing.code}`);
-    console.log(`Expires: ${pairing.expiresAt}`);
-    console.log(`Bridge: ${bridge}`);
-    console.log(`Extension: ${extensionPath}`);
-    console.log("Load the unpacked extension manually in the dedicated managed browser profile, then enter this code in the extension popup.");
-    console.log("The browser credential is generated only during local extension exchange and is never printed here.");
-    return;
-  }
-  const profileModule = await import(profileModuleUrl);
-  const launcherModule = await import(launcherModuleUrl);
-  if (action === "clear-profile") {
-    if (!parsed.yes) throw new Error('clear-profile is destructive; pass --yes after verifying the exact managed profile label.');
-    const managed = await profileModule.existingManagedBrowserProfile(homeDir, profile);
-    if (!managed) throw new Error(`Managed browser profile ${profile} is not initialized.`);
-    const expectedParent = path.resolve(homeDir, 'browser', 'chatgpt');
-    const actualParent = path.dirname(path.resolve(managed.profileRoot));
-    if (!sameContinuationRoot(expectedParent, actualParent)) throw new Error('Managed browser profile resolved outside the protected CodexPro browser root.');
-    const clients = await pairingStore.listPublicClients();
-    const paired = clients.some((entry) => entry.profile_label === profile && entry.active === true);
-    const status = await profileModule.browserProfileStatus({ profile: managed, paired, processIdentity: launcherModule.managedBrowserProcessStartIdentity });
-    if (status.running) throw new Error(`Managed browser profile ${profile} is running; close that managed browser before clearing it.`);
-    for (const client of clients) {
-      if (client.profile_label === profile && client.active === true && typeof client.client_id === 'string') await pairingStore.revokeClient(client.client_id);
-    }
-    fs.rmSync(managed.profileRoot, { recursive: true, force: false });
-    printBox('CodexPro managed browser profile cleared', [
-      labelValue('Profile', profile),
-      labelValue('Paired client', paired ? 'revoked' : 'none'),
-      'Only the selected CodexPro-managed ChatGPT browser profile was deleted. Normal browser profiles and other managed profiles were untouched.'
-    ]);
-    return;
-  }
-  if (action === "status") {
-    const managed = await profileModule.existingManagedBrowserProfile(homeDir, profile);
-    if (!managed) { console.log(`Managed browser profile ${profile} is not initialized.`); return; }
-    const clients = await pairingStore.listPublicClients();
-    const paired = clients.some((entry) => entry.profile_label === profile && entry.active === true);
-    console.log(JSON.stringify(await profileModule.browserProfileStatus({ profile: managed, paired, processIdentity: launcherModule.managedBrowserProcessStartIdentity }), null, 2));
-    return;
-  }
-  const managed = profileModule.resolveManagedBrowserProfile({
-    homeDir,
-    profileLabel: profile,
-    browser,
-    sourceRoots: [process.cwd()]
-  });
-  const browserExecutable = profileModule.discoverBrowserExecutable({ browser, override: executable });
-  const launched = await launcherModule.launchManagedBrowser({
-    executable: browserExecutable,
-    profile: managed,
-    extensionPath,
-    url: "https://chatgpt.com/"
-  });
-  console.log(`Managed ChatGPT browser profile: ${managed.profileLabel}`);
-  console.log(`Browser: ${managed.browser}`);
-  console.log(`Process: ${launched.pid}${launched.reused ? " (existing managed instance)" : ""}`);
-  if (action === "auth") {
-    console.log("WAITING_FOR_USER_AUTH");
-    console.log("Sign in to ChatGPT directly in the managed browser. Complete any provider login, CAPTCHA, passkey, email confirmation, or 2FA in the browser, then return to the controlling ChatGPT conversation and send: continue");
-    console.log("Do not paste credentials or verification codes into CodexPro or ChatGPT maintenance messages.");
-  }
-}
 function profileDir() {
   return path.join(codexProHome(), 'profiles');
 }
@@ -1320,14 +911,6 @@ function saveRuntimeConnection(root, details, options = {}) {
     syncCallDeadlineMs: options.syncCallDeadlineMs ?? DEFAULT_SYNC_CALL_DEADLINE_MS,
     runtimeGenerationId: options.runtimeGenerationId ?? '',
     transportState: options.transportState ?? 'ready',
-    continuationEnabled: Boolean(options.continuationEnabled),
-    continuationBrowser: options.continuationBrowser ?? 'chrome',
-    continuationProfile: options.continuationProfile ?? 'default',
-    continuationCooldownMs: options.continuationCooldownMs ?? 60_000,
-    continuationMaxDispatches: options.continuationMaxDispatches ?? 20,
-    continuationUnexpectedGraceMs: options.continuationUnexpectedGraceMs ?? 120_000,
-    continuationNotificationsEnabled: options.continuationNotificationsEnabled !== false,
-    continuationTelegramEnabled: Boolean(options.continuationTelegramEnabled),
     analysisEnabled: Boolean(options.analysisEnabled),
     artifactExportEnabled: Boolean(options.artifactExportEnabled),
     goalsEnabled: Boolean(options.goalsEnabled),
@@ -1473,21 +1056,6 @@ function toolCardsProfileEntry(args, profile = {}) {
 function toolCardsCliArgs(args, profile = {}) {
   if (!hasToolCardsInput(args, profile)) return [];
   return ['--tool-cards', optionBool(args, profile, 'toolCards', ['CODEXPRO_TOOL_CARDS'], false) ? 'on' : 'off'];
-}
-
-async function continuationProfileEntries(args, profile = {}) {
-  const moduleUrl = pathToFileURL(path.join(projectRoot, 'dist', 'continuation', 'settings.js')).href;
-  const { normalizeContinuationSettings } = await import(moduleUrl);
-  return normalizeContinuationSettings({
-    continuationEnabled: args.continuation ?? optionValue(args, profile, 'continuationEnabled', ['CODEXPRO_CONTINUATION_ENABLED']),
-    continuationBrowser: optionValue(args, profile, 'continuationBrowser', ['CODEXPRO_CONTINUATION_BROWSER']),
-    continuationProfile: optionValue(args, profile, 'continuationProfile', ['CODEXPRO_CONTINUATION_PROFILE']),
-    continuationCooldownMs: optionValue(args, profile, 'continuationCooldownMs', ['CODEXPRO_CONTINUATION_COOLDOWN_MS']),
-    continuationMaxDispatches: optionValue(args, profile, 'continuationMaxDispatches', ['CODEXPRO_CONTINUATION_MAX_DISPATCHES']),
-    continuationUnexpectedGraceMs: optionValue(args, profile, 'continuationUnexpectedGraceMs', ['CODEXPRO_CONTINUATION_UNEXPECTED_GRACE_MS']),
-    continuationNotificationsEnabled: args.continuationNotifications ?? optionValue(args, profile, 'continuationNotificationsEnabled', ['CODEXPRO_CONTINUATION_NOTIFICATIONS_ENABLED']),
-    continuationTelegramEnabled: args.continuationTelegram ?? optionValue(args, profile, 'continuationTelegramEnabled', ['CODEXPRO_CONTINUATION_TELEGRAM_ENABLED'])
-  });
 }
 
 function capabilityProfileEntries(args, profile = {}) {
@@ -3434,7 +3002,7 @@ async function confirmLoopHandoff(args, root) {
   }
 }
 
-async function confirmLoopContinuation(args, root, iteration, planPath) {
+async function confirmLoopIteration(args, root, iteration, planPath) {
   if (!args.requireHumanConfirmation) return true;
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     throw new Error('--require-human-confirmation needs an interactive terminal before running follow-up plans.');
@@ -3525,7 +3093,7 @@ async function runLoopHandoff(argv) {
 
   for (let iteration = 1; iteration <= maxIters; iteration += 1) {
     if (iteration > 1) {
-      const continueLoop = await confirmLoopContinuation(args, root, iteration, paths.planPath);
+      const continueLoop = await confirmLoopIteration(args, root, iteration, paths.planPath);
       if (!continueLoop) {
         stopReason = 'human_cancelled';
         break;
@@ -4505,14 +4073,6 @@ function printProfile(root, profile) {
     ...(safe.toolMode ? [labelValue('Tool mode', safe.toolMode)] : []),
     ...(safe.toolCards !== undefined ? [labelValue('Tool cards', safe.toolCards ? 'on' : 'off')] : []),
     labelValue('Sync call deadline', safe.syncCallDeadlineMode === 'observe' ? 'Unlimited (observe only)' : `${Math.round((safe.syncCallDeadlineMs ?? DEFAULT_SYNC_CALL_DEADLINE_MS) / 60_000)} min`),
-    labelValue('Task continuation', safe.continuationEnabled ? 'on' : 'off'),
-    labelValue('Continuation browser', safe.continuationBrowser ?? 'chrome'),
-    labelValue('Continuation profile', safe.continuationProfile ?? 'default'),
-    labelValue('Continuation cooldown', `${safe.continuationCooldownMs ?? 60_000} ms`),
-    labelValue('Continuation max dispatches', safe.continuationMaxDispatches ?? 20),
-    labelValue('Unexpected interruption grace', `${safe.continuationUnexpectedGraceMs ?? 120_000} ms`),
-    labelValue('Continuation notifications', safe.continuationNotificationsEnabled === false ? 'off' : 'on'),
-    labelValue('Telegram continuation', safe.continuationTelegramEnabled ? 'on' : 'off'),
     labelValue('Analysis', safe.analysisEnabled === undefined ? 'on' : safe.analysisEnabled ? 'on' : 'off'),
     labelValue('Artifact export', safe.artifactExportEnabled ? 'on' : 'off'),
     labelValue('Durable Goals', safe.goalsEnabled ? 'on' : 'off'),
@@ -4607,7 +4167,6 @@ async function saveSettingsFromArgs(root, args, profile) {
   const ngrokFallbackConfig = tunnel === 'openai'
     ? (profile.tunnel === 'ngrok' ? profile.ngrokConfig : profile.ngrokFallbackConfig) ?? ''
     : profile.ngrokFallbackConfig ?? '';
-  const continuation = await continuationProfileEntries(args, profile);
   const savedPath = saveWorkspaceProfile(root, {
     port,
     mode,
@@ -4636,7 +4195,6 @@ async function saveSettingsFromArgs(root, args, profile) {
     ...(widgetDomain ? { widgetDomain } : {}),
     ...toolCardsProfileEntry(args, profile),
     ...syncCallDeadlineProfileEntry(args, profile),
-    ...continuation,
     ...capabilityProfileEntries(args, profile),
     ...(allowedRoots.length ? { allowedRoots } : {}),
     ...(args.noInstallCloudflared ?? profile.noInstallCloudflared ? { noInstallCloudflared: true } : {})
@@ -4982,10 +4540,6 @@ async function main() {
     await runSettings(argv.slice(1));
     return;
   }
-  if (subcommand === 'continuation') {
-    await runContinuationCommand(argv.slice(1));
-    return;
-  }
   if (subcommand === 'execute-handoff' || subcommand === 'execute' || subcommand === 'run-handoff') {
     await runExecuteHandoff(argv.slice(1));
     return;
@@ -5133,7 +4687,6 @@ async function main() {
   const widgetDomain = optionValue(args, profile, 'widgetDomain', ['CODEXPRO_WIDGET_DOMAIN'], 'https://rebel0789.github.io');
   const toolCards = optionBool(args, profile, 'toolCards', ['CODEXPRO_TOOL_CARDS'], false);
   const syncCallDeadline = syncCallDeadlineOption(args, profile);
-  const continuation = await continuationProfileEntries(args, profile);
   const analysisEnabled = optionBool(args, profile, 'analysisEnabled', ['CODEXPRO_ANALYSIS'], true);
   const artifactExportEnabled = optionBool(args, profile, 'artifactExportEnabled', ['CODEXPRO_ARTIFACT_EXPORT'], false);
   const goalsEnabled = optionBool(args, profile, 'goalsEnabled', ['CODEXPRO_GOALS'], false);
@@ -5177,14 +4730,6 @@ async function main() {
     CODEXPRO_TOOL_CARDS: toolCards ? '1' : '0',
     CODEXPRO_SYNC_CALL_DEADLINE_MODE: syncCallDeadline.mode,
     CODEXPRO_SYNC_CALL_DEADLINE_MS: String(syncCallDeadline.deadlineMs),
-    CODEXPRO_CONTINUATION_ENABLED: continuation.continuationEnabled ? '1' : '0',
-    CODEXPRO_CONTINUATION_BROWSER: continuation.continuationBrowser,
-    CODEXPRO_CONTINUATION_PROFILE: continuation.continuationProfile,
-    CODEXPRO_CONTINUATION_COOLDOWN_MS: String(continuation.continuationCooldownMs),
-    CODEXPRO_CONTINUATION_MAX_DISPATCHES: String(continuation.continuationMaxDispatches),
-    CODEXPRO_CONTINUATION_UNEXPECTED_GRACE_MS: String(continuation.continuationUnexpectedGraceMs),
-    CODEXPRO_CONTINUATION_NOTIFICATIONS_ENABLED: continuation.continuationNotificationsEnabled ? '1' : '0',
-    CODEXPRO_CONTINUATION_TELEGRAM_ENABLED: continuation.continuationTelegramEnabled ? '1' : '0',
     CODEXPRO_CONNECTION_TEST: connectionTest ? '1' : '0',
     CODEXPRO_ANALYSIS: analysisEnabled ? '1' : '0',
     CODEXPRO_ARTIFACT_EXPORT: artifactExportEnabled ? '1' : '0',
@@ -5280,7 +4825,6 @@ async function main() {
     toolCards,
     syncCallDeadlineMode: syncCallDeadline.mode,
     syncCallDeadlineMs: syncCallDeadline.deadlineMs,
-    ...continuation,
     connectionTest,
     analysisEnabled,
     artifactExportEnabled,

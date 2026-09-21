@@ -73,8 +73,6 @@ Initial high-value capability IDs:
 - codegraph
 - lsp
 - artifact_export
-- continuation
-- telegram_continuation
 
 The helper must not produce shell commands that widen authority automatically. UI may point to the existing profile/settings location.
 

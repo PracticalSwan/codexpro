@@ -121,10 +121,6 @@ git add src/executionGuidance.ts src/server.ts scripts/execution-routing-smoke.m
 git commit -m "feat: route long work without reducing quality"
 ```
 
-## Task-aware browser continuation integration
-
-When Plans 29–37 are available and continuation is armed, ChatGPT should checkpoint material progress and call `continuation_request` before a truthful semantic yield. Continuation remains human-gated: the managed browser may notify/focus/prepare and optional Plan 37 Telegram may notify remotely, but every dispatch requires a current explicit authorization from the managed-browser **Continue task** button or the exactly paired Telegram inline action. Neither surface may bypass terminal/task/transport/browser safety checks.
-
 ## Acceptance Criteria
 
 - ChatGPT is explicitly told that the configured deadline (20 minutes by default) is a tool-call boundary, not a quality target.

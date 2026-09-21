@@ -47,7 +47,7 @@ The installed package also reports only the SemVer from `package.json`. A source
   - sanitized diagnostics aggregation
 - `src/http.ts`
   - local status/admin projection
-- existing Windows process identity patterns in Jobs, Goals, continuation, and smoke tests
+- existing Windows process identity patterns in Jobs, Goals, tunnel supervision, and smoke tests
 
 ## Design
 
@@ -147,7 +147,7 @@ Do not add a new MCP lifecycle mutation tool. Lifecycle stop remains a local CLI
 
 ## Security and privacy requirements
 
-- Never print auth tokens, secret file paths, Telegram identifiers, browser routes, or private tunnel credentials.
+- Never print auth tokens, secret file paths, private runtime metadata, or tunnel credentials.
 - Reuse existing redaction and process-start-identity checks.
 - No broad process enumeration is required for the normal path.
 - Runtime cleanup must be exact-owner cleanup only.

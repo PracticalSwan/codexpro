@@ -10,7 +10,6 @@ const SECRET_FIELD_PATTERN = /(["']?[A-Za-z0-9_]{0,64}(?:API[_-]?KEY|TOKEN|SECRE
 const SECRET_PATTERNS = [OPENAI_SECRET_PATTERN, COMMON_TOKEN_PATTERN, BEARER_TOKEN_PATTERN, CLI_TOKEN_PATTERN, QUERY_TOKEN_PATTERN, CODEXPRO_TOKEN_ASSIGNMENT_PATTERN, CODEXPRO_TOKEN_FIELD_PATTERN, SECRET_ASSIGNMENT_PATTERN, SECRET_FIELD_PATTERN];
 const PRIVATE_METADATA_PATTERNS = [
   /\d{6,20}:[A-Za-z0-9_-]{20,}/i,
-  /https?:\/\/api\.telegram\.org\/bot\d{6,20}:[A-Za-z0-9_-]{20,}/i,
   /https:\/\/chatgpt\.com\/c\/[A-Za-z0-9-]{20,}/i,
   /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i,
   /\bcallback_[A-Za-z0-9_-]{20,}\b/i,

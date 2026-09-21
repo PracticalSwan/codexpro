@@ -48,22 +48,6 @@ Plan 21's retained product scope is the already verified Windows Stage A host/Do
 
 These are baseline behavior, not pending roadmap work. New long-running features must reuse the existing `proc_*`, `job_*`, `batch_*`, and Goal roles instead of creating another scheduler.
 
-## Optional task-aware continuation
-
-| ID | Priority | Subsystem | Authoritative design / plan | Status |
-|---|---|---|---|---|
-| 29 | P0 | Durable Continuation Lifecycle | [design](../superpowers/specs/2026-09-08-task-aware-browser-continuation-design.md) · [plan](../superpowers/plans/2026-09-08-continuation-lifecycle-api.md) | Verified |
-| 30 | P0 | Browser Companion and Pairing | [plan](../superpowers/plans/2026-09-08-browser-companion-pairing.md) | Verified |
-| 31 | P0 | Managed Browser Auth and Durable State | [plan](../superpowers/plans/2026-09-08-managed-browser-auth-state.md) | Verified |
-| 32 | P0 | Conversation Binding and User Dispatch | [plan](../superpowers/plans/2026-09-08-conversation-binding-user-continuation.md) | Verified |
-| 33 | P0 | Continuation Watchdog and Recovery | [plan](../superpowers/plans/2026-09-08-continuation-watchdog-recovery.md) | Verified |
-| 34 | P1 | Continuation Settings and Admin UX | [plan](../superpowers/plans/2026-09-08-continuation-settings-admin.md) | Verified |
-| 35 | P0 | Continuation Runtime Integration | [plan](../superpowers/plans/2026-09-08-continuation-runtime-integration.md) | Verified |
-| 36 | P0 | Continuation Security and Fresh-Session Acceptance | [plan](../superpowers/plans/2026-09-08-continuation-security-release-qa.md) | In Progress |
-| 37 | P0 | Telegram Remote Continuation Authorization | [plan](../superpowers/plans/2026-09-08-telegram-continuation-authorization.md) | Verified |
-
-Plan 36 is the only remaining continuation work: perform the already documented installed-runtime fresh-session acceptance once. Browser/Telegram continuation remains optional/default-off. After Plan 36 closes, freeze this subsystem except for evidence-backed defects; do not expand it into generic browser automation, automatic Retry/login/model switching, extra messaging transports, or remote desktop control.
-
 ## Active consolidation roadmap
 
 | ID | Priority | Subsystem | Authoritative design / plan | Status |
@@ -72,12 +56,15 @@ Plan 36 is the only remaining continuation work: perform the already documented 
 | 39 | P0 | Operator UX and Diagnostics Polish | [design](../superpowers/specs/2026-09-22-operator-ux-diagnostics-design.md) · [plan](../superpowers/plans/2026-09-22-operator-ux-diagnostics.md) | Planned |
 | 40 | P1 | Context and Code-Intelligence Provider Integration | [design](../superpowers/specs/2026-09-22-context-provider-integration-design.md) · [plan](../superpowers/plans/2026-09-22-context-provider-integration.md) | Planned |
 | 41 | P1 | Structured Notebook Inspection | [design](../superpowers/specs/2026-09-22-notebook-inspection-design.md) · [plan](../superpowers/plans/2026-09-22-notebook-inspection.md) | Planned |
+| 42 | P0 | AI-Ready Workspace Briefing v2 | [design](../superpowers/specs/2026-09-22-workspace-briefing-v2-design.md) · [plan](../superpowers/plans/2026-09-22-workspace-briefing-v2.md) | Planned |
+| 43 | P0/P1 | Verification Failure Context Pack | [design](../superpowers/specs/2026-09-22-verification-failure-context-design.md) · [plan](../superpowers/plans/2026-09-22-verification-failure-context.md) | Planned |
+| 44 | P1 | Structured Dataset / Table Inspection | [design](../superpowers/specs/2026-09-22-table-inspection-design.md) · [plan](../superpowers/plans/2026-09-22-table-inspection.md) | Planned |
 
 ## Recommended sequence
 
-`36 closure → 38 → 39 → 40 → 41`
+`38 → 39 → 40 → 41 → 42 → 43 → 44`
 
-Plans 38 and 39 may be implemented together only if explicitly authorized, because both touch launcher/admin diagnostics; otherwise keep each plan independently verifiable. Plans 40 and 41 are independent P1 improvements and should not delay P0 operator reliability work.
+Plans 38 and 39 may be implemented together only if explicitly authorized, because both touch launcher/admin diagnostics; otherwise keep each plan independently verifiable. Plans 40–44 are independent improvements and should not delay the P0 operator reliability work.
 
 ## Roadmap guardrails
 

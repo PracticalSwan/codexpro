@@ -2,7 +2,6 @@
 import { randomUUID } from "node:crypto";
 import { timingSafeEqual } from "node:crypto";
 import path from "node:path";
-import fsp from "node:fs/promises";
 import express, { type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { createHttpTransportCompat, isInitializeRequestCompat } from "./mcpCompat.js";
@@ -26,27 +25,9 @@ import { TelemetryRegistry } from "./telemetry.js";
 import { ActivityStore } from "./activity/store.js";
 import { ActivityRegistry } from "./activity/registry.js";
 import { JobStore } from "./jobs/store.js";
-import { GoalStore } from "./goals/store.js";
-import { BatchStore } from "./batches/store.js";
 import { diagnosticsSnapshot } from "./diagnosticsOps.js";
 import { redactConfigPaths } from "./pathLabels.js";
 import { WorkspaceRegistry } from "./guard.js";
-import { BrowserPairingStore } from "./continuation/browserAuth.js";
-import { browserProfileStatus, existingManagedBrowserProfile, writeBrowserProfileMetadata } from "./continuation/browserProfile.js";
-import { managedBrowserProcessStartIdentity } from "./continuation/browserLauncher.js";
-import { startBrowserContinuationBridge } from "./continuation/browserBridge.js";
-import { normalizeContinuationSettings } from "./continuation/settings.js";
-import { ContinuationStore } from "./continuation/store.js";
-import { publicContinuationRecord, TERMINAL_CONTINUATION_STATES, validateContinuationRecord, type ContinuationRecord } from "./continuation/types.js";
-import { bindContinuationConversation, authorizeContinuationDispatch, completeContinuationDispatch, releaseContinuationDispatch, rejectTelegramContinuationDispatch, expireContinuationDispatchAuthorization, observeContinuationManualTurn, cancelContinuation, FIXED_CONTINUATION_MESSAGE } from "./continuation/ops.js";
-import { evaluateContinuationReadiness, type BrowserContinuationSnapshot, type RuntimeContinuationSnapshot } from "./continuation/watchdog.js";
-import { classifyDurableContinuationWork } from "./continuation/runtimeIntegration.js";
-import { resolveTelegramBotToken } from "./continuation/telegramSecrets.js";
-import { TelegramBotApiClient } from "./continuation/telegramClient.js";
-import { TelegramPairingStore, type TelegramPairedIdentity } from "./continuation/telegramPairing.js";
-import { TelegramUpdateWorker } from "./continuation/telegramWorker.js";
-import { readTelegramRuntimeStatus, writeTelegramRuntimeStatus } from "./continuation/telegramStatus.js";
-import { createTelegramNotification, consumeTelegramAction, peekTelegramActionTaskId, storeTelegramDispatchGrant, consumeTelegramDispatchGrant, clearTelegramDispatchGrant, telegramNotificationOpportunityKey, readTelegramNotificationMarker, claimTelegramNotificationSend, markTelegramNotificationSent, takeStaleTelegramNotificationMessageIds, invalidateTelegramActionsForTask, telegramRuntimeAuthorizationDisabled, setTelegramRuntimeAuthorizationDisabled } from "./continuation/telegramNotifications.js";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -99,14 +80,6 @@ const argsField = z.preprocess((value) => {
   return trimmed.split(/\s+/);
 }, z.array(z.string().max(4096)).max(32).optional());
 
-const AdminContinuationDisarm = z.object({
-  task_id: z.string().regex(/^continuation_[A-Za-z0-9-]{1,80}$/)
-}).strict();
-
-const AdminContinuationBrowserRevoke = z.object({
-  profile: z.string().min(1).max(64)
-}).strict();
-
 const AdminProfilePatch = z.object({
   tunnel: z.enum(TUNNELS).optional(),
   hostname: textField(253),
@@ -126,14 +99,6 @@ const AdminProfilePatch = z.object({
   toolCards: z.boolean().optional(),
   syncCallDeadlineMode: z.enum(DEADLINE_MODES).optional(),
   syncCallDeadlineMinutes: z.coerce.number().int().min(5).max(60).optional(),
-  continuationEnabled: z.boolean().optional(),
-  continuationBrowser: z.enum(["chrome", "edge"]).optional(),
-  continuationProfile: textField(64),
-  continuationCooldownMs: z.coerce.number().optional(),
-  continuationMaxDispatches: z.coerce.number().optional(),
-  continuationUnexpectedGraceMs: z.coerce.number().optional(),
-  continuationNotificationsEnabled: z.boolean().optional(),
-  continuationTelegramEnabled: z.boolean().optional(),
   widgetDomain: textField(2048),
   analysisEnabled: z.boolean().optional(),
   artifactExportEnabled: z.boolean().optional(),
@@ -180,14 +145,6 @@ interface ProfileFormValues {
   toolCards: boolean;
   syncCallDeadlineMode: "bounded" | "observe";
   syncCallDeadlineMinutes: number;
-  continuationEnabled: boolean;
-  continuationBrowser: "chrome" | "edge";
-  continuationProfile: string;
-  continuationCooldownMs: number;
-  continuationMaxDispatches: number;
-  continuationUnexpectedGraceMs: number;
-  continuationNotificationsEnabled: boolean;
-  continuationTelegramEnabled: boolean;
   widgetDomain: string;
   analysisEnabled: boolean;
   artifactExportEnabled: boolean;
@@ -259,18 +216,7 @@ function profileValues(config: CodexProConfig, profile = readWorkspaceProfile(co
     "";
   const mode = oneOf(profile.mode ?? process.env.CODEXPRO_MODE, MODES, "agent");
   const write = effectiveWriteMode(mode, oneOf(profile.write ?? config.writeMode, WRITE_MODES, config.writeMode));
-  const continuation = normalizeContinuationSettings({
-    continuationEnabled: profile.continuationEnabled ?? config.continuationEnabled,
-    continuationBrowser: profile.continuationBrowser ?? config.continuationBrowser,
-    continuationProfile: profile.continuationProfile ?? config.continuationProfile,
-    continuationCooldownMs: profile.continuationCooldownMs ?? config.continuationCooldownMs,
-    continuationMaxDispatches: profile.continuationMaxDispatches ?? config.continuationMaxDispatches,
-    continuationUnexpectedGraceMs: profile.continuationUnexpectedGraceMs ?? config.continuationUnexpectedGraceMs,
-    continuationNotificationsEnabled: profile.continuationNotificationsEnabled ?? config.continuationNotificationsEnabled,
-    continuationTelegramEnabled: profile.continuationTelegramEnabled ?? config.continuationTelegramEnabled
-  });
   return {
-    ...continuation,
     port: String(profile.port ?? config.port),
     mode,
     tunnel: oneOf(profile.tunnel, TUNNELS, runtimeTunnelFallback()),
@@ -458,25 +404,6 @@ function profileForm(config: CodexProConfig): string {
           <label class="check-row"><input name="toolCards" type="checkbox" value="true"${values.toolCards ? " checked" : ""}><span>Enable ChatGPT tool cards</span></label>
           <label class="check-row"><input name="requireBashSession" type="checkbox" value="true"${values.requireBashSession ? " checked" : ""}><span>Require matching bash session id</span></label>
         </fieldset>
-        <fieldset class="profile-group" data-continuation-section>
-          <legend>Task continuation</legend>
-          <p><strong>Saved next run:</strong> these preferences do not change the process already running. <strong>Current runtime:</strong> live state is shown separately below.</p>
-          <label class="check-row"><input name="continuationEnabled" type="checkbox" value="true"${values.continuationEnabled ? " checked" : ""} data-continuation-toggle><span>Enable task continuation</span></label>
-          <div class="form-grid" data-continuation-options>
-            <label><span>Browser</span><select name="continuationBrowser"${values.continuationEnabled ? "" : " disabled"}>${selectOptions(["chrome", "edge"], values.continuationBrowser)}</select></label>
-            <label><span>Managed profile</span><input name="continuationProfile" value="${escapeHtml(values.continuationProfile)}"${values.continuationEnabled ? "" : " disabled"}></label>
-            <label><span>Cooldown (ms)</span><input name="continuationCooldownMs" type="number" min="10000" max="600000" step="1000" value="${values.continuationCooldownMs}"${values.continuationEnabled ? "" : " disabled"}></label>
-            <label><span>Maximum dispatches</span><input name="continuationMaxDispatches" type="number" min="1" max="100" step="1" value="${values.continuationMaxDispatches}"${values.continuationEnabled ? "" : " disabled"}></label>
-            <label><span>Unexpected interruption grace (ms)</span><input name="continuationUnexpectedGraceMs" type="number" min="30000" max="600000" step="1000" value="${values.continuationUnexpectedGraceMs}"${values.continuationEnabled ? "" : " disabled"}></label>
-          </div>
-          <label class="check-row"><input name="continuationNotificationsEnabled" type="checkbox" value="true"${values.continuationNotificationsEnabled ? " checked" : ""}${values.continuationEnabled ? "" : " disabled"}><span>Enable continuation notifications</span></label>
-          <label class="check-row"><input name="continuationTelegramEnabled" type="checkbox" value="true"${values.continuationTelegramEnabled ? " checked" : ""}${values.continuationEnabled ? "" : " disabled"}><span>Enable Telegram continuation <small>Requires task continuation</small></span></label>
-          <div class="current-url idle" data-continuation-status>Current runtime: loading safe continuation status from /admin/continuation.</div>
-          <div class="actions">
-            <button type="button" data-continuation-disarm>Disarm active task</button>
-            <button type="button" data-continuation-revoke>Revoke browser client</button>
-          </div>
-        </fieldset>
         <fieldset class="profile-group">
           <legend>Capabilities</legend>
           <p>Feature gates and optional intelligence providers for the next launch. Protected paths and authentication secrets remain outside this form.</p>
@@ -541,7 +468,6 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
     : String(existing.ngrokFallbackConfig ?? "");
   const cloudflareConfig = next.tunnel === "cloudflare-named" ? normalizeProfilePath(config.defaultRoot, next.cloudflareConfig) : "";
   const cloudflareTokenFile = next.tunnel === "cloudflare-named" ? normalizeProfilePath(config.defaultRoot, next.cloudflareTokenFile) : "";
-  const continuation = normalizeContinuationSettings(next);
   return {
     port: next.port,
     mode: next.mode,
@@ -571,7 +497,6 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
     toolCards: next.toolCards,
     syncCallDeadlineMode: next.syncCallDeadlineMode,
     syncCallDeadlineMs: next.syncCallDeadlineMinutes * 60_000,
-    ...continuation,
     ...(next.widgetDomain ? { widgetDomain: next.widgetDomain } : {}),
     analysisEnabled: next.analysisEnabled,
     artifactExportEnabled: next.artifactExportEnabled,
@@ -614,14 +539,6 @@ function profileResponse(config: CodexProConfig): Record<string, unknown> {
       toolCards: config.toolCards,
       syncCallDeadlineMode: config.syncCallDeadlineMode,
       syncCallDeadlineMs: config.syncCallDeadlineMs,
-      continuationEnabled: config.continuationEnabled,
-      continuationBrowser: config.continuationBrowser,
-      continuationProfile: config.continuationProfile,
-      continuationCooldownMs: config.continuationCooldownMs,
-      continuationMaxDispatches: config.continuationMaxDispatches,
-      continuationUnexpectedGraceMs: config.continuationUnexpectedGraceMs,
-      continuationNotificationsEnabled: config.continuationNotificationsEnabled,
-      continuationTelegramEnabled: config.continuationTelegramEnabled,
       widgetDomain: config.widgetDomain,
       analysisEnabled: config.analysisEnabled,
       artifactExportEnabled: config.artifactExportEnabled,
@@ -636,115 +553,6 @@ function profileResponse(config: CodexProConfig): Record<string, unknown> {
       inheritEnv: config.inheritEnv,
       connectionTest: config.connectionTest,
       authEnabled: Boolean(config.authToken)
-    }
-  });
-}
-
-function sameResolvedPath(left: string, right: string): boolean {
-  const a = path.resolve(left);
-  const b = path.resolve(right);
-  return process.platform === "win32" ? a.toLowerCase() === b.toLowerCase() : a === b;
-}
-
-async function continuationAdminResponse(config: CodexProConfig): Promise<Record<string, unknown>> {
-  const profile = readWorkspaceProfile(config.defaultRoot);
-  const saved = profileValues(config, profile);
-  const homeDir = path.dirname(config.operationDir);
-  const continuationRoot = path.join(homeDir, "continuation");
-  const recordsDir = path.join(continuationRoot, "records");
-  const records: ContinuationRecord[] = [];
-  try {
-    const names = (await fsp.readdir(recordsDir)).filter((name) => name.endsWith(".json")).slice(0, config.maxOperationReceipts * 4);
-    for (const name of names) {
-      try {
-        const file = path.join(recordsDir, name);
-        const stat = await fsp.lstat(file);
-        if (!stat.isFile() || stat.size > 128 * 1024) continue;
-        records.push(validateContinuationRecord(JSON.parse(await fsp.readFile(file, "utf8"))));
-      } catch {}
-    }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
-  records.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
-  const active = records.filter((record) => sameResolvedPath(record.workspaceRoot, config.defaultRoot) && !TERMINAL_CONTINUATION_STATES.has(record.state));
-  const task = active[0] ?? null;
-  const currentRuntime = readRuntimeConnection(config.defaultRoot);
-  const telegramStateDir = path.join(continuationRoot, "telegram");
-  const telegramRuntime = await readTelegramRuntimeStatus(telegramStateDir);
-  const telegramRuntimeDisabled = await telegramRuntimeAuthorizationDisabled(telegramStateDir);
-  const telegramTokenConfigured = Boolean(resolveTelegramBotToken(homeDir, process.env).token);
-  const telegramPairedConfigured = Boolean(await new TelegramPairingStore(telegramStateDir).paired());
-
-  const browserProfileLabel = config.continuationEnabled ? config.continuationProfile : saved.continuationProfile;
-  let browser: Record<string, unknown> = {
-    setup_required: config.continuationEnabled,
-    initialized: false,
-    running: false,
-    paired: false,
-    auth_state: "unknown",
-    profile: browserProfileLabel,
-    bound: Boolean(task?.conversationFingerprint)
-  };
-  const managed = await existingManagedBrowserProfile(homeDir, browserProfileLabel);
-  if (managed) {
-    const pairingStore = new BrowserPairingStore(path.join(continuationRoot, "browser"));
-    const clients = await pairingStore.listPublicClients();
-    const paired = clients.some((entry) => entry.profile_label === browserProfileLabel && entry.active === true);
-    browser = {
-      setup_required: config.continuationEnabled,
-      initialized: true,
-      ...(await browserProfileStatus({ profile: managed, paired, processIdentity: managedBrowserProcessStartIdentity })),
-      bound: Boolean(task?.conversationFingerprint)
-    };
-  }
-
-  return redactStructured({
-    ok: true,
-    saved_next_run: {
-      enabled: saved.continuationEnabled,
-      browser: saved.continuationBrowser,
-      profile: saved.continuationProfile,
-      cooldown_ms: saved.continuationCooldownMs,
-      max_dispatches: saved.continuationMaxDispatches,
-      unexpected_grace_ms: saved.continuationUnexpectedGraceMs,
-      notifications_enabled: saved.continuationNotificationsEnabled,
-      telegram_enabled: saved.continuationTelegramEnabled,
-      deadline: { mode: saved.syncCallDeadlineMode, ms: saved.syncCallDeadlineMinutes * 60_000 }
-    },
-    runtime: {
-      enabled: config.continuationEnabled,
-      generation_id: typeof currentRuntime.runtimeGenerationId === "string" ? currentRuntime.runtimeGenerationId : null,
-      transport: currentRuntime.transportState === "unavailable" || currentRuntime.transportState === "unknown" ? currentRuntime.transportState : "ready",
-      deadline: {
-        mode: currentRuntime.syncCallDeadlineMode === "observe" || currentRuntime.syncCallDeadlineMode === "bounded" ? currentRuntime.syncCallDeadlineMode : config.syncCallDeadlineMode,
-        ms: Number.isInteger(currentRuntime.syncCallDeadlineMs) ? Number(currentRuntime.syncCallDeadlineMs) : config.syncCallDeadlineMs
-      }
-    },
-    browser,
-    task: task ? {
-      task_id: task.id,
-      short_id: task.id.replace(/^continuation_/, "").slice(0, 8),
-      title: task.title,
-      revision: task.revision,
-      state: task.state,
-      current_phase: task.currentPhase ?? null,
-      remaining_work_count: task.remainingWork.length,
-      bound: Boolean(task.conversationFingerprint),
-      continuation_ready: task.state === "continuation_ready",
-      dispatch_count: task.continuationCount
-    } : null,
-    ...(active.length > 1 ? { ambiguous_active_tasks: active.length } : {}),
-    telegram: {
-      state: !config.continuationEnabled ? "requires_task_continuation" : config.continuationTelegramEnabled && !telegramRuntimeDisabled ? telegramRuntime.state : "disabled",
-      enabled: config.continuationTelegramEnabled,
-      token_configured: telegramTokenConfigured,
-      bot: telegramRuntime.botUsername ? `@${telegramRuntime.botUsername}` : null,
-      paired: telegramPairedConfigured,
-      worker_state: telegramRuntime.workerState,
-      webhook_conflict: telegramRuntime.webhookConflict,
-      last_successful_contact: telegramRuntime.lastSuccessfulContactAt ?? null,
-      notification_available: config.continuationEnabled && config.continuationTelegramEnabled && !telegramRuntimeDisabled && telegramPairedConfigured && telegramRuntime.notificationAvailable
     }
   });
 }
@@ -1762,89 +1570,6 @@ function onboardingPage(config: CodexProConfig): string {
     });
     updateTunnelHelp();
 
-    const continuationToggle = profileForm?.elements?.continuationEnabled;
-    const continuationOptions = document.querySelector("[data-continuation-options]");
-    const continuationStatus = document.querySelector("[data-continuation-status]");
-    const continuationDisarm = document.querySelector("[data-continuation-disarm]");
-    const continuationRevoke = document.querySelector("[data-continuation-revoke]");
-    let activeContinuationTaskId = "";
-    function updateContinuationControls() {
-      const enabled = Boolean(continuationToggle?.checked);
-      if (continuationOptions) continuationOptions.hidden = !enabled;
-      for (const name of ["continuationBrowser", "continuationProfile", "continuationCooldownMs", "continuationMaxDispatches", "continuationUnexpectedGraceMs", "continuationNotificationsEnabled", "continuationTelegramEnabled"]) {
-        const control = profileForm?.elements?.[name];
-        if (control) control.disabled = !enabled;
-      }
-    }
-    async function refreshContinuationStatus() {
-      if (!continuationStatus) return;
-      try {
-        const headers = connectorToken ? { Authorization: "Bearer " + connectorToken } : {};
-        const response = await fetch("/admin/continuation", { headers });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error?.message || "Continuation status request failed: " + response.status);
-        activeContinuationTaskId = result.task?.task_id || "";
-        const currentDeadline = result.runtime?.deadline?.mode === "observe"
-          ? "Unlimited / observe only"
-          : result.runtime?.deadline?.ms ? Math.round(result.runtime.deadline.ms / 60000) + " min bounded" : "unavailable";
-        const savedDeadline = result.saved_next_run?.deadline?.mode === "observe"
-          ? "Unlimited / observe only"
-          : result.saved_next_run?.deadline?.ms ? Math.round(result.saved_next_run.deadline.ms / 60000) + " min bounded" : "unavailable";
-        const taskText = result.task
-          ? result.task.short_id + " " + result.task.title + " Â· " + result.task.state + " Â· remaining " + result.task.remaining_work_count
-          : "none";
-        continuationStatus.textContent = [
-          "Current runtime: " + (result.runtime?.enabled ? "continuation enabled" : "continuation disabled") + ", " + currentDeadline + ", transport " + (result.runtime?.transport || "unavailable"),
-          "Saved next run: " + (result.saved_next_run?.enabled ? "enabled" : "disabled") + ", " + savedDeadline,
-          "Task: " + taskText,
-          "Browser: " + (result.browser?.paired ? "paired" : "unpaired") + ", auth " + (result.browser?.auth_state || "unknown") + ", bound " + (result.browser?.bound ? "yes" : "no"),
-          "Telegram: " + (result.telegram?.state || "unavailable")
-        ].join(" | ");
-        if (continuationDisarm) continuationDisarm.disabled = !activeContinuationTaskId;
-        if (continuationRevoke) continuationRevoke.disabled = !String(profileForm?.elements?.continuationProfile?.value || "").trim();
-      } catch (error) {
-        activeContinuationTaskId = "";
-        continuationStatus.textContent = error instanceof Error ? error.message : String(error);
-        if (continuationDisarm) continuationDisarm.disabled = true;
-        if (continuationRevoke) continuationRevoke.disabled = true;
-      }
-    }
-    continuationToggle?.addEventListener("change", updateContinuationControls);
-    continuationDisarm?.addEventListener("click", async () => {
-      if (!activeContinuationTaskId) return;
-      continuationDisarm.disabled = true;
-      try {
-        const response = await fetch("/admin/continuation/disarm", {
-          method: "POST",
-          headers: { "content-type": "application/json", ...(connectorToken ? { Authorization: "Bearer " + connectorToken } : {}) },
-          body: JSON.stringify({ task_id: activeContinuationTaskId })
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error?.message || "Disarm failed");
-        await refreshContinuationStatus();
-      } catch (error) {
-        if (continuationStatus) continuationStatus.textContent = error instanceof Error ? error.message : String(error);
-      }
-    });
-    continuationRevoke?.addEventListener("click", async () => {
-      const profile = String(profileForm?.elements?.continuationProfile?.value || "").trim();
-      if (!profile) return;
-      continuationRevoke.disabled = true;
-      try {
-        const response = await fetch("/admin/continuation/browser/revoke", {
-          method: "POST",
-          headers: { "content-type": "application/json", ...(connectorToken ? { Authorization: "Bearer " + connectorToken } : {}) },
-          body: JSON.stringify({ profile })
-        });
-        const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(result.error?.message || "Browser revoke failed");
-        await refreshContinuationStatus();
-      } catch (error) {
-        if (continuationStatus) continuationStatus.textContent = error instanceof Error ? error.message : String(error);
-      }
-    });
-    updateContinuationControls();
-    refreshContinuationStatus();
 
     if (profileForm) {
       profileForm.addEventListener("submit", async (event) => {
@@ -1870,14 +1595,6 @@ function onboardingPage(config: CodexProConfig): string {
           toolCards: Boolean(form.elements.toolCards?.checked),
           syncCallDeadlineMode: form.elements.syncCallDeadlineObserve?.checked ? "observe" : "bounded",
           syncCallDeadlineMinutes: Number(data.syncCallDeadlineMinutes),
-          continuationEnabled: Boolean(form.elements.continuationEnabled?.checked),
-          continuationBrowser: form.elements.continuationBrowser?.value || "chrome",
-          continuationProfile: form.elements.continuationProfile?.value || "default",
-          continuationCooldownMs: Number(form.elements.continuationCooldownMs?.value || 60000),
-          continuationMaxDispatches: Number(form.elements.continuationMaxDispatches?.value || 20),
-          continuationUnexpectedGraceMs: Number(form.elements.continuationUnexpectedGraceMs?.value || 120000),
-          continuationNotificationsEnabled: Boolean(form.elements.continuationNotificationsEnabled?.checked),
-          continuationTelegramEnabled: Boolean(form.elements.continuationTelegramEnabled?.checked),
           codexSessions: data.codexSessions,
           codexDir: data.codexDir,
           bashSession: data.bashSession,
@@ -1910,7 +1627,6 @@ function onboardingPage(config: CodexProConfig): string {
           const result = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(result.error?.message || "Save failed");
           if (status) status.textContent = "Saved. Restart CodexPro for these profile settings to apply.";
-          await refreshContinuationStatus();
         } catch (error) {
           if (status) status.textContent = error instanceof Error ? error.message : "Save failed";
         }
@@ -2207,30 +1923,15 @@ async function main(): Promise<void> {
     const saved = profileValues(config, readWorkspaceProfile(config.defaultRoot));
     const jobs = await new JobStore({ baseDir: config.jobDir, maxJobs: config.maxOperationReceipts, maxOutputBytes: config.maxOperationBytes, maxReadBytes: config.maxProcessReadBytes }).list();
     const activeStructuredJobs = jobs.filter((job) => ["queued", "running", "paused"].includes(job.state)).length;
-    const continuation = await continuationAdminResponse(config) as any;
-    const continuationTaskCount = Number.isInteger(continuation.ambiguous_active_tasks) ? Number(continuation.ambiguous_active_tasks) : continuation.task ? 1 : 0;
-    const continuationState = String(continuation.task?.state ?? "");
+    const currentRuntime = readRuntimeConnection(config.defaultRoot);
     const snapshot = diagnosticsSnapshot(
       config, telemetry.snapshot(), latestRegisteredTools, toolNamesForMode(config), transports.size,
       {
         savedDeadlineMode: saved.syncCallDeadlineMode, savedDeadlineMs: saved.syncCallDeadlineMinutes * 60_000, activeStructuredJobs,
-        continuationFeatureEnabled: config.continuationEnabled,
-        browserPaired: continuation.browser?.paired === true,
-        browserAuthState: String(continuation.browser?.auth_state ?? "unknown"),
-        telegramEnabled: continuation.telegram?.enabled === true,
-        telegramTokenConfigured: continuation.telegram?.token_configured === true,
-        telegramBot: typeof continuation.telegram?.bot === "string" ? continuation.telegram.bot : undefined,
-        telegramPaired: continuation.telegram?.paired === true,
-        telegramWorkerState: String(continuation.telegram?.worker_state ?? "not_running"),
-        telegramWebhookConflict: continuation.telegram?.webhook_conflict === true,
-        telegramLastSuccessfulContact: typeof continuation.telegram?.last_successful_contact === "string" ? continuation.telegram.last_successful_contact : undefined,
-        telegramNotificationAvailable: continuation.telegram?.notification_available === true,
-        activeContinuationTasks: continuationTaskCount,
-        userActionRequired: continuation.task?.continuation_ready === true || ["waiting_for_auth", "paused_by_user", "manual_rearm_required"].includes(continuationState),
-        runtimeGenerationId: typeof continuation.runtime?.generation_id === "string" ? continuation.runtime.generation_id : undefined,
-        runtimeDeadlineMode: String(continuation.runtime?.deadline?.mode ?? config.syncCallDeadlineMode),
-        runtimeDeadlineMs: Number(continuation.runtime?.deadline?.ms ?? config.syncCallDeadlineMs),
-        runtimeTransportState: String(continuation.runtime?.transport ?? "unknown")
+        runtimeGenerationId: typeof currentRuntime.runtimeGenerationId === "string" ? currentRuntime.runtimeGenerationId : undefined,
+        runtimeDeadlineMode: String(currentRuntime.syncCallDeadlineMode ?? config.syncCallDeadlineMode),
+        runtimeDeadlineMs: Number(currentRuntime.syncCallDeadlineMs ?? config.syncCallDeadlineMs),
+        runtimeTransportState: String(currentRuntime.transportState ?? "unknown")
       }
     );
     res.json(redactConfigPaths(config, snapshot, { labelUnknownPaths: true }));
@@ -2238,57 +1939,6 @@ async function main(): Promise<void> {
 
   app.get("/admin/profile", (_req, res) => {
     res.json(profileResponse(config));
-  });
-
-  app.get("/admin/continuation", async (_req, res) => {
-    res.json(await continuationAdminResponse(config));
-  });
-
-  app.post("/admin/continuation/disarm", sameOriginAdminRequest, adminRateLimit, adminBodyLimit, express.json({ limit: "8kb" }), async (req, res) => {
-    const parsed = AdminContinuationDisarm.safeParse(req.body ?? {});
-    if (!parsed.success) {
-      jsonError(res, 400, "invalid_continuation_disarm", "Invalid continuation disarm request.", parsed.error.flatten());
-      return;
-    }
-    try {
-      const continuationRoot = path.join(path.dirname(config.operationDir), "continuation");
-      const store = new ContinuationStore(continuationRoot, config.maxOperationReceipts);
-      const current = await store.require(parsed.data.task_id);
-      if (!sameResolvedPath(current.workspaceRoot, config.defaultRoot)) {
-        jsonError(res, 404, "continuation_not_found", "Continuation task was not found for this workspace.");
-        return;
-      }
-      const binding = {
-        workspace: { id: current.workspaceId, root: current.workspaceRoot },
-        ...(current.mcpSessionId ? { sessionId: current.mcpSessionId } : {})
-      };
-      const canceled = await cancelContinuation({ store, binding, continuationId: current.id, expectedRevision: current.revision, reason: "user_canceled" });
-      res.json({ ok: true, task: { task_id: canceled.id, revision: canceled.revision, state: canceled.state } });
-    } catch (error) {
-      jsonError(res, 400, "continuation_disarm_failed", error instanceof Error ? error.message : String(error));
-    }
-  });
-
-  app.post("/admin/continuation/browser/revoke", sameOriginAdminRequest, adminRateLimit, adminBodyLimit, express.json({ limit: "8kb" }), async (req, res) => {
-    const parsed = AdminContinuationBrowserRevoke.safeParse(req.body ?? {});
-    if (!parsed.success) {
-      jsonError(res, 400, "invalid_browser_revoke", "Invalid browser revoke request.", parsed.error.flatten());
-      return;
-    }
-    try {
-      const profileLabel = normalizeContinuationSettings({ continuationProfile: parsed.data.profile }).continuationProfile;
-      const store = new BrowserPairingStore(path.join(path.dirname(config.operationDir), "continuation", "browser"));
-      const clients = await store.listPublicClients();
-      let revoked = 0;
-      for (const client of clients) {
-        if (client.profile_label !== profileLabel || client.active !== true || typeof client.client_id !== "string") continue;
-        await store.revokeClient(client.client_id);
-        revoked += 1;
-      }
-      res.json({ ok: true, profile: profileLabel, revoked });
-    } catch (error) {
-      jsonError(res, 400, "browser_revoke_failed", error instanceof Error ? error.message : String(error));
-    }
   });
 
   app.post("/admin/profile", sameOriginAdminRequest, adminRateLimit, adminBodyLimit, express.json({ limit: "32kb" }), (req, res) => {
@@ -2350,8 +2000,6 @@ async function main(): Promise<void> {
           activityRegistry,
           activeSessionCount: () => transports.size,
           runtimeState,
-          transportSessionId: () => (transport as any).sessionId || undefined,
-          isTransportSessionActive: (id) => transports.has(id)
         });
         latestRegisteredTools = registeredToolNames(server);
         await server.connect(transport);
@@ -2434,282 +2082,6 @@ async function main(): Promise<void> {
     next(error);
   });
 
-  const continuationEnabled = (config as CodexProConfig & { continuationEnabled?: boolean }).continuationEnabled === true || process.env.CODEXPRO_CONTINUATION_ENABLED === "1";
-  const continuationRoot = path.join(path.dirname(config.operationDir), "continuation");
-  const browserRuntimeFile = path.join(continuationRoot, "browser", "runtime.json");
-  let browserBridge: Awaited<ReturnType<typeof startBrowserContinuationBridge>> | undefined;
-  let telegramWorkerAbort: AbortController | undefined;
-  let telegramWorkerRun: Promise<void> | undefined;
-  let telegramWorker: TelegramUpdateWorker | undefined;
-  let persistTelegramRuntimeStatus: (workerState: "not_running" | "running" | "error") => Promise<void> = async () => {};
-  if (continuationEnabled) {
-    const browserStore = new BrowserPairingStore(path.join(continuationRoot, "browser"));
-    const continuationStore = new ContinuationStore(continuationRoot, config.maxOperationReceipts);
-    const continuationJobStore = new JobStore({ baseDir: config.jobDir, maxJobs: config.maxOperationReceipts, maxOutputBytes: config.maxOperationBytes, maxReadBytes: config.maxProcessReadBytes });
-    const continuationBatchStore = new BatchStore(config.batchDir, Math.max(config.maxOperationBytes, 64 * 1024), config.maxOperationReceipts);
-    const browserObservations = new Map<string, BrowserContinuationSnapshot>();
-    const bindingForRecord = (record: ContinuationRecord) => ({ workspace: { id: record.workspaceId, root: record.workspaceRoot }, ...(record.mcpSessionId ? { sessionId: record.mcpSessionId } : {}) });
-    const runtimeSnapshot = (): RuntimeContinuationSnapshot => {
-      const current = readRuntimeConnection(config.defaultRoot);
-      return {
-        runtimeGenerationId: typeof current.runtimeGenerationId === "string" && current.runtimeGenerationId ? current.runtimeGenerationId : `http-${process.pid}`,
-        syncCallDeadlineMode: current.syncCallDeadlineMode === "observe" ? "observe" : current.syncCallDeadlineMode === "bounded" ? "bounded" : config.syncCallDeadlineMode,
-        syncCallDeadlineMs: Number.isInteger(current.syncCallDeadlineMs) ? Number(current.syncCallDeadlineMs) : config.syncCallDeadlineMs,
-        transportState: current.transportState === "unavailable" || current.transportState === "unknown" ? current.transportState : "ready",
-        observedAt: typeof current.updatedAt === "string" ? current.updatedAt : new Date().toISOString()
-      };
-    };
-    const durableWorkFor = async (record: ContinuationRecord) => classifyDurableContinuationWork({
-      processes: runtimeState.processRecords(record.workspaceId),
-      jobs: await continuationJobStore.list(record.workspaceId),
-      goals: await new GoalStore({ baseDir: path.join(config.goalDir, record.workspaceId), maxGoals: config.maxGoals }).list(record.workspaceId),
-      batches: await continuationBatchStore.list(record.workspaceId)
-    });
-    const appendContinuationEvent = async (record: ContinuationRecord, action: string, reason?: string) => activityRegistry.appendBestEffort({
-      workspaceId: record.workspaceId, kind: "continuation", action, status: "ok",
-      continuationId: record.id.replace(/^continuation_/, "").slice(0, 8),
-      summary: `state=${record.state}${reason ? ` reason=${reason}` : ""}`
-    });
-    const telegramStateDir = path.join(continuationRoot, "telegram");
-    let telegramClient: TelegramBotApiClient | undefined;
-    let telegramPairingStore: TelegramPairingStore | undefined;
-    let telegramPaired: TelegramPairedIdentity | null = null;
-    let telegramBotId = "";
-    let telegramBotUsername: string | undefined;
-    let telegramWorkerState: "disabled" | "unconfigured" | "unpaired" | "webhook_conflict" | "ready" | "error" = config.continuationTelegramEnabled ? "unconfigured" : "disabled";
-    let telegramLastContactAt: string | undefined;
-    persistTelegramRuntimeStatus = async (workerState) => {
-      const runtimeDisabled = await telegramRuntimeAuthorizationDisabled(telegramStateDir).catch(() => false);
-      await writeTelegramRuntimeStatus(telegramStateDir, {
-        state: telegramWorkerState, workerState, ...(telegramBotUsername ? { botUsername: telegramBotUsername } : {}),
-        webhookConflict: telegramWorkerState === "webhook_conflict", ...(telegramLastContactAt ? { lastSuccessfulContactAt: telegramLastContactAt } : {}),
-        notificationAvailable: workerState === "running" && telegramWorkerState === "ready" && !runtimeDisabled
-      }).catch(() => undefined);
-    };
-    let telegramNotifyReady: (record: ContinuationRecord) => Promise<void> = async () => {};
-    let telegramClearStaleKeyboards: (keepNotificationKey?: string) => Promise<void> = async () => {};
-
-    const evaluateRecord = async (record: ContinuationRecord, browser: BrowserContinuationSnapshot) => {
-      const beforeState = record.state;
-      const evaluated = await evaluateContinuationReadiness({
-        enabled: true, store: continuationStore, binding: bindingForRecord(record), continuationId: record.id, expectedRevision: record.revision,
-        runtime: runtimeSnapshot(), browser, durableWork: await durableWorkFor(record), unexpectedInterruptionGraceMs: config.continuationUnexpectedGraceMs,
-        cooldownMs: config.continuationCooldownMs, maxDispatches: config.continuationMaxDispatches
-      });
-      if (evaluated.state !== beforeState) {
-        if (evaluated.state === "continuation_ready") await appendContinuationEvent(evaluated, "ready", "watchdog");
-        else if (evaluated.state === "waiting_for_auth") await appendContinuationEvent(evaluated, "auth_required", "browser_auth");
-      }
-      if (evaluated.state === "continuation_ready") await telegramNotifyReady(evaluated).catch(() => undefined);
-      return evaluated;
-    };
-    const telegramNotificationsInFlight = new Set<string>();
-    if (config.continuationTelegramEnabled) {
-      await setTelegramRuntimeAuthorizationDisabled(telegramStateDir, false);
-      try {
-        const tokenInfo = resolveTelegramBotToken(path.dirname(config.operationDir), process.env);
-        if (tokenInfo.token) {
-          const candidateClient = new TelegramBotApiClient(tokenInfo.token, { timeoutMs: 12_000 });
-          const candidatePairing = new TelegramPairingStore(telegramStateDir);
-          const bot = await candidateClient.getMe();
-          telegramBotUsername = /^\w{5,32}$/.test(String(bot?.username ?? "")) ? String(bot.username) : undefined;
-          telegramLastContactAt = new Date().toISOString();
-          const paired = await candidatePairing.paired();
-          if (!paired) telegramWorkerState = "unpaired";
-          else {
-            await candidatePairing.assertBotIdentity(bot.id);
-            const webhook = await candidateClient.getWebhookInfo();
-            telegramLastContactAt = new Date().toISOString();
-            if (String(webhook?.url ?? "").trim()) telegramWorkerState = "webhook_conflict";
-            else {
-              telegramClient = candidateClient; telegramPairingStore = candidatePairing; telegramPaired = paired; telegramBotId = String(bot.id); telegramWorkerState = "ready";
-              telegramClearStaleKeyboards = async (keepNotificationKey) => {
-                const currentPaired = await candidatePairing.paired();
-                if (!currentPaired || currentPaired.botId !== String(bot.id)) return;
-                const staleMessageIds = await takeStaleTelegramNotificationMessageIds(telegramStateDir, keepNotificationKey);
-                for (const messageId of staleMessageIds) {
-                  await candidateClient.editMessageReplyMarkup({ chat_id: currentPaired.privateChatId, message_id: messageId, reply_markup: { inline_keyboard: [] } }).catch(() => undefined);
-                }
-              };
-              telegramNotifyReady = async (record) => {
-                const key = telegramNotificationOpportunityKey(record);
-                if (await telegramRuntimeAuthorizationDisabled(telegramStateDir)) return;
-                const currentPaired = await candidatePairing.paired();
-                if (!currentPaired || currentPaired.botId !== String(bot.id)) return;
-                telegramPaired = currentPaired;
-                if (!telegramClient) return;
-                await telegramClearStaleKeyboards(key);
-                if (telegramNotificationsInFlight.has(key)) return;
-                telegramNotificationsInFlight.add(key);
-                try {
-                  const marker = await readTelegramNotificationMarker(telegramStateDir, key);
-                  if (marker?.state === "sent" && marker.revision === record.revision) return;
-                  if (marker?.state === "pending") return;
-                  const notification = await createTelegramNotification({ stateDir: telegramStateDir, paired: currentPaired, task: record });
-                  if (marker?.state === "sent" && marker.messageId) {
-                    try {
-                      await telegramClient.editMessageReplyMarkup({ chat_id: currentPaired.privateChatId, message_id: marker.messageId, reply_markup: notification.replyMarkup });
-                    } catch (error) {
-                      if (marker.revision !== undefined) await invalidateTelegramActionsForTask(telegramStateDir, record.id, marker.revision).catch(() => undefined);
-                      throw error;
-                    }
-                    telegramLastContactAt = new Date().toISOString();
-                    await persistTelegramRuntimeStatus("running");
-                    await markTelegramNotificationSent(telegramStateDir, key, marker.messageId, record.revision);
-                    await invalidateTelegramActionsForTask(telegramStateDir, record.id, record.revision);
-                    await appendContinuationEvent(record, "telegram_refreshed", "ready");
-                    return;
-                  }
-                  if (!(await claimTelegramNotificationSend(telegramStateDir, key, record.revision))) return;
-                  const sent = await telegramClient.sendMessage({ chat_id: currentPaired.privateChatId, text: notification.text, reply_markup: notification.replyMarkup, disable_web_page_preview: true });
-                  telegramLastContactAt = new Date().toISOString();
-                  await persistTelegramRuntimeStatus("running");
-                  await markTelegramNotificationSent(telegramStateDir, key, sent?.message_id, record.revision);
-                  await invalidateTelegramActionsForTask(telegramStateDir, record.id, record.revision);
-                  await appendContinuationEvent(record, "telegram_notified", "ready");
-                } finally { telegramNotificationsInFlight.delete(key); }
-              };
-            }
-          }
-        }
-      } catch (error) {
-        telegramWorkerState = "error";
-        console.error(`[CodexPro] Telegram continuation unavailable; browser fallback remains active: ${error instanceof Error ? error.message : "error"}`);
-      }
-    }
-    await persistTelegramRuntimeStatus("not_running");
-    browserBridge = await startBrowserContinuationBridge({
-      store: browserStore,
-      statusProvider: async (clientId) => {
-        const active = (await continuationStore.list()).filter((record) => !TERMINAL_CONTINUATION_STATES.has(record.state));
-        if (active.length === 1) {
-          if (active[0].state === "awaiting_user_send" && active[0].dispatchAuthorization && Date.now() > Date.parse(active[0].dispatchAuthorization.expiresAt)) {
-            try { active[0] = await expireContinuationDispatchAuthorization({ store: continuationStore, binding: bindingForRecord(active[0]), continuationId: active[0].id, expectedRevision: active[0].revision }); await clearTelegramDispatchGrant(telegramStateDir, active[0].id); } catch {}
-          }
-          const browser = browserObservations.get(clientId);
-          if (browser) {
-            try { active[0] = await evaluateRecord(active[0], browser); } catch {}
-          }
-        }
-        const keepTelegramKey = active.length === 1 && (
-          active[0].state === "continuation_ready" ||
-          (["continuation_requested", "waiting_for_auth", "waiting_for_transport", "blocked_interaction"].includes(active[0].state) && active[0].watchdog?.pendingExplicitRequest === true)
-        ) ? telegramNotificationOpportunityKey(active[0]) : undefined;
-        await telegramClearStaleKeyboards(keepTelegramKey).catch(() => undefined);
-        return { continuation_enabled: true, task: active.length === 1 ? publicContinuationRecord(active[0]) : null, ...(active.length > 1 ? { ambiguous_active_tasks: active.length } : {}) };
-      },
-      bindConversation: async ({ taskId, revision, conversationFingerprint }) => {
-        const current = await continuationStore.require(taskId);
-        const record = await bindContinuationConversation({ enabled: true, store: continuationStore, binding: bindingForRecord(current), continuationId: taskId, expectedRevision: revision, conversationFingerprint });
-        return { task: publicContinuationRecord(record) };
-      },
-      authorizeDispatch: async ({ taskId, revision, conversationFingerprint }) => {
-        const current = await continuationStore.require(taskId);
-        const grant = await authorizeContinuationDispatch({ enabled: true, store: continuationStore, binding: bindingForRecord(current), continuationId: taskId, expectedRevision: revision, conversationFingerprint, source: "browser" });
-        return { authorization_token: grant.token, task_id: grant.record.id, revision: grant.record.revision, conversation_fingerprint: conversationFingerprint, message: grant.message };
-      },
-      consumeRemoteDispatch: async ({ taskId, revision, conversationFingerprint }) => {
-        const current = await continuationStore.require(taskId);
-        if (current.revision !== revision) throw new Error(`stale_continuation_revision: expected ${revision}, current ${current.revision}.`);
-        if (current.state !== "awaiting_user_send" || current.dispatchAuthorization?.source !== "telegram") throw new Error("dispatch_authorization_missing");
-        if (current.conversationFingerprint !== conversationFingerprint) throw new Error("wrong_chat");
-        const grant = await consumeTelegramDispatchGrant(telegramStateDir, { taskId, revision, conversationFingerprint });
-        return { authorization_token: grant.authorizationToken, task_id: taskId, revision, conversation_fingerprint: conversationFingerprint, message: FIXED_CONTINUATION_MESSAGE };
-      },
-      rejectRemoteDispatch: async ({ taskId, revision }) => {
-        const current = await continuationStore.require(taskId);
-        const record = await rejectTelegramContinuationDispatch({ store: continuationStore, binding: bindingForRecord(current), continuationId: taskId, expectedRevision: revision });
-        await clearTelegramDispatchGrant(telegramStateDir, taskId);
-        await appendContinuationEvent(record, "telegram_rejected", "browser_not_ready");
-        return { task: publicContinuationRecord(record) };
-      },
-      completeDispatch: async ({ taskId, revision, conversationFingerprint, authorizationToken }) => {
-        const current = await continuationStore.require(taskId);
-        const record = await completeContinuationDispatch({ store: continuationStore, binding: bindingForRecord(current), continuationId: taskId, expectedRevision: revision, conversationFingerprint, token: authorizationToken });
-        await appendContinuationEvent(record, "dispatched", "browser_user_authorized");
-        return { task: publicContinuationRecord(record) };
-      },
-      releaseDispatch: async ({ taskId, revision, authorizationToken }) => {
-        const current = await continuationStore.require(taskId);
-        const record = await releaseContinuationDispatch({ store: continuationStore, binding: bindingForRecord(current), continuationId: taskId, expectedRevision: revision, token: authorizationToken });
-        return { task: publicContinuationRecord(record) };
-      },
-      manualInteraction: async ({ taskId, revision, conversationFingerprint, reason }) => {
-        const current = await continuationStore.require(taskId);
-        if (current.conversationFingerprint !== conversationFingerprint) throw new Error("wrong_chat");
-        const record = await observeContinuationManualTurn({ store: continuationStore, binding: bindingForRecord(current), continuationId: taskId, expectedRevision: revision, reason });
-        return { task: publicContinuationRecord(record) };
-      },
-      onEvent: async (event) => {
-        if (event.type !== "page_state") return;
-        const browser: BrowserContinuationSnapshot = {
-          observationGenerationId: event.observationGenerationId,
-          connected: true,
-          longObservationGap: event.longObservationGap,
-          authState: event.authState,
-          conversationBound: event.conversationBound,
-          composerReady: event.composerAvailable,
-          streaming: event.streaming,
-          platformState: event.platformState,
-          blockingInteraction: event.blockingInteraction,
-          recentUserInput: event.recentUserInput
-        };
-        browserObservations.set(event.clientId, browser);
-        const active = (await continuationStore.list()).filter((record) => !TERMINAL_CONTINUATION_STATES.has(record.state));
-        if (active.length === 1) {
-          try { await evaluateRecord(active[0], browser); } catch {}
-        }
-        const client = (await browserStore.listPublicClients()).find((entry) => entry.client_id === event.clientId && entry.active === true);
-        const label = typeof client?.profile_label === "string" ? client.profile_label : undefined;
-        if (!label) return;
-        const profile = await existingManagedBrowserProfile(path.dirname(continuationRoot), label);
-        if (!profile) return;
-        await writeBrowserProfileMetadata(profile, { authState: event.authState });
-      }
-    });
-    if (telegramWorkerState === "ready" && telegramClient && telegramPairingStore && telegramPaired && telegramBotId) {
-      const pairedIdentity = telegramPaired; const pairedStore = telegramPairingStore; const botClient = telegramClient; const botId = telegramBotId;
-      telegramWorkerAbort = new AbortController();
-      telegramWorker = new TelegramUpdateWorker({
-        stateDir: path.join(telegramStateDir, "worker"), client: botClient,
-        handleUpdate: async (update) => {
-          const callback = update?.callback_query;
-          if (!callback) return;
-          const callbackId = String(callback?.id ?? "");
-          if (!callbackId) return;
-          let answer = "Expired";
-          try {
-            if (await telegramRuntimeAuthorizationDisabled(telegramStateDir)) throw new Error("telegram_disabled");
-            await pairedStore.assertPairedUpdate(update, botId);
-            const taskId = await peekTelegramActionTaskId(telegramStateDir, String(callback?.data ?? ""));
-            const current = await continuationStore.require(taskId);
-            if (current.state !== "continuation_ready" || current.manualTurnPending || !current.conversationFingerprint) throw new Error("continuation_not_ready");
-            const action = await consumeTelegramAction({ stateDir: telegramStateDir, token: String(callback?.data ?? ""), paired: pairedIdentity, task: current });
-            const grant = await authorizeContinuationDispatch({ enabled: true, store: continuationStore, binding: bindingForRecord(current), continuationId: current.id, expectedRevision: current.revision, conversationFingerprint: current.conversationFingerprint, source: "telegram", intentId: action.intentId });
-            await storeTelegramDispatchGrant(telegramStateDir, { taskId: grant.record.id, revision: grant.record.revision, conversationFingerprint: current.conversationFingerprint, authorizationToken: grant.token, expiresAt: grant.record.dispatchAuthorization!.expiresAt });
-            await appendContinuationEvent(grant.record, "telegram_authorized", "telegram_user_authorized");
-            answer = "Request received";
-            telegramLastContactAt = new Date().toISOString();
-            await persistTelegramRuntimeStatus("running");
-            await botClient.answerCallbackQuery({ callback_query_id: callbackId, text: answer });
-            if (callback?.message?.chat?.id !== undefined && callback?.message?.message_id !== undefined) await botClient.editMessageReplyMarkup({ chat_id: callback.message.chat.id, message_id: callback.message.message_id, reply_markup: { inline_keyboard: [] } }).catch(() => undefined);
-            return;
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            answer = /terminal|completed|canceled/i.test(message) ? "Task already completed" : /browser_not_ready|continuation_not_ready|auth|transport|durable/i.test(message) ? "Browser not ready" : "Expired";
-          }
-          telegramLastContactAt = new Date().toISOString();
-          await persistTelegramRuntimeStatus("running");
-          await botClient.answerCallbackQuery({ callback_query_id: callbackId, text: answer }).catch(() => undefined);
-        }
-      });
-      await persistTelegramRuntimeStatus("running");
-      telegramWorkerRun = telegramWorker.run(telegramWorkerAbort.signal).catch(async (error) => { if (!telegramWorkerAbort?.signal.aborted) { telegramWorkerState = "error"; await persistTelegramRuntimeStatus("error"); console.error(`[CodexPro] Telegram worker unavailable; browser fallback remains active: ${error instanceof Error ? error.message : "error"}`); } });
-    }
-    await fsp.mkdir(path.dirname(browserRuntimeFile), { recursive: true, mode: 0o700 });
-    await fsp.writeFile(browserRuntimeFile, `${JSON.stringify({ schemaVersion: 1, pid: process.pid, url: browserBridge.url, startedAt: new Date().toISOString() })}\n`, { encoding: "utf8", mode: 0o600 });
-    console.error(`[CodexPro] continuation bridge listening on ${browserBridge.url}`);
-  }
   const httpServer = app.listen(config.port, config.host, () => {
     console.error(`[CodexPro] HTTP MCP listening on http://${config.host}:${config.port}/mcp`);
     console.error(`[CodexPro] defaultRoot=${config.defaultRoot}`);
@@ -2726,13 +2098,6 @@ async function main(): Promise<void> {
     clearInterval(pruneTimer);
     for (const record of transports.values()) closeTransport(record);
     transports.clear();
-    telegramWorkerAbort?.abort();
-    await telegramWorker?.releaseLease().catch(() => undefined);
-    await persistTelegramRuntimeStatus("not_running");
-    if (browserBridge) {
-      await new Promise<void>((resolve) => browserBridge!.server.close(() => resolve()));
-      await fsp.rm(browserRuntimeFile, { force: true }).catch(() => undefined);
-    }
     await runtimeState.close();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
   };

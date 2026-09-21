@@ -5,7 +5,7 @@ Scope: this repository and all descendants.
 ## Start here
 1. Read `docs/agentic/PROJECT_MEMORY.md` for durable current-state facts.
 2. Read `docs/agentic/DEVELOPMENT_WORKFLOW.md` before planning or implementation.
-3. Use `docs/agentic/PLAN_INDEX.md` as the roadmap/status source of truth. For implementation, read the selected plan and its linked spec in full. Plan 36 is the only remaining continuation acceptance gate; Plans 38–41 are the current planned implementation sequence.
+3. Use `docs/agentic/PLAN_INDEX.md` as the roadmap/status source of truth. For implementation, read the selected plan and its linked spec in full. Plans 38–44 are the current planned implementation sequence.
 4. Recover Git status/branch/remotes/upstream, touched paths/tests, relevant external state, and whether a CodexPro runtime is already running before mutation.
 
 ## Development rules
@@ -17,10 +17,9 @@ Scope: this repository and all descendants.
 - Implementation begins only from user-authorized scope. For a single authorized implementation/defect, successful verification is standing authorization to update relevant docs, commit intended changes, push `origin/main`, and reinstall `codexpro-full` only when the runtime-lifecycle rule permits it. Multi-plan work keeps each plan independently reviewable and verified.
 - Do not create new top-level MCP tools when an existing tool can be deepened safely. Do not add another workflow scheduler, model router, context database, generic browser automation layer, debugger platform, or autonomous repair loop without a new explicitly approved architecture decision.
 - Tool-time awareness is baseline: normal bounded mode is 20 minutes (`1,200,000` ms), configurable 5–60 minutes; Unlimited/observe is temporary harmless host-window discovery only. Never reduce scope, review, verification, or safety to fit a call. Use the existing `proc_*`, `job_*`, `batch_*`, or Goal role appropriate to the work.
-- Browser/Telegram continuation is optional/default-off. Every send remains explicitly user-authorized; no output scraping, automatic Retry/model switching/login/approval/safety clicking, or generic browser control. Manual user turns/Stop actions outrank pending continuation. Authentication/2FA/CAPTCHA/passkey steps are mandatory human boundaries; never request credentials in chat.
-- After Plan 36 fresh-session acceptance, continuation is feature-frozen except for evidence-backed defects. Telegram is already verified at its intended bounded authorization scope.
 - Optional Docker support is frozen at the verified Windows Stage A scope for Bash/workspace processes. Goals remain host-only; do not reopen Linux/Goal Docker expansion without a concrete approved need.
 - MCP Tasks/extra interactive-approval work beyond the delivered compatibility seam is retired from the active roadmap. Do not resurrect it from historical files/commits without a new requirement and current client-capability evidence.
+- Do not add browser automation, messaging-control channels, or remote-desktop behavior as a CodexPro feature without a new explicitly approved architecture decision.
 - Never persist or expose secrets, private browser state, personal identifiers, raw prompts/transcripts, or hidden reasoning in diagnostics, packages, logs, docs, or commits.
 
 ## Runtime lifecycle

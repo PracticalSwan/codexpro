@@ -42,14 +42,7 @@ CodexPro can expose:
 - optional CodeGraph/LSP code-intelligence adapters
 - bounded archive/document inspection/extraction and opaque artifact export
 - opt-in Durable Goals with detached Git worktrees, exact approval/review fingerprints, and explicit projection authorization
-- opt-in task-aware browser continuation using a dedicated managed browser profile, explicit stable-chat binding, coarse page/auth state, and fixed-message user-gated dispatch
-- optional Telegram continuation using one dedicated paired private bot chat, outbound-only long polling, protected per-user token/private state, opaque one-shot callbacks, and a browser-consumed local dispatch grant
 
-### Task-aware continuation threat model
-
-The continuation boundary assumes malicious ChatGPT page content, extension compromise, pairing-code theft or CSRF attempts, tunnel exposure, current-vs-saved deadline drift, runtime-generation changes, stopped or failed transport, wrong or stale chat routes, multiple tabs, nonce replay or stale popup revisions, completion/cancel races, auth expiry, browser profile leakage, extension reconnects, sleep/clock jumps, manual user messages or Stop actions, busy/error/retry/unknown UI, user-typing races, automatic approval clicking attempts, Telegram token leakage, wrong or forwarded Telegram user/chat callbacks, callback replay/expiry, duplicate or backlogged updates, webhook conflict, bot blocked/API outage, changed bot identity, and attempts to turn browser/Telegram endpoints into arbitrary MCP, DOM, or remote-command execution.
-
-Allowed browser actions are intentionally narrow: coarse capability/page-state observation, explicit stable-chat binding, notification/focus, and a user-clicked fixed continuation dispatch. Forbidden continuation actions include conversation output scraping, arbitrary DOM execution, login automation, automatic Retry or model switching, approval/safety clicking, autonomous submission, starting/restarting CodexPro or tunnels from the continuation layer, rate limit or tool-window circumvention, and takeover of the user's ordinary browser profile. Authentication and reauthentication remain manual human boundaries. Independent launcher supervision of its own already-running OpenAI tunnel-client child is a transport-repair mechanism, not continuation authority.
 ## Failure Model
 
 Review changes against these failure modes before release:
@@ -79,10 +72,6 @@ Review changes against these failure modes before release:
 | Docker execution exposes host credentials, networking, or unrelated filesystem state | Docker mode is opt-in, local-image-only, uses one selected-workspace bind mount, `--network none`, bounded resources, a fixed non-secret container environment, option-safe image validation, and ownership-checked cleanup. No Docker socket, host home, credentials, arbitrary mounts, auto-pull/build/login, or explicit-Docker-to-host fallback is provided. |
 | Hidden workspace events expose blocked paths | Allowed hidden workspace paths may generate events, but PathGuard continues to exclude blocked paths such as `.git`, `.env*`, and private-key locations. |
 | Reviewer masks a failed external command | `loop-handoff` requires explicit reviewer verdict assignments and rejects reviewer `PASS` after failed executor, test, or reviewer commands unless the user opts into the supported executor/test override behavior. |
-| Telegram bot token/private identity leaks through profiles, diagnostics, logs, package output, or errors | The bot token lives only in protected per-user secret storage or an explicit environment override; paired numeric IDs and callback/grant material stay in protected Telegram state. CLI/admin/diagnostics expose booleans, sanitized bot username, worker/webhook/contact state, and never token-bearing Bot API URLs. |
-| Copied, forwarded, stale, or replayed Telegram callback authorizes continuation | Callback records are opaque and one-shot. A ready action may remain available for up to five hours, but it is bound to the exact paired user/private chat/bot plus current task revision, nonce, and intent; completion, revision changes, manual turns, disable, and revoke make stale actions fail closed. Readiness churn refreshes one existing Telegram message in place rather than accumulating new live keyboards. |
-| Telegram click bypasses browser/chat/page safety or injects arbitrary text | Telegram never submits to ChatGPT directly. It creates a <=30-second local dispatch authorization; the managed browser must match the exact bound route and recheck sign-in, idle/composer, streaming/blocking/recent-input, transport, task, and durable-work predicates, then can submit only the fixed continuation message. |
-| Multiple local workers or a configured webhook consume the same bot updates | Long polling refuses an active webhook and uses protected local owner/lease state with live-PID checking; offset advances only after safe handling. Telegram outage/error leaves browser authorization available and never asks the continuation layer to start/restart CodexPro or tunnels or auto-send. Independent launcher tunnel-child supervision remains separate. |
 
 The main risks are:
 
@@ -164,9 +153,6 @@ codexpro start \
 - Treat Durable Goal approval, review, and projection fingerprints as authorization boundaries; do not bypass them.
 - Do not enable unrestricted environment inheritance unless a trusted workflow explicitly requires it.
 - Do not treat MCP session ids or bash session labels as Codex conversation ids. CodexPro does not execute inside a Codex app session.
-- Keep Telegram continuation disabled unless task continuation is explicitly enabled and a dedicated private-control bot is intended. Never paste the bot token into chat, put it on a command line, or save it in a workspace profile; use `codexpro continuation telegram token save` or the protected environment override.
-- Telegram groups/channels, webhooks, arbitrary remote prompts/commands, autonomous fallback sends, automatic Retry/model switching, and Telegram-triggered runtime/tunnel/browser restarts are outside the continuation trust boundary.
-- Treat Telegram disable/revoke as continuation-channel controls only: they must not cancel the underlying task, browser pairing, owned processes/jobs/Goals, Git work, or the running CodexPro/tunnel.
 - Prefer a repo-specific `--root` instead of `--allow-home`.
 - Use `--no-install-cloudflared --cloudflared <path>` if your organization requires a managed Cloudflare Tunnel binary.
 

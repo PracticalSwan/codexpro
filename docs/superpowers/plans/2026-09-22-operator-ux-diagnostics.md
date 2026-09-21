@@ -44,7 +44,7 @@ export interface CapabilityExplanation {
 }
 ```
 
-- [ ] Write table-driven failing cases for `git_push=false`, `bash=off`, `write=off`, Goals prerequisites missing, analysis off, CodeGraph disabled/unavailable, LSP disabled/unavailable, artifact export off, continuation off.
+- [ ] Write table-driven failing cases for `git_push=false`, `bash=off`, `write=off`, Goals prerequisites missing, analysis off, CodeGraph disabled/unavailable, LSP disabled/unavailable, and artifact export off.
 - [ ] Implement explanations by consuming existing config/provider status; do not duplicate tool-mode lists.
 - [ ] Add a stable bounded capability list to `diagnosticsSnapshot`.
 - [ ] Verify reason text contains no absolute path/token/private metadata.
@@ -91,7 +91,7 @@ codexpro profiles show --current [--json]
 
 - [ ] Add temporary saved-profile fixtures containing masked secret placeholders and multiple roots.
 - [ ] Route output through the existing sanitized profile helper.
-- [ ] List root/path label, updated time, tunnel, tool/write/bash modes, continuation booleans, and whether the profile is current.
+- [ ] List root/path label, updated time, tunnel, tool/write/bash modes, capability gates, and whether the profile is current.
 - [ ] Do not expose token/tunnel credentials or protected secret-file paths.
 - [ ] Missing target returns a clear not-found error without creating files.
 - [ ] Do not implement `remove` yet.

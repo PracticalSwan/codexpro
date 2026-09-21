@@ -22,7 +22,6 @@ This is a compact architecture-navigation aid. Runtime source/tests remain autho
 | `src/goals/*` | Durable isolated Goal DAG execution/review/projection | Reuse for multi-stage isolated engineering; no second workflow engine |
 | `src/http.ts` | Streamable HTTP + authenticated local admin | Plan 39 improves this existing UI/control surface; no second dashboard |
 | `src/diagnosticsOps.ts` | Sanitized connection/tool/operator diagnostics | Plan 39 adds deterministic capability explanations here/nearby |
-| `src/continuation/*`, `browser-extension/` | Optional human-gated task continuation | Plan 36 acceptance only, then feature freeze except defects |
 | `scripts/codexpro.mjs` | Launcher, profiles, tunnels, operator CLI | Plan 38 adds status/guarded stop/provenance without daemon/restart authority |
 | `scripts/*-smoke.mjs` | Integration/regression verification | Add focused smoke per implemented plan, then shared smoke when public runtime surfaces change |
 
@@ -32,15 +31,18 @@ This is a compact architecture-navigation aid. Runtime source/tests remain autho
 - **Plan 39:** existing profile/diagnostics/admin surfaces plus one pure capability-explanation helper.
 - **Plan 40:** `contextOps` + existing analysis provider seam only.
 - **Plan 41:** new focused `notebookOps.ts`, one read-only tool registration, tool-surface expectations.
+- **Plan 42:** existing `workspace_snapshot` plus one focused briefing composer over current read-only evidence.
+- **Plan 43:** current verification/check/change-impact/context evidence plus one shared failure-context composer.
+- **Plan 44:** new focused `tableOps.ts`, one read-only Standard/Full tool, bounded streaming parser tests.
 
 ## High-risk neighbors
 
 - Authentication/tunnel behavior in `src/http.ts` and launcher code.
-- Path security/redaction/private metadata in `guard.ts`, `redact.ts`, import/export and continuation surfaces.
+- Path security/redaction/private metadata in `guard.ts`, `redact.ts`, and import/export surfaces.
 - Windows PID/start-identity, child teardown, file-lock/atomic-store behavior.
 - Git projection/mutation around unrelated dirty/staged/untracked user work.
 - Tool descriptors/mode lists because clients may cache schemas.
-- Any persistent state or browser/Telegram change: bounded growth, crash consistency, ownership, privacy, and stale-authority handling.
+- Any new persistent state: bounded growth, crash consistency, ownership, privacy, and stale-authority handling.
 
 ## Current design pressure
 

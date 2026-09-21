@@ -127,7 +127,7 @@ function runtimeStatusForRoot(root, options = {}) {
 **Files:**
 - Modify: `scripts/codexpro.mjs`
 - Test: `scripts/runtime-lifecycle-smoke.mjs`
-- Reference: owned process identity logic in Jobs/Goals/continuation
+- Reference: owned process identity logic in Jobs/Goals/tunnel supervision
 
 **Stop algorithm:**
 

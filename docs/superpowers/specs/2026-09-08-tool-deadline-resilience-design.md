@@ -9,12 +9,12 @@ ChatGPT or another MCP host may terminate a plugin/tool invocation after a finit
 
 ## Non-negotiable timing contract
 
-- Tool-time awareness is **enabled by default** and is independent of browser/Telegram continuation. The normal default is a bounded **20 minutes = 1,200,000 ms**.
+- Tool-time awareness is **enabled by default**. The normal default is a bounded **20 minutes = 1,200,000 ms**.
 - The effective deadline is a **blocking-call/transport deadline**, not a task deadline, quality deadline, or goal deadline.
 - Normal bounded mode accepts **5 to 60 minutes** per saved workspace profile so it can stay below the operator's observed/documented ChatGPT or MCP-host closure window.
 - A separately explicit **Unlimited / observe-only** mode disables CodexPro's cooperative synchronous cutoff while continuing elapsed-time diagnostics. It is intended only for temporary host-window discovery with a harmless diagnostic probe, not as the recommended production setting for mutating work.
 - CodexPro does not claim to know, bypass, or extend the host's external limit. Current OpenAI ChatGPT MCP documentation does not publish one universal per-user tool-call window; operators therefore measure their own environment and then restore a bounded value with safety margin.
-- A proportional internal handoff reserve stops *starting new synchronous phases* before the configured deadline so the handler can serialize a durable continuation response; this does not shorten the user's overall task.
+- A proportional internal handoff reserve stops *starting new synchronous phases* before the configured deadline so the handler can serialize truthful resumable state; this does not shorten the user's overall task.
 - No test may wait for real configured minutes; deadline utilities must support an injected clock/budget for deterministic fast tests while production uses the resolved effective value.
 
 ## Configuration contract
@@ -133,8 +133,6 @@ The final cumulative implementation gate must demonstrate: synthetic composite o
 - Do not create a second multi-stage workflow DSL beside Durable Goals.
 - Do not automatically push, merge, deploy, publish, or approve projection as part of deadline recovery.
 
-## Conversation-resume boundary
+## Conversation boundary
 
-Plans 22–28 deliberately stop at preserving/recovering work across MCP calls. They do not drive ChatGPT Web or initiate another conversation turn. Optional task-aware browser continuation is specified separately in `docs/superpowers/specs/2026-09-08-task-aware-browser-continuation-design.md` and Plans 29–37.
-
-That later layer remains human-gated: browser state may notify/focus/prepare one explicitly bound conversation, but every continuation dispatch requires the user's explicit action. Deadline resilience must remain fully functional when browser continuation is disabled, unavailable, signed out, or unpaired.
+Plans 22–28 preserve and recover work across MCP calls. They do not drive ChatGPT Web, initiate another conversation turn, or automate external user-interface actions. Resumption remains explicit through ordinary later model/tool calls using the durable `proc_*`, `job_*`, `batch_*`, Goal, task-snapshot, and Git/worktree state already recorded by CodexPro.

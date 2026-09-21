@@ -30,7 +30,6 @@ CodexPro Full is a local MCP bridge for explicitly allowed development workspace
 - `src/archiveOps.ts` + `src/documentOps.ts` + `src/imageOps.ts` + `src/exportOps.ts`: bounded artifact/document/image I/O.
 - `src/goals/*`: opt-in durable isolated Goal DAG execution/review/projection; never auto-commit/push/deploy.
 - `src/http.ts`: Streamable HTTP MCP transport and authenticated local admin surface.
-- `src/continuation/*` + `browser-extension/`: optional/default-off human-gated task continuation.
 - `scripts/codexpro.mjs`: launcher/profile/tunnel/operator CLI; runtime lifecycle remains user-controlled.
 
 ## Verified capability baseline
@@ -52,26 +51,18 @@ CodexPro Full is a local MCP bridge for explicitly allowed development workspace
   - Goals: multi-stage isolated engineering.
 - Execution routing is advisory/deterministic and never silently escalates permissions or reduces required work.
 
-## Continuation baseline
-
-- Plans 29–35 and 37 are verified. Plan 36 remains **In Progress only for the deferred installed-runtime fresh-session acceptance**.
-- Browser/Telegram continuation is optional and package-default-off. It is independent of baseline deadline/durable execution.
-- Every continuation send requires current explicit user authorization. Manual user prompts/Stop actions outrank pending continuation.
-- Dedicated managed-browser authentication is a mandatory human boundary. CodexPro does not request/store passwords, 2FA/passkeys, or scrape conversation output.
-- Telegram uses one dedicated paired private bot with outbound long polling and one-shot bounded authorization; credentials/IDs remain in protected per-user state.
-- Runtime/tunnel/auth loss, wrong/stale chat, streaming, busy/error/unknown UI, productive durable work, or terminal task state suppress continuation.
-- After Plan 36 acceptance closes, continuation is feature-frozen except for evidence-backed defects. Do not expand it into generic browser automation, automatic Retry/model switching/login, remote desktop, or extra messaging transports.
-
 ## Current roadmap — consolidation first
 
 `docs/agentic/PLAN_INDEX.md` is authoritative. Current recommended sequence:
 
 ```text
-Plan 36 acceptance closure
-→ Plan 38 Runtime Lifecycle and Build Provenance
+Plan 38 Runtime Lifecycle and Build Provenance
 → Plan 39 Operator UX and Diagnostics Polish
 → Plan 40 Context and Code-Intelligence Provider Integration
 → Plan 41 Structured Notebook Inspection
+→ Plan 42 AI-Ready Workspace Briefing v2
+→ Plan 43 Verification Failure Context Pack
+→ Plan 44 Structured Dataset / Table Inspection
 → real-project usage / defect evidence
 ```
 
@@ -79,6 +70,9 @@ Plan 36 acceptance closure
 - **Plan 39 (P0):** improve the existing authenticated admin/diagnostics/profile surfaces; deterministic unavailable-capability explanations and read-only profile list/show. No new dashboard framework/control plane.
 - **Plan 40 (P1):** merge bounded optional CodeGraph/LSP evidence into existing symbol-oriented `gather_context`; no Context Engine v3, persistent LSP manager, or new public context tool.
 - **Plan 41 (P1):** read-only structured `.ipynb` inspection; no kernel/execution/editor/dataframe platform or new dependency.
+- **Plan 42 (P0):** deepen `workspace_snapshot` into one bounded AI-ready project briefing using existing Git/instruction/check/durable-work/capability evidence.
+- **Plan 43 (P0/P1):** attach bounded failure-location/related-test/context/reproduction evidence to existing synchronous and async verification without autonomous repair.
+- **Plan 44 (P1):** add bounded read-only CSV/TSV/JSONL inspection; no dataframe/SQL/chart/model execution platform.
 
 Research-only/watch items: future MCP protocol/Tasks/interactive-approval capabilities. Reopen only when stable connected-client support provides a concrete benefit over existing primitives.
 

@@ -149,10 +149,6 @@ git add src/jobs src/server.ts scripts/jobs-smoke.mjs scripts/http-state-continu
 git commit -m "feat: add durable structured job core"
 ```
 
-## Task-aware browser continuation integration
-
-Structured `job_*` work remains locally durable without browser activity. Plans 29–37 must observe canonical job state and suppress continuation while a job is productively running; they must not duplicate the job store or use browser turns as a job scheduler.
-
 ## Acceptance Criteria
 
 - Structured long work can outlive one MCP call and is recoverable by `job_*` ID.

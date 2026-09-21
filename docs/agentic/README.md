@@ -19,6 +19,6 @@ This directory is the durable navigation layer for CodexPro Full development.
 - A plan is never evidence that its feature exists.
 
 ## Current roadmap
-The expansion-heavy 2026-09-05/08 roadmap is complete or retired except for Plan 36 fresh-session continuation acceptance. Current planned implementation is the consolidation-first sequence Plans 38–41: runtime lifecycle/provenance, operator UX/diagnostics, context-provider integration, and read-only notebook inspection.
+The expansion-heavy 2026-09-05/08 roadmap is complete or retired. Current planned implementation is the consolidation-first sequence Plans 38–44: runtime lifecycle/provenance, operator UX/diagnostics, context-provider integration, read-only notebook inspection, workspace briefing, verification failure context, and read-only table inspection.
 
 Refresh moving external state before implementation. Do not resurrect retired protocol/Tasks/Docker-expansion work from Git history unless a new concrete requirement and current evidence justify it.

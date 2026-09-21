@@ -6,8 +6,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { Client } from '@modelcontextprotocol/client';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
-import { ContinuationStore } from '../dist/continuation/store.js';
-import { BrowserPairingStore } from '../dist/continuation/browserAuth.js';
 
 const pkg = JSON.parse(await fs.readFile('package.json', 'utf8'));
 
@@ -320,9 +318,6 @@ try {
     throw new Error(`expected URL-token healthz to return 200, got ${queryAuthorized.status}`);
   }
 
-  const unauthContinuationAdmin = await fetch(`${baseUrl}/admin/continuation`);
-  if (unauthContinuationAdmin.status !== 401) throw new Error(`expected unauthenticated continuation admin GET to return 401, got ${unauthContinuationAdmin.status}`);
-
   let throttled;
   for (let attempt = 0; attempt < 15; attempt += 1) {
     throttled = await fetch(`${baseUrl}/healthz?codexpro_token=wrong-token-${attempt}`);
@@ -362,9 +357,6 @@ try {
   if (!Number.isFinite(initialDiagnosticsJson.operator?.saved_next_run_deadline?.ms)) throw new Error('admin diagnostics omitted saved next-run deadline');
   if (!Number.isInteger(initialDiagnosticsJson.operator?.active_structured_jobs) || initialDiagnosticsJson.operator.active_structured_jobs < 0) throw new Error('admin diagnostics omitted active structured job count');
   if (initialDiagnosticsJson.operator?.recent_deadline_yield !== false) throw new Error('fresh diagnostics incorrectly reported a recent deadline yield');
-  const initialTelegramDiagnostics = initialDiagnosticsJson.continuation?.telegram;
-  if (initialTelegramDiagnostics?.enabled !== false || initialTelegramDiagnostics?.token_configured !== false || initialTelegramDiagnostics?.paired !== false || initialTelegramDiagnostics?.worker_state !== 'not_running' || initialTelegramDiagnostics?.webhook_conflict !== false || initialTelegramDiagnostics?.notification_available !== false) throw new Error(`admin diagnostics omitted safe Telegram metadata: ${JSON.stringify(initialTelegramDiagnostics)}`);
-
   const badAdminJson = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -418,16 +410,6 @@ try {
   if (!homeText.includes('Connection profile') || !homeText.includes('data-profile-form')) {
     throw new Error('onboarding page did not include the saved profile editor');
   }
-  for (const expected of ['Task continuation', 'Enable task continuation', 'Saved next run', 'Current runtime', 'Requires task continuation', 'data-continuation-status', '/admin/continuation']) {
-    if (!homeText.includes(expected)) throw new Error(`onboarding page did not include continuation admin contract: ${expected}`);
-  }
-  for (const fieldName of ['continuationEnabled', 'continuationBrowser', 'continuationProfile', 'continuationCooldownMs', 'continuationMaxDispatches', 'continuationUnexpectedGraceMs', 'continuationNotificationsEnabled', 'continuationTelegramEnabled']) {
-    if (!homeText.includes(`name="${fieldName}"`)) throw new Error(`onboarding page did not include continuation profile field ${fieldName}`);
-  }
-  for (const expected of ['data-continuation-toggle', 'data-continuation-options', 'data-continuation-disarm', 'data-continuation-revoke', 'fetch("/admin/continuation"', 'fetch("/admin/continuation/disarm"', 'fetch("/admin/continuation/browser/revoke"']) {
-    if (!homeText.includes(expected)) throw new Error(`onboarding page did not wire continuation admin control: ${expected}`);
-  }
-  if (/auto[- ]?send|auto[- ]?reconnect[^<]{0,40}tunnel/i.test(homeText)) throw new Error('onboarding page exposed forbidden automatic continuation/tunnel controls');
   if (!homeText.includes('history.replaceState') || !homeText.includes('initialUrl.searchParams.delete("codexpro_token")')) {
     throw new Error('onboarding page did not remove query credentials from browser history');
   }
@@ -463,46 +445,6 @@ try {
   for (const leaked of [runtimeQuerySecret, runtimeAccessSecret, runtimeCloudflareSecret]) {
     if (JSON.stringify(profileBeforeJson).includes(leaked)) throw new Error(`admin profile GET leaked runtime secret: ${leaked}`);
   }
-
-  const continuationRecordsPath = path.join(profileHome, 'continuation', 'records');
-  const continuationRecordsExistedBeforeStatus = await fs.stat(continuationRecordsPath).then(() => true).catch((error) => error?.code === 'ENOENT' ? false : Promise.reject(error));
-  const continuationAdmin = await fetch(`${baseUrl}/admin/continuation?codexpro_token=${encodeURIComponent(token)}`);
-  const continuationAdminJson = await continuationAdmin.json().catch(() => ({}));
-  if (continuationAdmin.status !== 200 || continuationAdminJson.saved_next_run?.enabled !== false || continuationAdminJson.runtime?.enabled !== false || continuationAdminJson.runtime?.transport !== 'ready' || continuationAdminJson.browser?.setup_required !== false || continuationAdminJson.task !== null || continuationAdminJson.telegram?.state !== 'requires_task_continuation' || continuationAdminJson.telegram?.enabled !== false || continuationAdminJson.telegram?.token_configured !== false || continuationAdminJson.telegram?.paired !== false || continuationAdminJson.telegram?.worker_state !== 'not_running' || continuationAdminJson.telegram?.webhook_conflict !== false || continuationAdminJson.telegram?.notification_available !== false) {
-    throw new Error(`continuation admin GET did not expose safe disabled/current-vs-saved state: ${continuationAdmin.status} ${JSON.stringify(continuationAdminJson)}`);
-  }
-  for (const forbidden of [token, runtimeQuerySecret, runtimeAccessSecret, runtimeCloudflareSecret, 'conversationFingerprint', 'outstandingNonce', 'dispatchAuthorization']) {
-    if (JSON.stringify(continuationAdminJson).includes(forbidden)) throw new Error(`continuation admin GET leaked forbidden state: ${forbidden}`);
-  }
-  const continuationRecordsExistAfterStatus = await fs.stat(continuationRecordsPath).then(() => true).catch((error) => error?.code === 'ENOENT' ? false : Promise.reject(error));
-  if (!continuationRecordsExistedBeforeStatus && continuationRecordsExistAfterStatus) {
-    throw new Error('read-only continuation admin GET created continuation storage');
-  }
-
-  const adminContinuationStore = new ContinuationStore(path.join(profileHome, 'continuation'), 16);
-  const adminTask = await adminContinuationStore.create({ workspace: { id: 'ws_http_plan34', root: await fs.realpath(root) }, title: 'HTTP Plan 34 admin task' });
-  const crossOriginDisarm = await fetch(`${baseUrl}/admin/continuation/disarm?codexpro_token=${encodeURIComponent(token)}`, {
-    method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://attacker.example' }, body: JSON.stringify({ task_id: adminTask.id })
-  });
-  if (crossOriginDisarm.status !== 403) throw new Error(`cross-origin continuation disarm was not rejected: ${crossOriginDisarm.status}`);
-  const disarmAdmin = await fetch(`${baseUrl}/admin/continuation/disarm`, {
-    method: 'POST', headers: { 'content-type': 'application/json', origin: baseUrl, Authorization: `Bearer ${token}` }, body: JSON.stringify({ task_id: adminTask.id })
-  });
-  const disarmAdminJson = await disarmAdmin.json().catch(() => ({}));
-  if (disarmAdmin.status !== 200 || disarmAdminJson.task?.state !== 'canceled') throw new Error(`admin continuation disarm failed: ${disarmAdmin.status} ${JSON.stringify(disarmAdminJson)}`);
-  const adminDisarmedRecord = await adminContinuationStore.require(adminTask.id);
-  if (adminDisarmedRecord.state !== 'canceled') throw new Error('admin continuation disarm did not persist terminal continuation state');
-
-  const adminPairingStore = new BrowserPairingStore(path.join(profileHome, 'continuation', 'browser'));
-  const adminPairing = await adminPairingStore.createPairing('admin-revoke-test');
-  const adminClient = await adminPairingStore.exchangePairing('admin-revoke-test', adminPairing.code, { extensionVersion: '1.0.0' });
-  const revokeAdmin = await fetch(`${baseUrl}/admin/continuation/browser/revoke`, {
-    method: 'POST', headers: { 'content-type': 'application/json', origin: baseUrl, Authorization: `Bearer ${token}` }, body: JSON.stringify({ profile: 'admin-revoke-test' })
-  });
-  const revokeAdminJson = await revokeAdmin.json().catch(() => ({}));
-  if (revokeAdmin.status !== 200 || revokeAdminJson.revoked !== 1) throw new Error(`admin continuation browser revoke failed: ${revokeAdmin.status} ${JSON.stringify(revokeAdminJson)}`);
-  const adminClientsAfterRevoke = await adminPairingStore.listPublicClients();
-  if (adminClientsAfterRevoke.find((entry) => entry.client_id === adminClient.clientId)?.active !== false) throw new Error('admin browser revoke did not persist client revocation');
 
   const securityHeaders = profileBefore.headers;
   for (const [header, expected] of [
@@ -590,14 +532,6 @@ try {
       toolCards: true,
       syncCallDeadlineMode: 'bounded',
       syncCallDeadlineMinutes: 12,
-      continuationEnabled: true,
-      continuationBrowser: 'edge',
-      continuationProfile: 'http-plan34',
-      continuationCooldownMs: 90_000,
-      continuationMaxDispatches: 9,
-      continuationUnexpectedGraceMs: 180_000,
-      continuationNotificationsEnabled: false,
-      continuationTelegramEnabled: true,
       widgetDomain: 'https://widgets.codexpro.test',
       analysisEnabled: true,
       artifactExportEnabled: true,
@@ -637,14 +571,6 @@ try {
     savedProfile.toolCards !== true ||
     savedProfile.syncCallDeadlineMode !== 'bounded' ||
     savedProfile.syncCallDeadlineMs !== 720_000 ||
-    savedProfile.continuationEnabled !== true ||
-    savedProfile.continuationBrowser !== 'edge' ||
-    savedProfile.continuationProfile !== 'http-plan34' ||
-    savedProfile.continuationCooldownMs !== 90_000 ||
-    savedProfile.continuationMaxDispatches !== 9 ||
-    savedProfile.continuationUnexpectedGraceMs !== 180_000 ||
-    savedProfile.continuationNotificationsEnabled !== false ||
-    savedProfile.continuationTelegramEnabled !== true ||
     savedProfile.analysisEnabled !== true ||
     savedProfile.artifactExportEnabled !== true ||
     savedProfile.goalsEnabled !== true ||
@@ -664,11 +590,6 @@ try {
   }
   if (savedProfile.cloudflareToken || savedProfile.cloudflareTokenFile) {
     throw new Error(`admin profile save kept cloudflare token config on ngrok profile: ${JSON.stringify(savedProfile)}`);
-  }
-  const continuationAfterSave = await fetch(`${baseUrl}/admin/continuation?codexpro_token=${encodeURIComponent(token)}`);
-  const continuationAfterSaveJson = await continuationAfterSave.json();
-  if (continuationAfterSave.status !== 200 || continuationAfterSaveJson.saved_next_run?.enabled !== true || continuationAfterSaveJson.saved_next_run?.browser !== 'edge' || continuationAfterSaveJson.runtime?.enabled !== false) {
-    throw new Error(`continuation admin did not separate saved next-run settings from current runtime after save: ${JSON.stringify(continuationAfterSaveJson)}`);
   }
   await fs.writeFile(profileSaveJson.profile_path, JSON.stringify({
     ...savedProfile,

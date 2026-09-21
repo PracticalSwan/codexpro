@@ -248,9 +248,6 @@ if (!safeInitialize.instructions?.includes('allowlisted verification commands') 
 }
 const tools = await client.request('tools/list', {});
 const toolNames = tools.tools.map((tool) => tool.name);
-for (const disabledContinuationTool of ['continuation_arm', 'continuation_checkpoint', 'continuation_request', 'continuation_status', 'continuation_reconcile', 'continuation_complete', 'continuation_cancel']) {
-  if (toolNames.includes(disabledContinuationTool)) throw new Error(`continuation-disabled runtime advertised ${disabledContinuationTool}`);
-}
 const safeBashTool = tools.tools.find((tool) => tool.name === 'bash');
 if (!safeBashTool?.description?.includes('allowlisted verification command')) {
   throw new Error(`safe Bash tool description was not restricted: ${safeBashTool?.description}`);

@@ -91,12 +91,12 @@ Run: `node scripts/checks-smoke.mjs`
 Run: `npm run build`
 Expected: PASS.
 
-### Task 3: Expose additive continuation metadata through MCP
+### Task 3: Expose additive resumable-state metadata through MCP
 
 **Files:**
 - Modify: `src/server.ts` registrations for `run_checks` and `verify_changes`
 - Modify: `scripts/verification-repair-smoke.mjs`
-- Modify: `scripts/http-state-continuity-smoke.mjs` if cross-call continuation metadata is serialized there
+- Modify: `scripts/http-state-continuity-smoke.mjs` if cross-call resumable-state metadata is serialized there
 
 **Interfaces:**
 - Produces: structured MCP results that distinguish `complete`, `partial/deadline-yielded`, and true verification failure.
@@ -122,10 +122,6 @@ Expected: PASS.
 git add src/checksOps.ts src/bashOps.ts src/server.ts scripts/checks-smoke.mjs scripts/verification-repair-smoke.mjs scripts/http-state-continuity-smoke.mjs
 git commit -m "feat: bound composite verification calls"
 ```
-
-## Task-aware browser continuation integration
-
-A deadline-yielded verification remains incomplete exactly as defined here. Plans 29–37 may later notify the user that another model turn is useful, but they cannot reinterpret pending checks as success and cannot submit a continuation automatically.
 
 ## Acceptance Criteria
 

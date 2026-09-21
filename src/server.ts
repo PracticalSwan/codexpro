@@ -60,10 +60,6 @@ import { GoalStore } from "./goals/store.js";
 import { JobStore, publicJobRecord } from "./jobs/store.js";
 import { BatchStore } from "./batches/store.js";
 import { publicBatchRecord } from "./batches/types.js";
-import { ContinuationStore, type ContinuationBinding } from "./continuation/store.js";
-import { publicContinuationRecord, TERMINAL_CONTINUATION_STATES } from "./continuation/types.js";
-import { armContinuation, checkpointContinuation, requestContinuation, reconcileContinuationManualTurn, completeContinuation, cancelContinuation, continuationStatus, reassociateContinuationSession } from "./continuation/ops.js";
-import { recordContinuationHeartbeat } from "./continuation/watchdog.js";
 import { cancelJob, reconcileJob, resumeJob } from "./jobs/runner.js";
 import { registerVerificationJobProducer, startChecksJob, startVerificationJob } from "./jobs/verification.js";
 import { proposeGoal, approveGoal, startGoal, pauseGoal, resumeGoal, cancelGoal } from "./goals/runner.js";
@@ -319,8 +315,6 @@ function isContextPath(config: CodexProConfig, relPath: string): boolean {
   return normalized === contextDir || normalized.startsWith(`${contextDir}/`);
 }
 
-function continuationFeatureEnabled(config: CodexProConfig): boolean { return (config as CodexProConfig & { continuationEnabled?: boolean }).continuationEnabled === true; }
-
 function assertWriteToolAllowed(config: CodexProConfig, relPath: string): void {
   if (config.writeMode === "workspace") return;
   if (config.writeMode === "handoff" && isContextPath(config, relPath)) return;
@@ -444,13 +438,6 @@ const STANDARD_TOOL_NAMES = [
   "read_job_output",
   "cancel_job",
   "resume_job",
-  "continuation_arm",
-  "continuation_checkpoint",
-  "continuation_request",
-  "continuation_status",
-  "continuation_reconcile",
-  "continuation_complete",
-  "continuation_cancel",
   "inspect_workspace",
   "tree",
   "search",
@@ -533,13 +520,6 @@ const FULL_TOOL_NAMES = [
   "read_job_output",
   "cancel_job",
   "resume_job",
-  "continuation_arm",
-  "continuation_checkpoint",
-  "continuation_request",
-  "continuation_status",
-  "continuation_reconcile",
-  "continuation_complete",
-  "continuation_cancel",
   "goal_status",
   "list_goals",
   "propose_goal",
@@ -595,12 +575,6 @@ const CONNECTION_TEST_HIDDEN_TOOLS = new Set<string>([
   "stop_workspace_process",
   "cancel_job",
   "resume_job",
-  "continuation_arm",
-  "continuation_checkpoint",
-  "continuation_request",
-  "continuation_reconcile",
-  "continuation_complete",
-  "continuation_cancel",
   "codegraph_sync",
   "git_stage",
   "git_commit",
@@ -624,11 +598,6 @@ const BASH_DEPENDENT_TOOL_NAMES = new Set<string>([
   "resume_job"
 ]);
 
-const CONTINUATION_TOOL_NAMES = new Set<string>([
-  "continuation_arm", "continuation_checkpoint", "continuation_request", "continuation_status",
-  "continuation_reconcile", "continuation_complete", "continuation_cancel"
-]);
-
 const GOAL_TOOL_NAMES = new Set<string>([
   "goal_status", "list_goals", "propose_goal", "approve_goal", "start_goal",
   "pause_goal", "resume_goal", "cancel_goal", "review_goal", "project_goal"
@@ -648,12 +617,6 @@ export function toolNamesForMode(config: CodexProConfig): string[] {
       : config.toolMode === "minimal"
         ? [...MINIMAL_TOOL_NAMES]
         : [...STANDARD_TOOL_NAMES];
-  if (!continuationFeatureEnabled(config)) {
-    for (const continuationTool of CONTINUATION_TOOL_NAMES) {
-      const toolIndex = names.indexOf(continuationTool);
-      if (toolIndex !== -1) names.splice(toolIndex, 1);
-    }
-  }
   if (config.bashMode === "off") {
     for (const bashTool of BASH_DEPENDENT_TOOL_NAMES) {
       const toolIndex = names.indexOf(bashTool);
@@ -706,7 +669,6 @@ export function registeredToolNames(server: McpServer): string[] {
 }
 
 function shouldRegisterTool(config: CodexProConfig, name: string): boolean {
-  if (CONTINUATION_TOOL_NAMES.has(name) && !continuationFeatureEnabled(config)) return false;
   if (config.connectionTest && CONNECTION_TEST_HIDDEN_TOOLS.has(name)) return false;
   if (BASH_DEPENDENT_TOOL_NAMES.has(name) && config.bashMode === "off") return false;
   if (["write", "edit", "prepare_change_set", "apply_change_set", "revert_operation", "restore_checkpoint", "apply_patch", "import_file", "extract_archive", "git_stage", "git_commit", "git_push"].includes(name) && config.writeMode !== "workspace") return false;
@@ -775,13 +737,7 @@ export function serverInstructions(config: CodexProConfig): string {
     : `Deadline routing: Tool-time awareness is bounded at ${referenceMinutes} minutes (${config.syncCallDeadlineMs} ms). This is a transport boundary for one blocking tool call, never a task-quality target.`;
   const deadlineScopeInstruction = "Deadline scope: the configured synchronous deadline is per MCP tool call and restarts for each tool invocation. It does not measure the whole ChatGPT turn or host tool-access window, so do not wait for this per-call timer to checkpoint or wrap up.";
   const routingInstruction = `Execution routing: Never rush, omit required work, reduce scope/review/tests/safety, or claim completion to fit one call. Routing cutoffs are sync-preferred <= ${Number((routingThresholds.syncPreferredMs / 60_000).toFixed(2))} minutes and async-preferred >= ${Number((routingThresholds.asyncPreferredMs / 60_000).toFixed(2))} minutes. Use start_workspace_process for long shell commands, start_checks/start_verification for long verification, and Durable Goals for substantial multi-stage work with dependency, isolation, review, or projection needs.`;
-  const progressInstruction = "Continuation discipline: When work spans calls, preserve the full goal, complete one coherent phase, persist material progress/evidence, then continue. Poll status only when a condition may have changed; use condition-based purposeful polling rather than rapid busy-wait loops.";
-  const continuationInstruction = config.continuationEnabled
-    ? "Task continuation: continuationEnabled=true. Use continuation_arm only for a substantial task likely to span MCP/model calls. Use continuation_checkpoint after each coherent material milestone and before starting a long or high-variance phase; do not wait for a deadline yield or host cutoff to save semantic state. Register only bounded intents that reference recorded remaining work. Actual long work belongs in proc_*, job_*, goal_*, or batch_* state. A configured deadline is a continuation boundary, never a quality target. Before a truthful semantic yield with work remaining, checkpoint then continuation_request. Browser/Telegram dispatch is user-gated: continuation must not auto-send and must not wait or busy-poll merely to trigger another turn. After acceptance criteria and required verification are complete, call continuation_complete; explicit stop/cancel of the overall goal uses continuation_cancel."
-    : "Task continuation: continuationEnabled=false. Do not arm continuation, do not launch browser setup, and do not request Telegram setup. No semantic continuation checkpoint is saved automatically while continuation is disabled. Continue using deadline-aware proc_*, job_*, goal_*, and batch_* durable execution where appropriate; continuation being disabled never changes requested scope, quality, review, verification, or safety requirements.";
-  const continuationRecoveryInstruction = config.continuationEnabled
-    ? "Continuation recovery: on a user-dispatched continuation turn, call continuation_status first. Check terminal/revision state and the current runtime generation/deadline/transport, recover canonical remaining work and durable subsystem state plus selectedContinuationIntentId, avoid redoing verified work, and resume only the recorded goal. A focused intent changes priority only within recorded remaining work. If continuation_status reports manualTurnPending, use the user prompt already visible to ChatGPT and call continuation_reconcile with exactly one disposition: resume for ordinary continuation, redirect for changed priorities within the same goal, supersede for a materially new task, or cancel for explicit stop/cancel; ambiguity remains paused. Never recreate terminal continuation state merely because the fixed continuation message arrived."
-    : "";
+  const progressInstruction = "Long-work discipline: When work spans calls, preserve the full goal, complete one coherent phase, persist material progress/evidence through the appropriate task snapshot, process, job, batch, Goal, or Git state, then continue. Poll status only when a condition may have changed; use condition-based purposeful polling rather than rapid busy-wait loops.";
   const inspectionInstruction =
     config.bashMode === "full"
       ? "3. Inspect with tree, search, read, and dedicated Git tools when they are more precise. Full Bash may also be used for inspection when the user's task benefits from shell or local CLI behavior."
@@ -800,8 +756,6 @@ export function serverInstructions(config: CodexProConfig): string {
     deadlineScopeInstruction,
     routingInstruction,
     progressInstruction,
-    continuationInstruction,
-    continuationRecoveryInstruction,
     "6. Keep tool calls minimal. Prefer one targeted search plus show_changes instead of repeated broad inspection calls.",
     config.codexSessions !== "off"
       ? `7. Codex session history access is enabled in ${config.codexSessions} mode. Use it only when the user asks for local Codex session history.`
@@ -1374,8 +1328,6 @@ export function createCodexProServer(
     activityRegistry?: ActivityRegistry;
     activeSessionCount?: () => number;
     runtimeState?: CodexProRuntimeState;
-    transportSessionId?: () => string | undefined;
-    isTransportSessionActive?: (sessionId: string) => boolean;
   } = {}
 ): McpServer {
   const policyRegistry = new WorkspacePolicyRegistry(globalConfig);
@@ -1438,35 +1390,6 @@ export function createCodexProServer(
   };
   const jobStore = new JobStore({ baseDir: config.jobDir, maxJobs: config.maxOperationReceipts, maxOutputBytes: config.maxOperationBytes, maxReadBytes: config.maxProcessReadBytes });
   const batchStore = new BatchStore(config.batchDir, Math.max(config.maxOperationBytes, 64 * 1024), config.maxOperationReceipts);
-  const continuationStore = new ContinuationStore(path.join(path.dirname(config.operationDir), "continuation"), config.maxOperationReceipts);
-  const authoritativeTransportSessionId = (): string | undefined => {
-    const value = options.transportSessionId?.()?.trim();
-    return value || undefined;
-  };
-  const continuationBinding = (workspace: Workspace, requestedSessionId?: string): ContinuationBinding => {
-    const sessionId = authoritativeTransportSessionId() ?? (requestedSessionId?.trim() || undefined);
-    return { workspace, ...(sessionId ? { sessionId } : {}) };
-  };
-  const recoverContinuationBinding = async (workspace: Workspace, continuationId: string, requestedSessionId?: string): Promise<ContinuationBinding> => {
-    const sessionId = authoritativeTransportSessionId();
-    if (!sessionId) return continuationBinding(workspace, requestedSessionId);
-    const current = await continuationStore.require(continuationId);
-    if (current.workspaceId !== workspace.id || path.resolve(current.workspaceRoot) !== path.resolve(workspace.root)) {
-      throw new Error("Continuation does not belong to the selected workspace.");
-    }
-    if (current.mcpSessionId !== sessionId) {
-      const previousSessionActive = current.mcpSessionId ? Boolean(options.isTransportSessionActive?.(current.mcpSessionId)) : false;
-      await reassociateContinuationSession({
-        enabled: continuationFeatureEnabled(configForWorkspace(workspace)),
-        store: continuationStore,
-        workspace,
-        continuationId,
-        newSessionId: sessionId,
-        previousSessionActive
-      });
-    }
-    return { workspace, sessionId };
-  };
   registerVerificationJobProducer();
   const goalStores = new Map<string, GoalStore>();
   const goalStoreFor = (workspace: Workspace): GoalStore => {
@@ -1487,35 +1410,6 @@ export function createCodexProServer(
         operationManager: operationManagerFor(workspace)
       })
     );
-  const refreshContinuationHeartbeatForTool = async (workspace: Workspace, name: string, args: Record<string, any>): Promise<void> => {
-    const effective = configForWorkspace(workspace);
-    const sessionId = authoritativeTransportSessionId();
-    if (!continuationFeatureEnabled(effective) || !sessionId) return;
-    const active = (await continuationStore.list({ workspaceId: workspace.id, sessionId }))
-      .filter((record) => !TERMINAL_CONTINUATION_STATES.has(record.state));
-    if (active.length !== 1) return;
-    const record = active[0];
-    try {
-      const semanticMutation = name.startsWith("continuation_") && name !== "continuation_status" && Number.isInteger(args?.expected_revision);
-      if (semanticMutation) {
-        await continuationStore.touchHeartbeat(record.id, { workspace, sessionId }, { expectedRevision: record.revision });
-      } else {
-        const refreshed = await recordContinuationHeartbeat({
-          enabled: true,
-          store: continuationStore,
-          binding: { workspace, sessionId },
-          continuationId: record.id,
-          expectedRevision: record.revision,
-          maxDispatches: effective.continuationMaxDispatches
-        });
-        if (record.state === "awaiting_ack" && refreshed.state !== "awaiting_ack") {
-          await activity.appendBestEffort({ workspaceId: workspace.id, kind: "continuation", action: "ack", status: "ok", continuationId: record.id.replace(/^continuation_/, "").slice(0, 8), summary: `state=${refreshed.state}` });
-        }
-      }
-    } catch {
-      // Heartbeat is liveness evidence only; a concurrent semantic transition must not fail the underlying tool call.
-    }
-  };
   const server = new McpServer({ name: "CodexPro", version: CODEXPRO_VERSION }, { instructions: serverInstructions(config) });
   const originalServerClose = server.close.bind(server);
   let serverClosing = false;
@@ -1566,12 +1460,9 @@ export function createCodexProServer(
     const processId = structured?.process_id ?? structured?.process?.id ?? args?.process_id;
     const jobId = structured?.job_id ?? structured?.job?.id ?? args?.job_id;
     const goalId = structured?.goal_id ?? structured?.goal?.id ?? args?.goal_id;
-    const continuationId = structured?.task?.id ?? args?.continuation_id;
-    const continuationState = typeof structured?.task?.state === "string" ? structured.task.state : undefined;
     const rawPaths = Array.isArray(structured?.paths) ? structured.paths : typeof structured?.path === "string" ? [structured.path] : [];
     let kind: ActivityKind = "tool";
-    if (name.startsWith("continuation_") || continuationId) kind = "continuation";
-    else if (goalId || name.includes("goal")) kind = "goal";
+    if (goalId || name.includes("goal")) kind = "goal";
     else if (jobId || name.includes("job")) kind = "job";
     else if (processId || name.includes("process")) kind = "process";
     else if (checkId || name.includes("check") || name === "verify_changes") kind = "check";
@@ -1581,8 +1472,6 @@ export function createCodexProServer(
     const verificationStatus = structured?.repair?.status;
     const summary = status === "error"
       ? "tool call failed"
-      : kind === "continuation"
-        ? `state=${continuationState ?? "unknown"} short_id=${String(continuationId ?? "unknown").replace(/^continuation_/, "").slice(0, 8)}`
       : kind === "check" && structured?.deadlineYielded === true
         ? "verification incomplete; required checks remain pending"
         : kind === "check" && verificationStatus === "not_run"
@@ -1594,15 +1483,13 @@ export function createCodexProServer(
               : kind === "check" && structured?.ok === true
                 ? "verification passed"
                 : "tool call completed";
-    const continuationAction = name === "continuation_complete" ? "completed" : name === "continuation_cancel" ? "canceled" : name.replace(/^continuation_/, "");
-    const action = kind === "continuation" ? continuationAction : name;
+    const action = name;
     return { workspaceId: workspace.id, kind, action, status,
       ...(operationId ? { operationId: String(operationId) } : {}),
       ...(checkId ? { checkId: String(checkId) } : {}),
       ...(processId ? { processId: String(processId) } : {}),
       ...(jobId ? { jobId: String(jobId) } : {}),
       ...(goalId ? { goalId: String(goalId) } : {}),
-      ...(continuationId ? { continuationId: String(continuationId).replace(/^continuation_/, "").slice(0, 8) } : {}),
       ...(rawPaths.length ? { relativePaths: rawPaths.map(String) } : {}),
       summary
     };
@@ -1625,7 +1512,6 @@ export function createCodexProServer(
     async before(name, args) {
       if (name === SUPERTOOL_NAME || name === "open_workspace" || name === "project_trust_status") return;
       const workspace = workspaces.getWorkspace(typeof args?.workspace_id === "string" ? args.workspace_id : undefined);
-      await refreshContinuationHeartbeatForTool(workspace, name, args);
       if (!hookSessionStarted.has(workspace.id)) {
         const sessionResults = await runWorkspaceHooks(workspace, "session_start", { tool: name });
         if (!sessionResults.some((item) => item.status === "skipped")) hookSessionStarted.add(workspace.id);
@@ -1785,8 +1671,6 @@ export function createCodexProServer(
         connectionTest: config.connectionTest,
         syncCallDeadlineMode: config.syncCallDeadlineMode,
         syncCallDeadlineMs: config.syncCallDeadlineMs,
-        continuationEnabled: config.continuationEnabled,
-        continuationTelegramEnabled: config.continuationTelegramEnabled,
         executionRouting: executionThresholds(config.syncCallDeadlineMs),
         allowGitPush: config.allowGitPush,
         codeGraphEnabled: config.codeGraphEnabled,
@@ -1947,109 +1831,6 @@ export function createCodexProServer(
     const record = await resumeJob(workspaceConfig, jobStore, workspace, args.job_id);
     const job = publicJobRecord(record);
     return textResult(`# Resume Job\n\nState: ${record.state}`, { workspace_id: workspace.id, job_id: record.id, job });
-  });
-
-  const continuationIdSchema = z.string().regex(/^continuation_[A-Za-z0-9-]{1,80}$/);
-  const continuationSessionSchema = z.string().regex(/^[A-Za-z0-9._:-]{1,160}$/).optional();
-  const continuationIntentSchema = z.object({
-    id: z.string().regex(/^intent_[A-Za-z0-9-]{1,80}$/).optional(),
-    template_key: z.enum(["resume_all_v1", "focus_remaining_v1"]),
-    label: z.string().min(1).max(80),
-    focus_ref: z.string().min(1).max(400).optional()
-  });
-
-  registerCodexTool(config, server, "continuation_arm", {
-    title: "Arm Task Continuation",
-    description: "Arm bounded semantic continuation state for this task. Browser dispatch is not performed by this tool.",
-    inputSchema: { workspace_id: z.string().optional(), session_id: continuationSessionSchema, continuation_id: continuationIdSchema.optional(), title: z.string().min(1).max(160) },
-    annotations: LOCAL_WRITE_ANNOTATIONS
-  }, async (args) => {
-    const workspace = workspaces.getWorkspace(args.workspace_id); const effective = configForWorkspace(workspace);
-    const record = await armContinuation({ enabled: continuationFeatureEnabled(effective), store: continuationStore, binding: continuationBinding(workspace, args.session_id), title: args.title, continuationId: args.continuation_id });
-    const task = publicContinuationRecord(record);
-    return textResult(`# Task Continuation\n\nArmed: ${record.id}`, { continuation_enabled: continuationFeatureEnabled(effective), task });
-  });
-
-  registerCodexTool(config, server, "continuation_checkpoint", {
-    title: "Checkpoint Task Continuation",
-    description: "Replace bounded phase/evidence/remaining-work metadata and semantic continuation intents. Stores no prompt body.",
-    inputSchema: {
-      workspace_id: z.string().optional(), session_id: continuationSessionSchema, continuation_id: continuationIdSchema,
-      expected_revision: z.number().int().min(1), checkpoint_id: z.string().regex(/^[A-Za-z0-9._:-]{1,96}$/),
-      current_phase: z.string().max(240).optional(), completed_evidence: z.array(z.string().min(1).max(400)).max(64),
-      remaining_work: z.array(z.string().min(1).max(400)).max(64), intents: z.array(continuationIntentSchema).max(4).optional()
-    }, annotations: LOCAL_WRITE_ANNOTATIONS
-  }, async (args) => {
-    const workspace = workspaces.getWorkspace(args.workspace_id); const effective = configForWorkspace(workspace);
-    const intents = args.intents?.map((intent: any) => ({ id: intent.id, templateKey: intent.template_key, label: intent.label, focusRef: intent.focus_ref }));
-    const record = await checkpointContinuation({ enabled: continuationFeatureEnabled(effective), store: continuationStore, binding: continuationBinding(workspace, args.session_id), continuationId: args.continuation_id, expectedRevision: args.expected_revision, checkpointId: args.checkpoint_id, currentPhase: args.current_phase, completedEvidence: args.completed_evidence, remainingWork: args.remaining_work, intents });
-    return textResult(`# Task Continuation Checkpoint\n\nRevision: ${record.revision}`, { task: publicContinuationRecord(record) });
-  });
-
-  registerCodexTool(config, server, "continuation_request", {
-    title: "Request Task Continuation",
-    description: "Create a fresh opaque continuation authorization nonce for semantic continuation state; does not submit a ChatGPT message.",
-    inputSchema: { workspace_id: z.string().optional(), session_id: continuationSessionSchema, continuation_id: continuationIdSchema, expected_revision: z.number().int().min(1), request_id: z.string().regex(/^[A-Za-z0-9._:-]{1,96}$/), selected_intent_id: z.string().regex(/^intent_[A-Za-z0-9-]{1,80}$/).optional() },
-    annotations: LOCAL_WRITE_ANNOTATIONS
-  }, async (args) => {
-    const workspace = workspaces.getWorkspace(args.workspace_id); const effective = configForWorkspace(workspace);
-    const record = await requestContinuation({ enabled: continuationFeatureEnabled(effective), store: continuationStore, binding: continuationBinding(workspace, args.session_id), continuationId: args.continuation_id, expectedRevision: args.expected_revision, requestId: args.request_id, selectedIntentId: args.selected_intent_id });
-    return textResult(`# Task Continuation Requested\n\nState: ${record.state}`, { task: publicContinuationRecord(record) });
-  });
-
-  registerCodexTool(config, server, "continuation_status", {
-    title: "Task Continuation Status",
-    description: "Read bounded public continuation state without nonce, workspace path, prompt text, browser credentials, or conversation content.",
-    inputSchema: { workspace_id: z.string().optional(), session_id: continuationSessionSchema, continuation_id: continuationIdSchema },
-    annotations: READ_ONLY_ANNOTATIONS
-  }, async (args) => {
-    const workspace = workspaces.getWorkspace(args.workspace_id); const effective = configForWorkspace(workspace);
-    const binding = await recoverContinuationBinding(workspace, args.continuation_id, args.session_id);
-    const current = await continuationStore.requireForBinding(args.continuation_id, binding);
-    await recordContinuationHeartbeat({
-      enabled: continuationFeatureEnabled(effective), store: continuationStore, binding,
-      continuationId: current.id, expectedRevision: current.revision, maxDispatches: effective.continuationMaxDispatches
-    });
-    const task = await continuationStatus(continuationStore, binding, args.continuation_id);
-    return textResult(`# Task Continuation Status\n\n${JSON.stringify(task, null, 2)}`, { continuation_enabled: continuationFeatureEnabled(effective), task });
-  });
-
-  registerCodexTool(config, server, "continuation_reconcile", {
-    title: "Reconcile Manual Task Turn",
-    description: "Resolve a pending manual turn only as resume, redirect, supersede, or cancel. This tool accepts no raw prompt/transcript field.",
-    inputSchema: {
-      workspace_id: z.string().optional(), session_id: continuationSessionSchema, continuation_id: continuationIdSchema,
-      expected_revision: z.number().int().min(1), disposition: z.enum(["resume", "redirect", "supersede", "cancel"]),
-      replacement_current_phase: z.string().max(240).optional(), replacement_remaining_work: z.array(z.string().min(1).max(400)).max(64).optional(),
-      replacement_intents: z.array(continuationIntentSchema).max(4).optional()
-    }, annotations: LOCAL_WRITE_ANNOTATIONS
-  }, async (args) => {
-    const workspace = workspaces.getWorkspace(args.workspace_id); const effective = configForWorkspace(workspace);
-    const replacementIntents = args.replacement_intents?.map((intent: any) => ({ id: intent.id, templateKey: intent.template_key, label: intent.label, focusRef: intent.focus_ref }));
-    const record = await reconcileContinuationManualTurn({ enabled: continuationFeatureEnabled(effective), store: continuationStore, binding: continuationBinding(workspace, args.session_id), continuationId: args.continuation_id, expectedRevision: args.expected_revision, disposition: args.disposition, replacementCurrentPhase: args.replacement_current_phase, replacementRemainingWork: args.replacement_remaining_work, replacementIntents });
-    return textResult(`# Task Continuation Reconciled\n\nState: ${record.state}`, { task: publicContinuationRecord(record) });
-  });
-
-  registerCodexTool(config, server, "continuation_complete", {
-    title: "Complete Task Continuation",
-    description: "Semantically mark the continuation task complete. Browser state cannot call this implicitly; remaining work must be empty unless verified_complete is explicit.",
-    inputSchema: { workspace_id: z.string().optional(), session_id: continuationSessionSchema, continuation_id: continuationIdSchema, expected_revision: z.number().int().min(1), verified_complete: z.boolean().optional() },
-    annotations: LOCAL_WRITE_ANNOTATIONS
-  }, async (args) => {
-    const workspace = workspaces.getWorkspace(args.workspace_id);
-    const record = await completeContinuation({ store: continuationStore, binding: continuationBinding(workspace, args.session_id), continuationId: args.continuation_id, expectedRevision: args.expected_revision, verifiedComplete: args.verified_complete });
-    return textResult(`# Task Continuation Completed\n\nState: ${record.state}`, { task: publicContinuationRecord(record) });
-  });
-
-  registerCodexTool(config, server, "continuation_cancel", {
-    title: "Cancel Task Continuation",
-    description: "Terminally cancel continuation automation state without stopping process/job/Goal work.",
-    inputSchema: { workspace_id: z.string().optional(), session_id: continuationSessionSchema, continuation_id: continuationIdSchema, expected_revision: z.number().int().min(1) },
-    annotations: LOCAL_WRITE_ANNOTATIONS
-  }, async (args) => {
-    const workspace = workspaces.getWorkspace(args.workspace_id);
-    const record = await cancelContinuation({ store: continuationStore, binding: continuationBinding(workspace, args.session_id), continuationId: args.continuation_id, expectedRevision: args.expected_revision });
-    return textResult(`# Task Continuation Canceled\n\nState: ${record.state}`, { task: publicContinuationRecord(record) });
   });
 
   registerCodexTool(config, server, "read_many", {

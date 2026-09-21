@@ -74,58 +74,17 @@
 **Why:** A running CodexPro instance is an active user-owned control channel. Automatically terminating or recreating it can sever the session, alter tunnel state, and create side effects outside the source-code change being implemented.
 
 ## D-019 — The configured synchronous deadline is a transport boundary, not a quality target
-**Decision:** Tool-time awareness is enabled by default. Normal synchronous handling is bounded at `1,200,000` ms (20 minutes), configurable from 5–60 minutes; explicit Unlimited/observe mode exists only for temporary harmless host-window discovery and does not turn normal work into unbounded synchronous execution. No timing mode lowers scope, acceptance criteria, reasoning/review depth, required tests, or safety checks. Work that cannot finish correctly inside one call must yield to a truthful durable continuation.
+**Decision:** Tool-time awareness is enabled by default. Normal synchronous handling is bounded at `1,200,000` ms (20 minutes), configurable from 5–60 minutes; explicit Unlimited/observe mode exists only for temporary harmless host-window discovery and does not turn normal work into unbounded synchronous execution. No timing mode lowers scope, acceptance criteria, reasoning/review depth, required tests, or safety checks. Work that cannot finish correctly inside one call must yield to truthful durable resumable state.
 **Why:** Host/tool closure windows may differ or change, so the operator needs a safety-margin setting; optimizing the model to finish before any chosen cutoff would still trade correctness for latency. CodexPro should preserve the complete goal across calls. The implemented runtime/profile contract carries `syncCallDeadlineMode` plus the finite `syncCallDeadlineMs` reference, and the authenticated admin editor distinguishes saved next-run values from the current runtime.
-**Revisit only if:** the host platform exposes a reliable negotiated deadline/continuation primitive; even then, the quality-preservation invariant remains.
+**Revisit only if:** the host platform exposes a reliable negotiated deadline/resumption primitive; even then, the quality-preservation invariant remains.
 
 ## D-020 — Long work uses distinct existing/durable execution roles
 **Decision:** Long shell commands remain owned by `proc_*`; structured long operations may use a bounded persistent `job_*` substrate; expensive in-process scans may use `batch_*` cursors; multi-stage isolated engineering remains owned by Durable Goals. The `job_*` substrate is restricted to registered structured producers and is not another generic command runner or workflow DSL.
 **Why:** Separating execution roles keeps ownership, cancellation, persistence, policy, and recovery understandable while solving the tool-window problem without duplicating proven process/Goal machinery.
 
-## D-021 — Browser continuation is human-gated, not a restriction bypass
-**Decision:** A future continuation companion may maintain task-aware readiness and bind/focus one ChatGPT conversation, but continuation is optional/default-off and version 1 may submit only after a contemporaneous explicit user authorization from the browser **Continue task** button or the exactly paired Telegram inline action. It may not scrape ChatGPT output, auto-submit, click approvals/login/safety controls, or attempt to bypass host tool/session restrictions.
-**Why:** Conversation resumption must preserve user control and product/security boundaries rather than converting a transport limit into an autonomous browser loop.
-**Security shorthand:** human-gated, no output scraping, no automatic submission, and manual authentication for login/reauthentication.
-
-## D-022 — ChatGPT authentication state belongs to a dedicated browser profile
-**Decision:** Browser continuation uses a CodexPro-managed dedicated Chrome/Edge profile by default. Passwords, cookies, 2FA/passkeys, and provider authentication remain browser/user-controlled; CodexPro stores only coarse auth health and profile metadata. Implementation and live QA must STOP for user authentication and resume only after the user sends `continue`.
-**Why:** Reusing/copying a personal browser profile or automating credentials would expose unrelated account data and create a much larger trust surface.
-
-## D-023 — Browser pairing has separate least privilege
-**Decision:** The continuation browser companion uses a loopback-only credential distinct from the main CodexPro MCP/admin token. Its authority is limited to continuation status/events and cannot invoke MCP tools, filesystem/Bash/Git/Goal operations, or arbitrary DOM scripts.
-**Why:** A compromised webpage or extension must not become a path to local development authority.
-
-## D-024 — Continuation timing follows current runtime generation and transport truth
-**Decision:** Browser/watchdog readiness consumes the current running CodexPro `syncCallDeadlineMs`, a per-launch runtime generation, and local transport-ready state. Saved next-run settings and the 20-minute default are never substituted as current timing authority. Runtime/tunnel loss or generation/reconnect changes reset inferred-interruption timing and cannot auto-start/reconnect CodexPro.
-**Why:** Otherwise deadline changes, restarts, deliberate tunnel shutdowns, sleep/wake gaps, or stale runtime-status files can create false continuation opportunities.
-
-## D-025 — User interaction, terminal task state, and ambiguous ChatGPT UI fail closed
-**Decision:** `completed`/`canceled` task revisions invalidate outstanding continuation authorization. Manual user message submission or Stop-generating pauses inferred continuation until semantic reconciliation. Streaming, generic platform-busy/error/retry/safety/unknown states suppress continuation; the companion never auto-retries, switches models, or dismisses blocking controls.
-**Why:** Browser UI state cannot reliably determine semantic task intent or why ChatGPT is delayed, so terminal/user intent and uncertainty must take precedence over automation.
-
-## D-026 — Telegram continuation buttons are remote user authorization, not autonomy
-**Decision:** Optional Telegram continuation uses a dedicated private bot over outbound long polling. A validated inline-button callback from the exactly paired private user/chat may create one short-lived `ContinuationDispatchAuthorization` for the current task revision/nonce/intent; the managed browser must still re-check transport/auth/binding/page safety before one send. Bot token and paired identifiers stay in protected per-user state, not workspace profiles.
-**Why:** This gives the user a practical remote approval surface without restoring an autonomous continuation loop or exposing another public inbound/admin channel.
-
-## D-027 — Final continuation acceptance uses a fresh ChatGPT-session report handoff
-**Decision:** After implementation and package installation, final operator acceptance includes a new ChatGPT conversation with CodexPro Full available. That session exercises the installed runtime using disposable continuation state and emits a sanitized Markdown report that the user copies back to the maintenance conversation. The test session does not modify CodexPro source unless separately authorized.
-**Why:** A fresh session validates real connector/runtime behavior independently of the implementation conversation while keeping the evidence review human-controlled and reproducible.
-
-## D-028 — Tool-time awareness is baseline; conversation continuation is opt-in
-**Decision:** Deadline/tool-time awareness and durable long-work routing are baseline behavior enabled independently of continuation. Browser continuation defaults off; Telegram defaults off and is unavailable until continuation is enabled. Operators may opt into either later without changing the baseline execution model.
-**Why:** Users benefit from avoiding host-window failures even if they do not want browser automation, persistent browser login, or Telegram setup.
-
-## D-029 — Manual user turns outrank prepared continuation
-**Decision:** An ordinary user message or Stop-generating action in the bound chat invalidates prepared browser/Telegram authorization without reading message text. The continuation task pauses until the host model reconciles the current user prompt as resume, redirect within the same task, supersede with a new task, or cancel; ambiguity remains paused.
-**Why:** A user's new prompt can intentionally continue, redirect, or replace prior work. Treating it as either automatic cancellation or automatic continuation would violate user intent and can create duplicate turns.
-
-## D-030 — Continuation lifecycle state is semantic, bounded, and revision-authoritative
-**Decision:** Durable continuation records store only bounded task facts, evidence, remaining-work references, intent metadata, liveness, and opaque authorization state. They never store raw prompts, transcripts, browser cookies/credentials, or chain-of-thought. Record revision plus workspace/session binding is the stale-action authority; completed/canceled states are terminal, and only semantic-controller operations may mark completion.
-**Why:** Browser/watchdog/remote authorization needs durable coordination without becoming a second source of semantic task truth or a store for private conversation content.
-
 ## D-031 — Future roadmap is consolidation-first
 **Decision:** After the 2026-09-22 feature-density review, CodexPro Full deepens existing tools/modules before adding new public tools, stores, state machines, or integration platforms. A new top-level subsystem requires a repeated evidence-backed gap from real use and a clear reason existing seams cannot solve it.
-**Why:** The current product already has broad execution, persistence, policy, context, Git, diagnostics, and continuation capability. Additional parallel abstractions now increase regression surface faster than they increase practical value.
+**Why:** The current product already has broad execution, persistence, policy, context, Git, diagnostics, and resumable-work capability. Additional parallel abstractions now increase regression surface faster than they increase practical value.
 
 ## D-032 — Retire unfinished interactive MCP approval and Tasks bridges
 **Decision:** Keep the delivered MCP SDK v2 compatibility seam and verified legacy protocol behavior, but retire the unfinished interactive-approval extension and MCP Tasks bridge as active implementation work. Treat future MCP interaction/task capabilities as research-only until stable connected-client support gives a concrete benefit over current policy fingerprints, `proc_*`, `job_*`, `batch_*`, and Goals.
@@ -135,10 +94,6 @@
 **Decision:** Retain the verified Windows Stage A Docker adapter for one-shot Bash/workspace processes as optional functionality. Goals remain host-only; Linux-host validation and Goal-Docker expansion are not active roadmap work.
 **Why:** The existing safe detached-worktree mount gate already showed that expanding container coverage can require broader mounts/metadata authority. Completeness alone does not justify that complexity or trust-surface growth.
 
-## D-034 — Close continuation once, then freeze feature scope
-**Decision:** Plan 36 performs the already-defined installed-runtime fresh-session acceptance once. After it passes, browser/Telegram continuation receives only evidence-backed defect fixes; CodexPro will not grow it into generic browser automation, UI testing, automatic Retry/model switching/login, extra messaging transports, or remote desktop.
-**Why:** Continuation is already a large, security-sensitive state machine. Its purpose is bounded human-gated task resumption, not browser control.
-
-## D-035 — Current active roadmap is Plans 38–41
-**Decision:** The next planned implementation sequence is runtime lifecycle/build provenance, operator UX/diagnostics polish, context-provider integration, and read-only notebook inspection. These features reuse existing runtime records, admin/profile state, analysis providers, and guarded read patterns respectively.
+## D-035 — Current active roadmap is Plans 38–44
+**Decision:** The next planned implementation sequence is runtime lifecycle/build provenance, operator UX/diagnostics polish, context-provider integration, read-only notebook inspection, workspace briefing, verification failure context, and read-only table inspection. These features reuse existing runtime records, admin/profile state, analysis providers, guarded readers, verification evidence, and workspace snapshot seams.
 **Why:** They address concrete operational and AI-context gaps while avoiding new schedulers, model loops, browser platforms, debugger stacks, or notebook execution infrastructure.

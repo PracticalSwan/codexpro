@@ -42,7 +42,6 @@ export function sanitizeActivityRecord(record: ActivityRecord): ActivityRecord {
     ...(record.checkId ? { checkId: safeId(record.checkId, "check id") } : {}),
     ...(record.processId ? { processId: safeId(record.processId, "process id") } : {}),
     ...(record.goalId ? { goalId: safeId(record.goalId, "goal id") } : {}),
-    ...(record.continuationId ? { continuationId: safeId(record.continuationId, "continuation id") } : {}),
     ...(cleanPaths(record.relativePaths) ? { relativePaths: cleanPaths(record.relativePaths) } : {}),
     ...(cleanSummary(record.summary) ? { summary: cleanSummary(record.summary) } : {})
   };
