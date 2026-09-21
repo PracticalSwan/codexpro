@@ -46,6 +46,7 @@ export interface CapabilityExplanation {
 
 - [ ] Write table-driven failing cases for `git_push=false`, `bash=off`, `write=off`, Goals prerequisites missing, analysis off, CodeGraph disabled/unavailable, LSP disabled/unavailable, and artifact export off.
 - [ ] Implement explanations by consuming existing config/provider status; do not duplicate tool-mode lists.
+- [ ] Keep capability definitions descriptor/table-driven so later capabilities can extend the same helper without admin/diagnostics special cases; do not expose descriptors for runtime features that do not yet exist.
 - [ ] Add a stable bounded capability list to `diagnosticsSnapshot`.
 - [ ] Verify reason text contains no absolute path/token/private metadata.
 

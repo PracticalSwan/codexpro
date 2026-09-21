@@ -59,18 +59,30 @@ These are baseline behavior, not pending roadmap work. New long-running features
 | 42 | P0 | AI-Ready Workspace Briefing v2 | [design](../superpowers/specs/2026-09-22-workspace-briefing-v2-design.md) · [plan](../superpowers/plans/2026-09-22-workspace-briefing-v2.md) | Planned |
 | 43 | P0/P1 | Verification Failure Context Pack | [design](../superpowers/specs/2026-09-22-verification-failure-context-design.md) · [plan](../superpowers/plans/2026-09-22-verification-failure-context.md) | Planned |
 | 44 | P1 | Structured Dataset / Table Inspection | [design](../superpowers/specs/2026-09-22-table-inspection-design.md) · [plan](../superpowers/plans/2026-09-22-table-inspection.md) | Planned |
+| 45 | P1 | Dependency Reality Engine | [design](../superpowers/specs/2026-09-22-dependency-reality-engine-design.md) · [plan](../superpowers/plans/2026-09-22-dependency-reality-engine.md) | Planned |
+| 46 | P1 | Local Service Observatory | [design](../superpowers/specs/2026-09-22-local-service-observatory-design.md) · [plan](../superpowers/plans/2026-09-22-local-service-observatory.md) | Planned |
 
 ## Recommended sequence
 
-`38 → 39 → 40 → 41 → 42 → 43 → 44`
+`38 → 39 → 40 → 41 → 42 → 43 → 44 → 45 → 46`
 
-Plans 38 and 39 may be implemented together only if explicitly authorized, because both touch launcher/admin diagnostics; otherwise keep each plan independently verifiable. Plans 40–44 are independent improvements and should not delay the P0 operator reliability work.
+Plans 38 and 39 may be implemented together only if explicitly authorized, because both touch launcher/admin diagnostics; otherwise keep each plan independently verifiable. Plans 40–45 are independent read-only/intelligence improvements and should not delay the P0 operator reliability work. Plan 46 should follow Plan 39 so its default-off capability uses the established capability-explanation/profile/admin conventions rather than adding a parallel settings surface.
+
+## Cross-plan integration rules
+
+- Plan 39 owns the reusable capability-explanation seam; Plans 42 and 46 consume/extend it rather than duplicating capability state.
+- Plan 40 owns workspace-source structural provider integration. Plan 45 remains an explicit installed-dependency inspector and does not silently inject `node_modules` evidence into `gather_context`.
+- Plans 41 and 44 are independent read-only file-format sensors and do not become notebook/dataframe execution systems.
+- Plan 43 enriches deterministic verification evidence only; it does not auto-run Plan 45 dependency inspection or Plan 46 service probes.
+- Plan 42 aggregates existing read-only state only; it may report implemented capability availability but never triggers dependency scans, network requests, process changes, or verification.
+- Plan 45 preserves the global blocked-path boundary; Plan 46 introduces a separate explicit opt-in loopback network boundary. Neither widens Bash, file, context, or process authority.
+- After Plan 46, pause feature expansion until real-project evidence justifies another capability class.
 
 ## Roadmap guardrails
 
 - Prefer deepening an existing tool/module over adding another top-level MCP tool.
 - New top-level tools require a genuinely distinct operation; Full mode already has a large surface.
-- Do not build another workflow engine, model router, browser automation platform, debugger platform, notebook execution service, or context database.
+- Do not build another workflow engine, model router, browser automation platform, debugger platform, notebook execution service, context database, package documentation crawler, generic `node_modules` browser, arbitrary network client, or API fuzzing/monitoring platform.
 - MCP protocol/Tasks/interactive-approval evolution is research-only until stable client support creates a concrete benefit over current primitives.
 - Existing Docker support stays optional and frozen at proven scope until a concrete need justifies reopening it.
 - Plans describe intended future work; source + tests + current runtime evidence determine what actually exists.

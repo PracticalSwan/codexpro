@@ -34,6 +34,8 @@ This is a compact architecture-navigation aid. Runtime source/tests remain autho
 - **Plan 42:** existing `workspace_snapshot` plus one focused briefing composer over current read-only evidence.
 - **Plan 43:** current verification/check/change-impact/context evidence plus one shared failure-context composer.
 - **Plan 44:** new focused `tableOps.ts`, one read-only Standard/Full tool, bounded streaming parser tests.
+- **Plan 45:** new focused `dependencyOps.ts` over package manifests/package graph plus a tool-specific, containment-checked installed-package reader; generic `node_modules` blocking stays unchanged.
+- **Plan 46:** new focused `localServiceProbe.ts` plus existing config/profile/admin capability seams; one default-off Full-mode loopback HTTP GET/HEAD tool only.
 
 ## High-risk neighbors
 
@@ -43,6 +45,8 @@ This is a compact architecture-navigation aid. Runtime source/tests remain autho
 - Git projection/mutation around unrelated dirty/staged/untracked user work.
 - Tool descriptors/mode lists because clients may cache schemas.
 - Any new persistent state: bounded growth, crash consistency, ownership, privacy, and stale-authority handling.
+- Specialized blocked-path exceptions: Plan 45 must be package-name/manifest-derived and may never become arbitrary path access.
+- New network capability: Plan 46 must remain explicit opt-in, loopback-only, credential-free, redirect-free, and bounded.
 
 ## Current design pressure
 

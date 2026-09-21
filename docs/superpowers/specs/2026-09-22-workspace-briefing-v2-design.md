@@ -32,7 +32,7 @@ The improvement should not create another context engine or task object. It shou
 - project inventory from `src/analysis/*`.
 - trusted checks from `src/checksOps.ts`.
 - durable process/job/batch/Goal stores through their existing read-only status/list APIs.
-- effective policy/tool capability diagnostics.
+- effective policy/tool capability diagnostics; when Plan 39 exists, consume its shared capability explanations rather than rebuilding capability logic.
 - package/build identity once Plan 38 exists; the design must work without it.
 
 ## Structured shape
@@ -89,6 +89,7 @@ Each item should have stable `code`, short `message`, and optional related path/
 - Dirty/staged/untracked work produces deterministic attention entries without embedding diff contents.
 - Active job/Goal/process/batch state is summarized without mutating or polling repeatedly.
 - Optional provider/status failures degrade gracefully.
+- Later opt-in capabilities such as Plan 46 may appear only as enabled/disabled capability state after they are implemented; `workspace_snapshot` never invokes them or performs network probes.
 - Existing snapshot consumers continue to work.
 - Output contains no secrets, hidden reasoning, raw prompts, or sensitive local-state payloads.
 - No new persistent store, model call, dependency, or public tool is introduced.

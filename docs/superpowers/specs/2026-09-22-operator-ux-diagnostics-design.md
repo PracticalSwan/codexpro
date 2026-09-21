@@ -74,6 +74,8 @@ Initial high-value capability IDs:
 - lsp
 - artifact_export
 
+Keep capability definitions descriptor/table-driven rather than hard-coded into the admin renderer. Later plans may add a capability ID (for example Plan 46's `local_service_probe`) by extending the shared explanation input/registry, not by creating another settings/diagnostics path. Do not advertise IDs for features that are not implemented in the current runtime.
+
 The helper must not produce shell commands that widen authority automatically. UI may point to the existing profile/settings location.
 
 ## Admin overview

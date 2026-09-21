@@ -60,7 +60,8 @@
 - Reuse: existing config/effective policy/diagnostics helpers
 - Test: restricted-policy fixtures
 
-- [ ] Derive major capability states from existing gates; never widen authority.
+- [ ] Derive major capability states from existing gates; when Plan 39's explanation helper exists, consume it rather than duplicating capability rules. Never widen authority.
+- [ ] Capability summaries are observational only: future opt-in capabilities may be reported after implementation, but the briefing must never invoke Plan 45 dependency scans or Plan 46 local-service probes.
 - [ ] Add stable attention codes for dirty work, detached HEAD, divergence, active/reconciliation work, unavailable configured providers, restrictive development gates, and missing trusted checks.
 - [ ] Do not add subjective quality/risk scores.
 

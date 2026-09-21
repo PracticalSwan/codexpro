@@ -15,7 +15,9 @@ The roadmap is therefore consolidation-first:
 3. deepen existing context/provider integration;
 4. add narrow read-only notebook and table understanding;
 5. improve first-turn workspace orientation and verification failure evidence;
-6. then use real project evidence before adding more features.
+6. add exact installed-dependency reality without widening generic context access;
+7. add one opt-in loopback HTTP runtime sensor without browser/network-platform scope;
+8. then use real project evidence before adding more features.
 
 `PLAN_INDEX.md` is the authoritative status router. This document records architecture direction, not implementation status.
 
@@ -89,6 +91,14 @@ Attach bounded parsed failure location, changed paths, related tests, focused co
 
 Add one read-only bounded `inspect_table` tool for CSV, TSV, JSONL, and NDJSON with primitive type inference, null/quality counts, basic numeric summaries, and deterministic samples. No Python/pandas, SQL engine, charting, or persistent dataset store.
 
+### Plan 45 — Dependency Reality Engine (P1)
+
+Add one bounded `inspect_dependency` tool for exact installed Node dependency metadata, entrypoints, type declarations, README evidence, and optional symbol matches. Preserve the global `node_modules` block; only a package-name/manifest-derived dedicated resolver may cross that block, and only when the canonical package root remains inside the workspace. No registry/network/install/package execution or dependency database.
+
+### Plan 46 — Local Service Observatory (P1)
+
+Add one default-off, Full-mode `probe_local_service` sensor for explicit loopback HTTP GET/HEAD observations. Reuse existing capability/profile/admin conventions, return bounded/redacted status/body/JSON-shape evidence, and forbid credentials, arbitrary hosts, redirects, proxying, browser execution, background monitoring, or API-test/fuzzing infrastructure.
+
 ## Deliberately retired or frozen scope
 
 ### Interactive MCP approvals / Tasks bridge
@@ -108,6 +118,8 @@ Keep the verified optional Windows Stage A backend for one-shot Bash/workspace p
 - debugger/profiler platform;
 - full IDE/LSP lifecycle platform;
 - notebook execution/kernel/dataframe platform;
+- arbitrary internet/network client, API crawler, contract-fuzzing platform, or background service monitor;
+- package registry/doc crawler or generic `node_modules` browser;
 - mandatory Docker, CodeGraph, LSP, browser, or external service;
 - automatic push/merge/deploy/publish or approval bypass;
 - default cloud storage of source, prompts, transcripts, or secrets.
@@ -140,7 +152,11 @@ Plan 43 verification failure context
         ↓
 Plan 44 table inspection
         ↓
+Plan 45 dependency reality
+        ↓
+Plan 46 local service observatory
+        ↓
 real-project usage / defect evidence
 ```
 
-Do not schedule another broad roadmap extension until these items are completed or deliberately dropped and real-world usage identifies the next high-value gap.
+After Plan 46, pause roadmap expansion until these items are completed or deliberately dropped and real-world usage identifies the next high-value gap.

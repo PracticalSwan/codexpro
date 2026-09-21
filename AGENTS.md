@@ -5,7 +5,7 @@ Scope: this repository and all descendants.
 ## Start here
 1. Read `docs/agentic/PROJECT_MEMORY.md` for durable current-state facts.
 2. Read `docs/agentic/DEVELOPMENT_WORKFLOW.md` before planning or implementation.
-3. Use `docs/agentic/PLAN_INDEX.md` as the roadmap/status source of truth. For implementation, read the selected plan and its linked spec in full. Plans 38–44 are the current planned implementation sequence.
+3. Use `docs/agentic/PLAN_INDEX.md` as the roadmap/status source of truth. For implementation, read the selected plan and its linked spec in full. Plans 38–46 are the current planned implementation sequence.
 4. Recover Git status/branch/remotes/upstream, touched paths/tests, relevant external state, and whether a CodexPro runtime is already running before mutation.
 
 ## Development rules
@@ -20,6 +20,8 @@ Scope: this repository and all descendants.
 - Optional Docker support is frozen at the verified Windows Stage A scope for Bash/workspace processes. Goals remain host-only; do not reopen Linux/Goal Docker expansion without a concrete approved need.
 - MCP Tasks/extra interactive-approval work beyond the delivered compatibility seam is retired from the active roadmap. Do not resurrect it from historical files/commits without a new requirement and current client-capability evidence.
 - Do not add browser automation, messaging-control channels, or remote-desktop behavior as a CodexPro feature without a new explicitly approved architecture decision.
+- Plan 45 may inspect declared installed dependencies only through its dedicated bounded read-only seam; it must not weaken the global `node_modules` block or turn generic file/context tools into dependency browsers.
+- Plan 46, if implemented, remains default-off, Full-mode, loopback HTTP GET/HEAD observation only: no credentials, redirects, proxying, arbitrary network access, browser behavior, or target-service ownership claims.
 - Never persist or expose secrets, private browser state, personal identifiers, raw prompts/transcripts, or hidden reasoning in diagnostics, packages, logs, docs, or commits.
 
 ## Runtime lifecycle

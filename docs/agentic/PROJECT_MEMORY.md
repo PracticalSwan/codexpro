@@ -37,6 +37,7 @@ CodexPro Full is a local MCP bridge for explicitly allowed development workspace
 - Plans 01–17 and 20 are verified foundations: policy, operation journal/concurrency, diagnostics, processes/checks, context continuity, Git intelligence, Codex-session navigation, optional code intelligence, artifact I/O, Goals, MCP SDK compatibility seam, granular rules, trusted hooks, durable checkpoints, Context v2, activity evidence, and verification repair metadata.
 - MCP runtime uses the stable v2 split packages with Zod 4 while retaining the verified legacy 2025 protocol behavior by default. The unfinished interactive-approval extension from former Plan 18 is retired; fail-closed behavior remains.
 - Former Plan 19 MCP Tasks bridge is retired. Existing `proc_*`, `job_*`, `batch_*`, and Goal primitives remain canonical.
+- Browser/Telegram task continuation was fully removed on 2026-09-22 from runtime source, package contents, plans/contracts/tests/docs, saved continuation profile/runtime fields, managed-browser state, and Telegram secret state; deadline-aware long-work primitives remain independent.
 - Optional Docker execution is frozen at the verified Windows Stage A scope for one-shot Bash/workspace processes using an already-local image and constrained mounts/network/resources. Goals remain host-only. Linux-host and Goal-Docker expansion is not active roadmap work.
 
 ## Deadline and durable long-work baseline
@@ -63,6 +64,8 @@ Plan 38 Runtime Lifecycle and Build Provenance
 → Plan 42 AI-Ready Workspace Briefing v2
 → Plan 43 Verification Failure Context Pack
 → Plan 44 Structured Dataset / Table Inspection
+→ Plan 45 Dependency Reality Engine
+→ Plan 46 Local Service Observatory
 → real-project usage / defect evidence
 ```
 
@@ -73,6 +76,8 @@ Plan 38 Runtime Lifecycle and Build Provenance
 - **Plan 42 (P0):** deepen `workspace_snapshot` into one bounded AI-ready project briefing using existing Git/instruction/check/durable-work/capability evidence.
 - **Plan 43 (P0/P1):** attach bounded failure-location/related-test/context/reproduction evidence to existing synchronous and async verification without autonomous repair.
 - **Plan 44 (P1):** add bounded read-only CSV/TSV/JSONL inspection; no dataframe/SQL/chart/model execution platform.
+- **Plan 45 (P1):** add one read-only installed Node dependency inspector for exact version/export/type/docs/symbol evidence. Keep generic `node_modules` blocking unchanged; no registry/network/install/package execution.
+- **Plan 46 (P1):** add one default-off Full-mode loopback HTTP GET/HEAD sensor with bounded/redacted responses. No browser, credentials, redirects, proxies, arbitrary hosts, crawling, or service-ownership claims.
 
 Research-only/watch items: future MCP protocol/Tasks/interactive-approval capabilities. Reopen only when stable connected-client support provides a concrete benefit over existing primitives.
 

@@ -94,6 +94,14 @@
 **Decision:** Retain the verified Windows Stage A Docker adapter for one-shot Bash/workspace processes as optional functionality. Goals remain host-only; Linux-host validation and Goal-Docker expansion are not active roadmap work.
 **Why:** The existing safe detached-worktree mount gate already showed that expanding container coverage can require broader mounts/metadata authority. Completeness alone does not justify that complexity or trust-surface growth.
 
-## D-035 — Current active roadmap is Plans 38–44
-**Decision:** The next planned implementation sequence is runtime lifecycle/build provenance, operator UX/diagnostics polish, context-provider integration, read-only notebook inspection, workspace briefing, verification failure context, and read-only table inspection. These features reuse existing runtime records, admin/profile state, analysis providers, guarded readers, verification evidence, and workspace snapshot seams.
-**Why:** They address concrete operational and AI-context gaps while avoiding new schedulers, model loops, browser platforms, debugger stacks, or notebook execution infrastructure.
+## D-035 — Current active roadmap is Plans 38–46
+**Decision:** The next planned implementation sequence is runtime lifecycle/build provenance, operator UX/diagnostics polish, context-provider integration, read-only notebook inspection, workspace briefing, verification failure context, read-only table inspection, installed-dependency reality, and opt-in loopback service observation. These features reuse existing runtime records, admin/profile state, analysis providers, guarded readers, verification evidence, workspace snapshot seams, package manifests/graph, and bounded local transport primitives.
+**Why:** They address concrete operational and AI-evidence gaps while avoiding new schedulers, model loops, browser platforms, debugger stacks, notebook execution infrastructure, package crawlers, or general network clients.
+
+## D-036 — Dependency reality gets a narrow package-derived read exception
+**Decision:** Plan 45 may inspect a directly declared installed Node dependency through a dedicated package-name/manifest-derived resolver even though generic PathGuard policy blocks `node_modules`. The exception must verify declaration, canonical package identity, package name, and containment inside the allowed workspace; it must not change generic blocked globs, execute package code, resolve global modules, or expose arbitrary dependency paths.
+**Why:** Exact installed dependency evidence materially reduces API/version hallucination, but globally opening `node_modules` would expand every read/search/context surface and weaken an established safety/noise boundary.
+
+## D-037 — Local runtime observation is explicit loopback sensing, not network automation
+**Decision:** Plan 46 is a default-off Full-mode capability limited to one explicit loopback HTTP GET/HEAD request per call, with no credentials, cookies, custom headers, proxying, redirects, browser execution, persistence, crawling, or arbitrary network targets. The tool reports target workspace ownership as unknown rather than inferring it.
+**Why:** Direct runtime evidence can close a major source-vs-behavior gap with a very small interface, but a generic HTTP/browser/monitoring client would create a much larger SSRF, credential, privacy, and maintenance surface.
