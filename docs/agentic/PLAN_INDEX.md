@@ -48,19 +48,19 @@ Plan 21's retained product scope is the already verified Windows Stage A host/Do
 
 These are baseline behavior, not pending roadmap work. New long-running features must reuse the existing `proc_*`, `job_*`, `batch_*`, and Goal roles instead of creating another scheduler.
 
-## Completed consolidation roadmap — 0.33.0 release candidate
+## Released consolidation roadmap — v0.33.0
 
 | ID | Priority | Subsystem | Authoritative design / plan | Status |
 |---|---|---|---|---|
-| 38 | P0 | Runtime Lifecycle and Build Provenance | [design](../superpowers/specs/2026-09-22-runtime-lifecycle-build-provenance-design.md) · [plan](../superpowers/plans/2026-09-22-runtime-lifecycle-build-provenance.md) | Verified |
-| 39 | P0 | Operator UX and Diagnostics Polish | [design](../superpowers/specs/2026-09-22-operator-ux-diagnostics-design.md) · [plan](../superpowers/plans/2026-09-22-operator-ux-diagnostics.md) | Verified |
-| 40 | P1 | Context and Code-Intelligence Provider Integration | [design](../superpowers/specs/2026-09-22-context-provider-integration-design.md) · [plan](../superpowers/plans/2026-09-22-context-provider-integration.md) | Verified |
-| 41 | P1 | Structured Notebook Inspection | [design](../superpowers/specs/2026-09-22-notebook-inspection-design.md) · [plan](../superpowers/plans/2026-09-22-notebook-inspection.md) | Verified |
-| 42 | P0 | AI-Ready Workspace Briefing v2 | [design](../superpowers/specs/2026-09-22-workspace-briefing-v2-design.md) · [plan](../superpowers/plans/2026-09-22-workspace-briefing-v2.md) | Verified |
-| 43 | P0/P1 | Verification Failure Context Pack | [design](../superpowers/specs/2026-09-22-verification-failure-context-design.md) · [plan](../superpowers/plans/2026-09-22-verification-failure-context.md) | Verified |
-| 44 | P1 | Structured Dataset / Table Inspection | [design](../superpowers/specs/2026-09-22-table-inspection-design.md) · [plan](../superpowers/plans/2026-09-22-table-inspection.md) | Verified |
-| 45 | P1 | Dependency Reality Engine | [design](../superpowers/specs/2026-09-22-dependency-reality-engine-design.md) · [plan](../superpowers/plans/2026-09-22-dependency-reality-engine.md) | Verified |
-| 46 | P1 | Local Service Observatory | [design](../superpowers/specs/2026-09-22-local-service-observatory-design.md) · [plan](../superpowers/plans/2026-09-22-local-service-observatory.md) | Verified |
+| 38 | P0 | Runtime Lifecycle and Build Provenance | [design](../superpowers/specs/2026-09-22-runtime-lifecycle-build-provenance-design.md) · [plan](../superpowers/plans/2026-09-22-runtime-lifecycle-build-provenance.md) | Released |
+| 39 | P0 | Operator UX and Diagnostics Polish | [design](../superpowers/specs/2026-09-22-operator-ux-diagnostics-design.md) · [plan](../superpowers/plans/2026-09-22-operator-ux-diagnostics.md) | Released |
+| 40 | P1 | Context and Code-Intelligence Provider Integration | [design](../superpowers/specs/2026-09-22-context-provider-integration-design.md) · [plan](../superpowers/plans/2026-09-22-context-provider-integration.md) | Released |
+| 41 | P1 | Structured Notebook Inspection | [design](../superpowers/specs/2026-09-22-notebook-inspection-design.md) · [plan](../superpowers/plans/2026-09-22-notebook-inspection.md) | Released |
+| 42 | P0 | AI-Ready Workspace Briefing v2 | [design](../superpowers/specs/2026-09-22-workspace-briefing-v2-design.md) · [plan](../superpowers/plans/2026-09-22-workspace-briefing-v2.md) | Released |
+| 43 | P0/P1 | Verification Failure Context Pack | [design](../superpowers/specs/2026-09-22-verification-failure-context-design.md) · [plan](../superpowers/plans/2026-09-22-verification-failure-context.md) | Released |
+| 44 | P1 | Structured Dataset / Table Inspection | [design](../superpowers/specs/2026-09-22-table-inspection-design.md) · [plan](../superpowers/plans/2026-09-22-table-inspection.md) | Released |
+| 45 | P1 | Dependency Reality Engine | [design](../superpowers/specs/2026-09-22-dependency-reality-engine-design.md) · [plan](../superpowers/plans/2026-09-22-dependency-reality-engine.md) | Released |
+| 46 | P1 | Local Service Observatory | [design](../superpowers/specs/2026-09-22-local-service-observatory-design.md) · [plan](../superpowers/plans/2026-09-22-local-service-observatory.md) | Released |
 
 ## Verified implementation sequence
 
@@ -68,7 +68,7 @@ These are baseline behavior, not pending roadmap work. New long-running features
 
 Plans 38–46 are implemented and verified. Preserve each plan's acceptance criteria, focused tests, and cross-plan safety boundaries during later maintenance. Plan 39 owns the shared capability-explanation seam consumed by Plans 42 and 46; Plan 40 provider-backed project context remains distinct from Plan 45's explicitly bounded dependency inspection.
 
-The complete sequence is locally verified on the current implementation branch. The verification record is the named per-plan focused smoke layer (`scripts/*-smoke.mjs`), cumulative roadmap smoke, repository build, full smoke, stress, audit, package, documentation, secret-exposure, and final-diff gates recorded in the task handoff; no hosted CI result is inferred.
+Plans 38–46 shipped in GitHub Release v0.33.0 from commit `97cb4fb36a75eb345b892d28ad026115b20aaea3`. The local release gate passed (focused and cumulative tests, build, smoke, stress, audit, package and docs); hosted Windows/Node 24, Ubuntu/Node 20, Release Integrity, and Pages passed for the exact release commit. The tag-triggered release workflow, public artifact checksum, and released-artifact installation were independently verified.
 
 ## Cross-plan integration rules
 
