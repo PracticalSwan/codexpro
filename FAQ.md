@@ -36,9 +36,9 @@ The main differences are:
 - The normal workflow emphasizes diffs, `show_changes`, smoke tests, and handoff status files.
 - CodexPro keeps a strict boundary: no model proxying, account pooling, third-party Pro site scraping, quota bypassing, or OS sandbox claims.
 
-## What was added in the current Unreleased roadmap batch?
+## What is included in the 0.33.0 feature release?
 
-The current `main` implementation includes bounded runtime/build provenance and guarded local status/stop commands, deterministic capability/profile diagnostics, provider-backed symbol context, read-only notebook/table/dependency evidence, workspace briefings, and verification failure context. `probe_local_service` is a separate default-off Full-mode capability limited to one explicit loopback HTTP GET/HEAD request. It never follows redirects, sends credentials, or claims that the target listener belongs to the selected workspace. Generic `node_modules` access remains blocked; only the exact declared-dependency inspector has a containment-checked exception.
+Release 0.33.0 includes bounded runtime/build provenance and guarded local status/stop commands, deterministic capability/profile diagnostics, provider-backed symbol context, read-only notebook/table/dependency evidence, workspace briefings, and verification failure context. `probe_local_service` is a separate default-off Full-mode capability limited to one explicit loopback HTTP GET/HEAD request. It never follows redirects, sends credentials, or claims that the target listener belongs to the selected workspace. Generic `node_modules` access remains blocked; only the exact declared-dependency inspector has a containment-checked exception.
 
 CodexPro connects ChatGPT to a user-approved local repository over MCP. Repository access, command permissions, and change review remain explicit.
 
@@ -87,10 +87,10 @@ For the full first-time setup, OpenAI tunnel/key steps, and multi-project exampl
 Install the latest tagged/stable artifact directly from GitHub Releases:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.4/codexpro-full-0.32.4.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.0/codexpro-full-0.33.0.tgz
 ```
 
-Stable **0.32.4 includes the long-lived OpenAI tunnel heartbeat/child recovery and the current continuity/isolation fixes.** If later fixes are listed under **Unreleased** before the next tag, build current `main` from source when you specifically need them:
+Stable **0.33.0 includes Plans 38–46**, long-lived OpenAI tunnel recovery, Windows Bash/handoff maintenance, and current continuity/isolation hardening. Build main from source only for future **Unreleased** fixes:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -99,7 +99,7 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.32.4.tgz
+npm install -g ./codexpro-full-0.33.0.tgz
 ```
 
 Then run setup from the repository you want ChatGPT to work on:
@@ -127,7 +127,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.32.4.tgz
+npm install -g ./codexpro-full-0.33.0.tgz
 codexpro --version
 ```
 

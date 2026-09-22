@@ -38,7 +38,7 @@ const guard = new PathGuard(config);
 
 const identity = buildIdentity();
 assert.equal(identity.packageName, 'codexpro-full');
-assert.match(displayVersion(identity), /^0\.32\.4(?:\+source\.)?/);
+assert.equal(displayVersion(identity).split('+')[0], identity.version);
 
 const capabilities = explainCapabilities({ config, registeredTools: ['job_status', 'start_checks', 'inspect_workspace', 'codegraph_sync', 'code_intelligence_status', 'propose_goal', 'git_push', 'export_file', 'probe_local_service'] });
 assert.equal(capabilities.find((item) => item.id === 'local_service_probe')?.state, 'available');

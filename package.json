@@ -1,6 +1,6 @@
 {
   "name": "codexpro-full",
-  "version": "0.32.4",
+  "version": "0.33.0",
   "description": "CodexPro Full: PracticalSwan's local MCP bridge for full ChatGPT coding workflows on explicitly allowed repos.",
   "type": "module",
   "license": "MIT",

@@ -11,13 +11,13 @@ CodexPro Full is the `PracticalSwan/codexpro` fork. The installed command is sti
 Use the GitHub Release artifact when you want the latest tagged/stable build:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.4/codexpro-full-0.32.4.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.0/codexpro-full-0.33.0.tgz
 codexpro --version
 ```
 
 ### Latest `main`
 
-`main` can contain verified fixes listed under **Unreleased** after a GitHub Release is tagged. Stable **0.32.4 already includes the long-lived OpenAI tunnel heartbeat/child-recovery fix and the current continuity/isolation hardening.** Current post-0.32.4 `main` additionally carries verified maintenance such as explicit Windows Bash runtime selection, interruption/orphan-aware local handoff recovery with default remote-mutation blocking, and bounded HTTP request-correlation/diagnostic hardening. Build from source only when you specifically need those later Unreleased changes:
+Stable **0.33.0** includes all completed Plans 38–46, the post-0.32.4 Windows Bash and handoff maintenance, and current tunnel/HTTP continuity fixes. Build current main only when future verified **Unreleased** changes are required:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -27,7 +27,7 @@ git pull --ff-only origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.32.4.tgz
+npm install -g ./codexpro-full-0.33.0.tgz
 codexpro --version
 ```
 
@@ -103,7 +103,7 @@ When `open_workspace` returns a `workspace_id`, keep using that ID explicitly af
 
 ## 6. Recommended: multiple ChatGPT sessions, multiple projects
 
-For most users, run **one CodexPro runtime** and allow every project you want that runtime to serve. Stable 0.32.4 includes the current multi-session/isolation fixes. If later changes are listed under **Unreleased** in `CHANGELOG.md`, use current `main` only when you specifically need those newer changes.
+For most users, run **one CodexPro runtime** and allow every project you want that runtime to serve. Stable 0.33.0 includes the current multi-session/isolation fixes. If later changes are listed under **Unreleased** in `CHANGELOG.md`, use current `main` only when you specifically need those newer changes.
 
 Example:
 
@@ -205,7 +205,7 @@ Confirm only one live CodexPro launcher owns a given OpenAI tunnel ID. In 0.32.4
 - Keep CodexPro authentication enabled.
 - Allow only repositories you actually want ChatGPT to access.
 - Keep Git push disabled unless you explicitly need it.
-- On post-0.32.4 `main`, keep local handoff remote mutation blocked unless the exact workflow explicitly authorizes `--allow-remote-mutations`; reconcile interrupted/orphaned receipts before retrying material side effects.
+- In 0.33.0 and later, keep local handoff remote mutation blocked unless the exact workflow explicitly authorizes `--allow-remote-mutations`; reconcile interrupted/orphaned receipts before retrying material side effects.
 - Never reuse one OpenAI tunnel ID across two simultaneous CodexPro runtimes.
 - Never paste runtime API keys, MCP bearer tokens, private keys, or `.env` contents into chat.
 
@@ -221,7 +221,7 @@ git pull --ff-only origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.32.4.tgz
+npm install -g ./codexpro-full-0.33.0.tgz
 codexpro --version
 codexpro doctor
 ```

@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+
+## 0.33.0 (2026-09-22)
+
+- Made the cumulative roadmap smoke version-independent so future SemVer releases do not retain hard-coded prior-version assertions.
 - Implemented the complete Plans 38–46 sequence: build/runtime provenance with exact-owner status/stop, capability/profile diagnostics, provider-backed context, bounded notebook/table/dependency readers, workspace briefing and verification failure context, and the default-off Full-mode loopback service probe. Added cumulative bounded smoke coverage and kept generic `node_modules`, browser/Telegram, credential, policy, and runtime-lifecycle boundaries intact.
 - Simplified the future roadmap around consolidation and operator reliability: added detailed Plans 38–46, including new bounded installed-dependency reality and default-off loopback service observation plans; retired speculative MCP approval/Tasks work, froze Docker at its verified Windows Stage A scope, reduced durable project memory to current facts, and removed completed roadmap-controller/local packaging residue.
 - Removed the browser/Telegram task-continuation subsystem completely: MCP tools, server/config/profile/admin wiring, managed-browser extension and local browser state, Telegram secrets/state, continuation plans/contracts/tests/checklists, package guards, public documentation, and saved continuation profile fields are gone. Deadline-aware `proc_*`, `job_*`, resumable `batch_*`, Goals, runtime-generation/transport diagnostics, and tunnel supervision remain independent and intact.

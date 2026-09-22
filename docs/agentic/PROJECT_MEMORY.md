@@ -9,7 +9,7 @@ Last verified: 2026-09-22 (Asia/Bangkok)
 - Upstream: `rebel0789/codexpro`.
 - Latest fetched upstream baseline observed on 2026-09-22: `482d0035e0c08cceb5916958df652b325b4c52d8`. It moved after the 2026-09-19 maintenance closeout and has not been reconciled by the 2026-09-22 roadmap/documentation cleanup.
 - Product identity: **CodexPro Full**. Distribution package: `codexpro-full`; installed CLI and compatibility surface remain `codexpro`.
-- Current public release line: `0.32.4`. GitHub Releases are canonical; npm-registry publication is a separate channel and must not be claimed without independent verification.
+- Release candidate: `0.33.0` for the verified Plans 38–46 batch. Public GitHub Release `v0.32.4` remains the last verified published artifact until the `v0.33.0` tag workflow and release assets are independently verified. GitHub Releases are canonical; npm-registry publication remains a separate authenticated channel.
 - Exact local/origin HEAD, runtime PIDs, and tunnel state are execution state: recover them from Git/runtime evidence at the start of each task rather than treating old values as durable memory.
 
 ## Product boundary
@@ -52,9 +52,9 @@ CodexPro Full is a local MCP bridge for explicitly allowed development workspace
   - Goals: multi-stage isolated engineering.
 - Execution routing is advisory/deterministic and never silently escalates permissions or reduces required work.
 
-## Current roadmap — consolidation first
+## Completed roadmap — consolidation first
 
-`docs/agentic/PLAN_INDEX.md` is authoritative. Current recommended sequence:
+`docs/agentic/PLAN_INDEX.md` is authoritative. Verified implementation sequence:
 
 ```text
 Plan 38 Runtime Lifecycle and Build Provenance
@@ -85,9 +85,9 @@ Research-only/watch items: future MCP protocol/Tasks/interactive-approval capabi
 
 ## Maintenance and release state
 
-- Latest fully verified maintenance closeout before this roadmap cleanup was 2026-09-19. That pass ended with `main`/`origin/main` clean and hosted Windows/Ubuntu/Release Integrity/Pages checks green for its exact final SHA; subsequent work must recover fresh state rather than reuse those SHAs as current authority.
+- Latest verified implementation closeout was 2026-09-22 at `72a062b6709b9d464aba9215aded49733f92e66d`, with `main`/`origin/main` synchronized and Windows/Ubuntu/Release Integrity/Pages checks green. The subsequent `0.33.0` release candidate is undergoing a new independent release gate; verify its final exact commit and hosted checks before tagging.
 - The 2026-09-22 fetch found upstream advanced to `482d0035...`; no upstream merge/reconciliation is part of this roadmap/documentation cleanup.
-- Public release `v0.32.4` remains the stable tagged artifact unless a later task explicitly publishes another release.
+- Public release `v0.32.4` is the previously verified stable artifact; `v0.33.0` is the authorized release candidate until its GitHub Release, asset digest, CI and Pages deployment are verified. npm registry publication is blocked while existing npm authentication/trusted publishing is absent.
 - Historical release tarball hashes, CI run IDs, process IDs, and intermediate maintenance commits belong in `CHANGELOG.md`, Git/GitHub, and task handoffs rather than this memory file.
 
 ## Runtime lifecycle boundary
@@ -103,7 +103,7 @@ Research-only/watch items: future MCP protocol/Tasks/interactive-approval capabi
 - No force push/history rewrite.
 - Commit/push only intended changes after final diff/status review.
 - `continue full maintenance` is standing authorization for evidence-backed maintenance, docs, verification, intended main commit/push, and hosted CI verification; it does not authorize runtime stop/restart or release publication.
-- A full release request separately authorizes SemVer/tag/GitHub Release/Pages/package transaction subject to the runtime lifecycle rule.
+- An explicit **complete everything fully** request for a verified release-ready batch authorizes the complete scoped SemVer/tag/GitHub Release/Pages/released-artifact-install transaction subject to the runtime lifecycle rule; the operator need not repeat **publish release**.
 - npm-registry publication remains separate and may occur only with existing independently verifiable auth/trusted publishing.
 
 ## Verification baseline

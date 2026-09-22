@@ -48,7 +48,7 @@ Plan 21's retained product scope is the already verified Windows Stage A host/Do
 
 These are baseline behavior, not pending roadmap work. New long-running features must reuse the existing `proc_*`, `job_*`, `batch_*`, and Goal roles instead of creating another scheduler.
 
-## Active consolidation roadmap
+## Completed consolidation roadmap — 0.33.0 release candidate
 
 | ID | Priority | Subsystem | Authoritative design / plan | Status |
 |---|---|---|---|---|
@@ -62,11 +62,11 @@ These are baseline behavior, not pending roadmap work. New long-running features
 | 45 | P1 | Dependency Reality Engine | [design](../superpowers/specs/2026-09-22-dependency-reality-engine-design.md) · [plan](../superpowers/plans/2026-09-22-dependency-reality-engine.md) | Verified |
 | 46 | P1 | Local Service Observatory | [design](../superpowers/specs/2026-09-22-local-service-observatory-design.md) · [plan](../superpowers/plans/2026-09-22-local-service-observatory.md) | Verified |
 
-## Recommended sequence
+## Verified implementation sequence
 
 `38 → 39 → 40 → 41 → 42 → 43 → 44 → 45 → 46`
 
-Plans 38 and 39 may be implemented together only if explicitly authorized, because both touch launcher/admin diagnostics; otherwise keep each plan independently verifiable. Plans 40–45 are independent read-only/intelligence improvements and should not delay the P0 operator reliability work. Plan 46 should follow Plan 39 so its default-off capability uses the established capability-explanation/profile/admin conventions rather than adding a parallel settings surface.
+Plans 38–46 are implemented and verified. Preserve each plan's acceptance criteria, focused tests, and cross-plan safety boundaries during later maintenance. Plan 39 owns the shared capability-explanation seam consumed by Plans 42 and 46; Plan 40 provider-backed project context remains distinct from Plan 45's explicitly bounded dependency inspection.
 
 The complete sequence is locally verified on the current implementation branch. The verification record is the named per-plan focused smoke layer (`scripts/*-smoke.mjs`), cumulative roadmap smoke, repository build, full smoke, stress, audit, package, documentation, secret-exposure, and final-diff gates recorded in the task handoff; no hosted CI result is inferred.
 

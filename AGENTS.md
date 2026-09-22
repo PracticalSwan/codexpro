@@ -5,7 +5,7 @@ Scope: this repository and all descendants.
 ## Start here
 1. Read `docs/agentic/PROJECT_MEMORY.md` for durable current-state facts.
 2. Read `docs/agentic/DEVELOPMENT_WORKFLOW.md` before planning or implementation.
-3. Use `docs/agentic/PLAN_INDEX.md` as the roadmap/status source of truth. For implementation, read the selected plan and its linked spec in full. Plans 38–46 are the current planned implementation sequence.
+3. Use `docs/agentic/PLAN_INDEX.md` as the roadmap/status source of truth. For implementation, read the selected plan and its linked spec in full. Plans 38–46 are implemented and verified; preserve their boundaries during release and future maintenance.
 4. Recover Git status/branch/remotes/upstream, touched paths/tests, relevant external state, and whether a CodexPro runtime is already running before mutation.
 
 ## Development rules
@@ -21,7 +21,7 @@ Scope: this repository and all descendants.
 - MCP Tasks/extra interactive-approval work beyond the delivered compatibility seam is retired from the active roadmap. Do not resurrect it from historical files/commits without a new requirement and current client-capability evidence.
 - Do not add browser automation, messaging-control channels, or remote-desktop behavior as a CodexPro feature without a new explicitly approved architecture decision.
 - Plan 45 may inspect declared installed dependencies only through its dedicated bounded read-only seam; it must not weaken the global `node_modules` block or turn generic file/context tools into dependency browsers.
-- Plan 46, if implemented, remains default-off, Full-mode, loopback HTTP GET/HEAD observation only: no credentials, redirects, proxying, arbitrary network access, browser behavior, or target-service ownership claims.
+- Plan 46 remains default-off, Full-mode, loopback HTTP GET/HEAD observation only: no credentials, redirects, proxying, arbitrary network access, browser behavior, or target-service ownership claims.
 - Never persist or expose secrets, private browser state, personal identifiers, raw prompts/transcripts, or hidden reasoning in diagnostics, packages, logs, docs, or commits.
 
 ## Runtime lifecycle
@@ -32,6 +32,7 @@ Scope: this repository and all descendants.
 - If reinstall is blocked by a running runtime and stop approval is absent, defer reinstall while completing safe source/commit/push work.
 
 ## Git, maintenance, and release
+- An explicit **complete everything fully** request for a verified release-ready feature batch authorizes its entire scoped release transaction: SemVer, changelog, docs/website, build/release gate, main commit/push, tag, GitHub Release/assets/checksums, hosted CI/Pages, and released-artifact install. Do not stop at a source commit because the operator did not separately say publish. Attempt npm registry publication only if existing authentication or trusted publishing is independently verified; otherwise report that external blocker. This never authorizes force-push, unrelated mutations, secret exposure, an unapproved specific runtime stop, or agent start/restart.
 - Never force-push, rewrite history, or publish a release/deployment without explicit authorization. Stage only intended paths and verify the final remote state after push.
 - When the operator says **continue full maintenance**, recover local/origin/upstream/CI state, investigate evidence-backed defects, apply the smallest coherent fixes, update docs, verify proportionally, commit intended changes to `main`, push `origin/main`, and verify resulting CI. Runtime/release boundaries still apply.
 - A **full release/publication** request authorizes SemVer selection, package/lock/changelog/public-doc synchronization, full release gate, main push, matching tag/GitHub Release/assets/checksum/CI/Pages verification, and exact released-artifact install when runtime rules allow. npm registry publication is separate and only when existing auth/trusted publishing can be independently verified.

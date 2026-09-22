@@ -11,19 +11,19 @@
 <p align="center">
   <a href="https://github.com/PracticalSwan/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/PracticalSwan/codexpro/ci.yml?branch=main&style=flat-square"></a>
   <a href="https://github.com/PracticalSwan/codexpro/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/PracticalSwan/codexpro?style=flat-square"></a>
-  <img alt="Stable release 0.32.4" src="https://img.shields.io/badge/stable-0.32.4-2563eb?style=flat-square">
-  <img alt="Main post-0.32.4 / Unreleased" src="https://img.shields.io/badge/main-Unreleased-0f766e?style=flat-square">
+  <img alt="Stable release 0.33.0" src="https://img.shields.io/badge/stable-0.33.0-2563eb?style=flat-square">
+  <img alt="Main 0.33.0" src="https://img.shields.io/badge/main-0.33.0-0f766e?style=flat-square">
 </p>
 
 ## Project status
 
-**CodexPro Full** is the `PracticalSwan/codexpro` fork. It keeps the upstream `codexpro` CLI, MCP protocol, profile format, and workspace model for compatibility, while maintaining a separate feature line with the 0.31-0.32 safety, continuity, code-intelligence, artifact, Git, and Durable Goal work.
+**CodexPro Full** is the `PracticalSwan/codexpro` fork. It keeps the upstream `codexpro` CLI, MCP protocol, profile format, and workspace model for compatibility, while maintaining a separate feature line with the 0.31-0.33 safety, continuity, code-intelligence, artifact, Git, and Durable Goal work.
 
 ```text
 Canonical fork: https://github.com/PracticalSwan/codexpro
 Upstream:       https://github.com/rebel0789/codexpro
-Stable release: 0.32.4
-Current main:   post-0.32.4 (verified Unreleased maintenance)
+Stable release: 0.33.0
+Current main:   0.33.0 release line
 ```
 
 CodexPro Full uses the independent distribution package **`codexpro-full`** while preserving the installed CLI command **`codexpro`**, MCP protocol, profiles, and workspace model. **GitHub Releases are the canonical public release channel.** The upstream npm package `codexpro` is a different distribution; the `codexpro-full` npm registry package is not published yet.
@@ -61,11 +61,11 @@ CodexPro Full is not a hosted SaaS service, model proxy, quota bypass, account p
 ### From the GitHub Release
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.32.4/codexpro-full-0.32.4.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.0/codexpro-full-0.33.0.tgz
 codexpro --version
 ```
 
-This installs the latest tagged/stable artifact. **0.32.4 includes the long-lived OpenAI tunnel recovery, Windows continuity hardening, 128-session capacity, tunnel lease protection, deadline-resilience work, and the other fixes listed in the 0.32.4 changelog.** Build current `main` only when you intentionally need later items listed under **Unreleased**.
+This installs the latest tagged/stable artifact. **0.33.0 includes the complete Plans 38–46 feature batch:** build provenance, operator diagnostics, CodeGraph/LSP context, read-only notebook/table/dependency inspectors, AI-ready workspace briefing, verification failure context, and default-off loopback service observation. Previous 0.32.4 tunnel/Windows continuity fixes remain included. Build main only for future Unreleased changes.
 
 ### From a source checkout
 
@@ -76,14 +76,14 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.32.4.tgz
+npm install -g ./codexpro-full-0.33.0.tgz
 codexpro --version
 ```
 
 Expected package version for this release line:
 
 ```text
-0.32.4
+0.33.0
 ```
 
 `main` may move ahead of the latest tag after release; use the Git commit and **Unreleased** changelog entries to distinguish later unreleased builds.
@@ -122,7 +122,7 @@ For a workspace opened with `open_workspace`, keep its returned `workspace_id`. 
 
 ## Recommended practical Full Access profile
 
-For trusted local repositories, the validated 0.32.4 profile is:
+For trusted local repositories, the validated 0.33.0 profile is:
 
 ```text
 Mode: agent
