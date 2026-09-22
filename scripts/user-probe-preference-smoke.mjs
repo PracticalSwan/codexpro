@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +21,7 @@ function run(args, selectedHome = home) {
 }
 const { createHash } = await import('node:crypto');
 function savedProfile(dir, selectedHome = home) {
-  const id = createHash('sha256').update(path.resolve(dir)).digest('hex').slice(0, 24);
+  const id = createHash('sha256').update(realpathSync.native(dir)).digest('hex').slice(0, 24);
   return JSON.parse(readFileSync(path.join(selectedHome, 'profiles', id + '.json'), 'utf8'));
 }
 try {

@@ -53,11 +53,11 @@
             Install the CLI, run setup inside a project, then connect ChatGPT with the OpenAI Secure MCP Tunnel ID. ChatGPT gets bounded tools for the launch project and any additional projects you explicitly allow; ngrok and other Server URL transports remain explicit fallbacks.
           </p>
           <div class="install-line" role="group" aria-label="Install command">
-            <code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.1/codexpro-full-0.33.1.tgz
+            <code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.2/codexpro-full-0.33.2.tgz
 codexpro setup</code>
-            <button class="copy-button" data-copy="npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.1/codexpro-full-0.33.1.tgz&#10;codexpro setup">Copy</button>
+            <button class="copy-button" data-copy="npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.2/codexpro-full-0.33.2.tgz&#10;codexpro setup">Copy</button>
           </div>
-          <p class="eyebrow"><strong>Stable release: 0.33.1.</strong> Fixes Artifact Export registration diagnostics and supports a per-user opt-in for future Local Service Probe profiles while keeping its global default off. Includes Plans 38–46: build provenance, runtime status, operator diagnostics, CodeGraph/LSP context, bounded notebook/table/dependency inspection, workspace briefings, verification failure context, and the default-off loopback HTTP probe. The 0.32.4 tunnel/Windows continuity improvements remain. Use main for future Unreleased fixes; the upstream npm package is a separate distribution.</p>
+          <p class="eyebrow"><strong>Stable release: 0.33.2.</strong> Fixes Artifact Export registration diagnostics and supports a per-user opt-in for future Local Service Probe profiles while keeping its global default off. Includes Plans 38–46: build provenance, runtime status, operator diagnostics, CodeGraph/LSP context, bounded notebook/table/dependency inspection, workspace briefings, verification failure context, and the default-off loopback HTTP probe. The 0.32.4 tunnel/Windows continuity improvements remain. Use main for future Unreleased fixes; the upstream npm package is a separate distribution.</p>
           <div class="hero-proof" aria-label="Core capabilities">
             <span>explicit project access</span>
             <span>loopback + bearer protected</span>
@@ -119,7 +119,7 @@ codexpro setup</code>
         <div>
           <span>01</span>
           <strong>Install</strong>
-          <p>Install tagged 0.33.1 for the stable build. Use current <code>main</code> only for later verified items listed under Unreleased.</p>
+          <p>Install tagged 0.33.2 for the stable build. Use current <code>main</code> only for later verified items listed under Unreleased.</p>
         </div>
         <div>
           <span>02</span>
@@ -142,7 +142,7 @@ codexpro setup</code>
           <p>This recovery behavior is included in the tagged <strong>0.33.0</strong> stable artifact.</p>
         </div>
         <div class="value-matrix">
-          <div><small>Stable artifact</small><strong>0.33.1 from GitHub Releases</strong></div>
+          <div><small>Stable artifact</small><strong>0.33.2 from GitHub Releases</strong></div>
           <div><small>Release line</small><strong>0.33.0 continuity and tunnel fixes</strong></div>
           <div><small>Recovery scope</small><strong>Restart only tunnel-client, not the local MCP runtime</strong></div>
           <div><small>Runtime truth</small><strong><code>transportState</code> is unavailable during recovery and ready only after <code>/readyz</code> succeeds</strong></div>
@@ -191,7 +191,7 @@ codexpro setup</code>
             Handoff mode keeps ChatGPT planning-only. ChatGPT writes <code>.ai-bridge/current-plan.md</code>, then you decide whether to run a local implementation agent from your terminal.
           </p>
           <p>
-            <code>codexpro execute-handoff</code> runs the saved plan through OpenCode, Pi, Codex, or a custom command, then collects status, stdout/stderr excerpts, and the final git diff back into <code>.ai-bridge</code> for ChatGPT review. On current current 0.33.0 <code>main</code>, standard Git/GitHub remote mutations are blocked inside the handoff executor unless the operator explicitly opts in, and interrupted/orphaned receipts require reconciliation before retry.
+            <code>codexpro execute-handoff</code> runs the saved plan through OpenCode, Pi, Codex, or a custom command, then collects status, stdout/stderr excerpts, and the final git diff back into <code>.ai-bridge</code> for ChatGPT review. In 0.33.0 and later, standard Git/GitHub remote mutations are blocked inside the handoff executor unless the operator explicitly opts in, and interrupted/orphaned receipts require reconciliation before retry.
           </p>
         </div>
         <div class="command-stack">
@@ -260,7 +260,7 @@ codexpro setup</code>
             <span>1</span>
             <div>
               <strong>Install globally</strong>
-              <pre><code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.1/codexpro-full-0.33.1.tgz
+              <pre><code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.2/codexpro-full-0.33.2.tgz
 codexpro --version</code></pre>
             </div>
           </div>
@@ -421,7 +421,7 @@ cloudflared tunnel route dns codexpro codexpro.example.com</code></pre>
           <article>
             <small>Install</small>
             <h3>Install globally once</h3>
-            <pre><code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.1/codexpro-full-0.33.1.tgz</code></pre>
+            <pre><code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.2/codexpro-full-0.33.2.tgz</code></pre>
             <p>The release package is <code>codexpro-full</code> and installs the compatible <code>codexpro</code> CLI. GitHub Releases are canonical; the npm-registry package is not published yet.</p>
           </article>
           <article>

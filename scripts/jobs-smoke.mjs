@@ -251,9 +251,27 @@ async function boundedStep(label, operation, timeoutMs = 15_000) {
   const canceled = await boundedStep('cancel running job', () => cancelJob(store, cancelTarget.id), 60_000);
   assert.equal(canceled.state, 'canceled');
   assert.equal(await store.readOwner(cancelTarget.id), null);
+  // POSIX signals are asynchronous. Allow the OS and detached-child reaper a bounded
+  // interval to observe the exit instead of asserting immediately after SIGTERM.
   let canceledAlive = true;
-  try { process.kill(cancelLaunched.worker.pid, 0); } catch { canceledAlive = false; }
-  assert.equal(canceledAlive, false, 'canceled job worker still alive');
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    try { process.kill(cancelLaunched.worker.pid, 0); }
+    catch { canceledAlive = false; break; }
+    if (process.platform === 'linux') {
+      try {
+        // A detached worker can briefly remain a zombie; kill(pid, 0) still
+        // succeeds even though the worker has terminated and cannot execute.
+        const stat = await fs.readFile(`/proc/${cancelLaunched.worker.pid}/stat`, 'utf8');
+        const state = stat.slice(stat.lastIndexOf(')') + 2, stat.lastIndexOf(')') + 3);
+        if (state === 'Z' || state === 'X') { canceledAlive = false; break; }
+      } catch (error) {
+        if (error?.code === 'ENOENT') { canceledAlive = false; break; }
+        throw error;
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.equal(canceledAlive, false, 'canceled job worker still alive after bounded termination wait');
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: ['dist/stdio.js', '--root', root, '--allow-root', root, '--bash', 'safe', '--write', 'workspace', '--tool-mode', 'standard'],

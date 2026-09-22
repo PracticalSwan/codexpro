@@ -2,11 +2,13 @@
 
 ## Unreleased
 
-## 0.33.1 (2026-09-23)
+## 0.33.2 (2026-09-23)
 
 - Corrected Artifact Export capability diagnostics to check the real `export_file` MCP registration rather than the nonexistent `export_artifact` name, with enabled, missing-tool, and disabled regression cases.
 - Added an explicit per-OS-user Local Service Probe preference (`codexpro settings user-default --local-service-probe on|off`) stored only in that user's CodexPro home. Newly created launcher/admin workspace profiles inherit the user's opt-in unless a workspace explicitly opts out. The package-wide default stays off, and the existing Full-mode, loopback, HTTP GET/HEAD and credential/redirect restrictions are unchanged.
-- Added an isolated fresh-user/inherited-profile/explicit-opt-out regression to the standard smoke suite. No persistent profile data, credentials, or user preference files are included in release packages.
+- Added an isolated fresh-user/inherited-profile/explicit-opt-out regression to the standard smoke suite. The hosted Windows fixture now uses the realpath-canonical workspace identity so short temp path aliases cannot change profile hashes.
+- Hardened the structured Job cancellation smoke to wait a bounded interval for asynchronous POSIX signal delivery and worker reaping before asserting the worker is dead. This is test-only: no runtime cancellation, signaling, or ownership semantics were changed.
+- The v0.33.1 tag failed hosted verification before an artifact was published; v0.33.2 is the corrected public patch release. No persistent profile data, credentials, or user preference files are included in release packages.
 
 ## 0.33.0 (2026-09-22)
 

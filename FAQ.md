@@ -36,7 +36,7 @@ The main differences are:
 - The normal workflow emphasizes diffs, `show_changes`, smoke tests, and handoff status files.
 - CodexPro keeps a strict boundary: no model proxying, account pooling, third-party Pro site scraping, quota bypassing, or OS sandbox claims.
 
-## What changed in the 0.33.1 maintenance release?
+## What changed in the 0.33.2 maintenance release?
 
 Artifact Export diagnostics now check the actual `export_file` registration. Local Service Probe remains package-default-off; a user may persist an opt-in for their own future profiles via `codexpro settings user-default --local-service-probe on`, while individual workspaces can override it with `codexpro settings set --local-service-probe off`. Existing profiles are not automatically migrated for other users.
 
@@ -91,10 +91,10 @@ For the full first-time setup, OpenAI tunnel/key steps, and multi-project exampl
 Install the latest tagged/stable artifact directly from GitHub Releases:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.1/codexpro-full-0.33.1.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.2/codexpro-full-0.33.2.tgz
 ```
 
-Stable **0.33.1 includes Plans 38–46**, long-lived OpenAI tunnel recovery, Windows Bash/handoff maintenance, and current continuity/isolation hardening. Build main from source only for future **Unreleased** fixes:
+Stable **0.33.2 includes Plans 38–46**, long-lived OpenAI tunnel recovery, Windows Bash/handoff maintenance, and current continuity/isolation hardening. Build main from source only for future **Unreleased** fixes:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -103,7 +103,7 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.1.tgz
+npm install -g ./codexpro-full-0.33.2.tgz
 ```
 
 Then run setup from the repository you want ChatGPT to work on:
@@ -131,7 +131,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.1.tgz
+npm install -g ./codexpro-full-0.33.2.tgz
 codexpro --version
 ```
 
