@@ -2,6 +2,8 @@
 
 > **For agentic workers:** implement this plan task-by-task. Do not use Codex CLI. Use the repository's normal focused-test → build → risk-proportional-gate workflow.
 
+**Status:** Verified
+
 **Goal:** Add trustworthy local runtime status/stop commands and source build provenance without creating a daemon or new MCP mutation surface.
 
 **Architecture:** Reuse the existing runtime status record and owned-process identity patterns. Add one small build-identity module and narrow launcher helpers; keep stop as a human-facing local CLI action. Project/runtime security boundaries remain unchanged.

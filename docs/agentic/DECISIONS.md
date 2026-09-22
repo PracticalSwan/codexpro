@@ -105,3 +105,7 @@
 ## D-037 — Local runtime observation is explicit loopback sensing, not network automation
 **Decision:** Plan 46 is a default-off Full-mode capability limited to one explicit loopback HTTP GET/HEAD request per call, with no credentials, cookies, custom headers, proxying, redirects, browser execution, persistence, crawling, or arbitrary network targets. The tool reports target workspace ownership as unknown rather than inferring it.
 **Why:** Direct runtime evidence can close a major source-vs-behavior gap with a very small interface, but a generic HTTP/browser/monitoring client would create a much larger SSRF, credential, privacy, and maintenance surface.
+
+## D-038 — Runtime provenance and structured readers stay bounded seams
+**Decision:** Build provenance is generated at packaging time and surfaced as read-only identity; runtime status/stop uses recorded launcher/server PID start identities and exact-tree ownership, with no start/restart operation. Notebook, table, dependency, briefing, and verification evidence reuse PathGuard, existing policy/tool-mode registration, bounded readers, and redaction. The dependency exception is package-name/manifest-derived and the local-service exception is opt-in loopback-only.
+**Why:** The Plans 38–46 gaps are evidence and operator gaps, not reasons to create another scheduler, store, context engine, browser/network platform, or lifecycle controller. Keeping each capability behind a small existing seam makes the sequence independently reviewable and preserves fail-closed defaults.

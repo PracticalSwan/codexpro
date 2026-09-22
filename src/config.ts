@@ -83,6 +83,7 @@ export interface CodexProConfig {
   maxDocumentBytes: number;
   maxDocumentOutputBytes: number;
   artifactExportEnabled: boolean;
+  localServiceProbeEnabled: boolean;
   maxExportBytes: number;
   goalsEnabled: boolean;
   goalDir: string;
@@ -422,6 +423,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
       : typeof args["tool-cards"] === "string"
         ? args["tool-cards"]
         : undefined;
+  const localServiceProbeArg = args["local-service-probe"] === true ? "true" : typeof args["local-service-probe"] === "string" ? args["local-service-probe"] : undefined;
   const extraBlockedGlobs = splitList(process.env.CODEXPRO_BLOCKED_GLOBS, ",");
   const host = hostArg ?? process.env.CODEXPRO_HOST ?? process.env.HOST ?? "127.0.0.1";
   const authToken = process.env.CODEXPRO_HTTP_TOKEN ?? process.env.CODEBASE_BRIDGE_HTTP_TOKEN;
@@ -534,6 +536,7 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     maxDocumentBytes: numberFrom(process.env.CODEXPRO_MAX_DOCUMENT_BYTES, 20_000_000, 4_000, 200_000_000),
     maxDocumentOutputBytes: numberFrom(process.env.CODEXPRO_MAX_DOCUMENT_OUTPUT_BYTES, maxReadBytes, 1_000, 2_000_000),
     artifactExportEnabled: boolFrom(process.env.CODEXPRO_ARTIFACT_EXPORT, false),
+    localServiceProbeEnabled: boolFrom(localServiceProbeArg ?? process.env.CODEXPRO_LOCAL_SERVICE_PROBE, false),
     maxExportBytes: numberFrom(process.env.CODEXPRO_MAX_EXPORT_BYTES, 5_000_000, 1_000, 50_000_000),
     goalsEnabled: boolFrom(process.env.CODEXPRO_GOALS, false),
     goalDir: expandHome(process.env.CODEXPRO_GOAL_DIR || path.join(os.homedir(), ".codexpro", "goals")),

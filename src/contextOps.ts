@@ -10,6 +10,7 @@ import { inspectWorkspace } from "./analysis/index.js";
 import { rankContextWithDependencies } from "./analysis/rank.js";
 import { ContextCache } from "./contextCache.js";
 import { rankContextCandidates, type ContextStrategy, type ContextItemKind } from "./contextRanking.js";
+import { contextEvidenceFromProviders } from "./analysis/providers.js";
 
 function utf8Prefix(value: string, maxBytes: number): string {
   if (Buffer.byteLength(value, "utf8") <= maxBytes) return value;
@@ -86,6 +87,7 @@ export interface GatheredContextV2 {
   estimatedTokens: number;
   targetTokens?: number;
   cache: { hit: boolean; key: string; fingerprint: string };
+  warnings?: string[];
 }
 
 export interface ContextRequestV2 {
@@ -110,9 +112,13 @@ export async function gatherContextV2(request: ContextRequestV2): Promise<Gather
   const targetPath = request.targetPath ? request.guard.resolve(request.workspace, request.targetPath).relPath : (request.changedPaths?.[0] ? request.guard.resolve(request.workspace, request.changedPaths[0]).relPath : ".");
   const changedPaths = [...new Set((request.changedPaths ?? []).map((item) => request.guard.resolve(request.workspace, item).relPath))];
   const analysis = await inspectWorkspace(request.config, request.guard, request.workspace);
+  const providerEvidence = strategy === "symbol" && request.targetSymbol
+    ? await contextEvidenceFromProviders(request.config, request.guard, request.workspace, request.targetSymbol, Math.min(32, request.config.maxSearchResults))
+    : { matches: [], warnings: [], providers: [] };
   const status = gitStatus(request.config, request.workspace);
   const commits = request.includeRecentChanges === false ? [] : gitRecentCommits(request.config, request.workspace, 5);
-  const fingerprint = createHash("sha256").update(analysis.fingerprint).update("\0").update(status).update("\0").update(commits[0]?.shortSha ?? "no-head").digest("hex");
+  const providerFingerprint = createHash("sha256").update(providerEvidence.providers.join(",")).update("\0").update(providerEvidence.warnings.join("\0")).digest("hex").slice(0, 16);
+  const fingerprint = createHash("sha256").update(analysis.fingerprint).update("\0").update(status).update("\0").update(commits[0]?.shortSha ?? "no-head").update("\0").update(providerFingerprint).digest("hex");
   const key = requestKey(request, targetPath, changedPaths);
   const cached = request.cache?.get(key, fingerprint);
   if (cached) return { ...cached, cache: { hit: true, key, fingerprint } };
@@ -140,6 +146,22 @@ export async function gatherContextV2(request: ContextRequestV2): Promise<Gather
   } catch {}
 
   const candidates = rankContextCandidates({ analysis, strategy, targetPath, targetSymbol: request.targetSymbol, changedPaths, includeTests: request.includeTests });
+  const candidatePaths = new Set(candidates.map((candidate) => candidate.path));
+  for (const match of providerEvidence.matches) {
+    if (match.path === targetPath) continue;
+    const providerReason = `${match.source} structural ${match.group} evidence`;
+    if (candidatePaths.has(match.path)) {
+      const existing = candidates.find((candidate) => candidate.path === match.path);
+      if (existing) {
+        existing.score = Math.max(existing.score, Math.min(780, Math.max(1, match.score)));
+        existing.reasons = [...new Set([...existing.reasons, providerReason])].slice(0, 6);
+      }
+      continue;
+    }
+    candidatePaths.add(match.path);
+    candidates.push({ path: match.path, kind: match.group === "tests" ? "test" : "related", score: Math.min(780, Math.max(1, match.score)), reasons: [providerReason] });
+  }
+  candidates.sort((left, right) => right.score - left.score || left.path.localeCompare(right.path));
   let omittedCandidates = 0;
   for (const candidate of candidates) {
     if (remaining <= 0) { omittedCandidates += 1; continue; }
@@ -158,7 +180,8 @@ export async function gatherContextV2(request: ContextRequestV2): Promise<Gather
     text: sections.map((section) => `## ${section.kind}: ${section.source}\n${section.text}`).join("\n\n"),
     bytes, truncated: remaining <= 0 || omittedCandidates > 0, omittedCandidates,
     estimatedTokens: Math.ceil(bytes / 4), ...(request.targetTokens ? { targetTokens: Math.max(1, Math.floor(request.targetTokens)) } : {}),
-    cache: { hit: false, key, fingerprint }
+    cache: { hit: false, key, fingerprint },
+    ...(providerEvidence.warnings.length ? { warnings: providerEvidence.warnings } : {})
   };
   request.cache?.set(key, fingerprint, result);
   return result;

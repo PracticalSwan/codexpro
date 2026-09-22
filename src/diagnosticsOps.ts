@@ -2,6 +2,8 @@ import type { CodexProConfig } from "./config.js";
 import type { TelemetrySnapshot } from "./telemetry.js";
 import { containsPrivateMetadataText } from "./redact.js";
 import { DEFAULT_SYNC_CALL_DEADLINE_MS, MIN_SYNC_CALL_DEADLINE_MS, MAX_SYNC_CALL_DEADLINE_MS } from "./deadline.js";
+import { buildIdentity } from "./buildIdentity.js";
+import { explainCapabilities, type CapabilityExplanation } from "./capabilityExplain.js";
 
 export interface ConnectionDiagnostics {
   state: "no_requests" | "arrived_not_dispatched" | "dispatch_failed" | "response_failed" | "healthy" | "degraded";
@@ -77,6 +79,7 @@ export interface ToolSurfaceDiagnostics {
     codex_sessions: string;
     connection_test: boolean;
     analysis_enabled: boolean;
+    local_service_probe_enabled: boolean;
   };
   expected_tools: string[];
   registered_tools: string[];
@@ -85,6 +88,7 @@ export interface ToolSurfaceDiagnostics {
   matches_expected: boolean;
   deadline: Record<string, unknown>;
   capabilities: Record<string, "available" | "unavailable">;
+  capability_explanations: CapabilityExplanation[];
   resilience: { deadline_yields: number; deadline_limited_children: number; async_routes: number; job_started: number; job_completed: number; job_interrupted: number; batch_continued: number };
   timeout_risks: Array<{ tool: string; recommended_primitive: string; reason: string }>;
 }
@@ -113,7 +117,8 @@ export function toolSurfaceDiagnostics(
       write_mode: config.writeMode,
       codex_sessions: config.codexSessions,
       connection_test: config.connectionTest,
-      analysis_enabled: config.analysisEnabled
+      analysis_enabled: config.analysisEnabled,
+      local_service_probe_enabled: config.localServiceProbeEnabled
     },
     expected_tools: expected,
     registered_tools: registered,
@@ -122,6 +127,7 @@ export function toolSurfaceDiagnostics(
     matches_expected: missing.length === 0 && unexpected.length === 0,
     deadline: { sync_call_deadline_mode: config.syncCallDeadlineMode, sync_call_deadline_ms: config.syncCallDeadlineMs, sync_call_deadline_minutes: config.syncCallDeadlineMs / 60_000, sync_call_deadline_default_ms: DEFAULT_SYNC_CALL_DEADLINE_MS, sync_call_deadline_min_ms: MIN_SYNC_CALL_DEADLINE_MS, sync_call_deadline_max_ms: MAX_SYNC_CALL_DEADLINE_MS },
     capabilities: { managed_processes: has("start_workspace_process") ? "available" : "unavailable", structured_jobs: has("job_status") && (has("start_checks") || has("start_verification")) ? "available" : "unavailable", resumable_batches: has("gather_context") && has("inspect_workspace") ? "available" : "unavailable", durable_goals: has("propose_goal") ? "available" : "unavailable" },
+    capability_explanations: explainCapabilities({ config, registeredTools: registered, takesEffect: "current" }),
     resilience: { deadline_yields: eventCount("deadline_yield"), deadline_limited_children: eventCount("deadline_limited_child"), async_routes: eventCount("async_routed"), job_started: eventCount("job_started"), job_completed: eventCount("job_completed"), job_interrupted: eventCount("job_interrupted"), batch_continued: eventCount("batch_continued") },
     timeout_risks: timeoutRisks
   };
@@ -139,6 +145,7 @@ export function diagnosticsSnapshot(
   } = {}
 ): Record<string, unknown> {
   return {
+    build: buildIdentity(),
     connection: connectionDiagnostics(telemetry, activeSessions),
     operator: {
       current_effective_deadline: { mode: config.syncCallDeadlineMode, ms: config.syncCallDeadlineMs },

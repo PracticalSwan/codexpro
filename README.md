@@ -45,6 +45,9 @@ Depending on the active profile, ChatGPT can:
 - use built-in analysis plus optional CodeGraph/LSP providers
 - browse local Codex session history in bounded read-only mode
 - inspect safe ZIP/PDF/OOXML content and export workspace artifacts back to ChatGPT
+- inspect bounded Jupyter notebooks, CSV/TSV/JSONL tables, and directly declared installed Node dependencies without executing them
+- assemble an AI-ready workspace briefing and deterministic verification failure context from existing local evidence
+- optionally observe one explicitly requested loopback HTTP endpoint with a default-off Full-mode GET/HEAD probe
 - execute opt-in Durable Goals in detached Git worktrees with review/projection authorization
 - use planning-only handoff workflows when direct source editing is not desired
 - in 0.32.4 and later, supervise the OpenAI tunnel after startup and recover a failed/not-ready tunnel-client child without restarting the local MCP runtime
@@ -421,6 +424,21 @@ Diagnostics are designed to expose bounded health/configuration metadata without
 
 `activity_log` provides a bounded, sanitized per-workspace chronological ledger outside the workspace; it never stores prompts or raw tool output. The authenticated local control page can save non-secret next-run profile settings. Authentication tokens remain hidden.
 
+## Runtime and structured evidence helpers
+
+The local CLI exposes read-only runtime/build evidence without adding restart authority:
+
+```bash
+codexpro --version --verbose
+codexpro status --json
+codexpro profiles list --json
+codexpro profiles show --current --json
+```
+
+`codexpro stop` is an exact-owner, PID/start-identity guarded local operation; it never starts or restarts CodexPro. The MCP surface adds `read_notebook`, `inspect_table`, and `inspect_dependency` in Standard/Full modes, plus `workspace_snapshot.briefing` and `verify_changes.failure_context`. The dependency reader is the only narrow `node_modules` exception and requires a directly declared, workspace-contained package; generic file/search/context tools remain blocked there.
+
+`probe_local_service` is Full-mode only and disabled by default. When explicitly enabled, it performs one bounded HTTP GET or HEAD request to an explicit loopback port, never follows redirects, sends no credentials or custom headers, and reports target ownership as unknown. A GET can still have application-defined side effects, so enable this capability only for trusted local development services.
+
 ## Safety defaults
 
 - public/non-loopback HTTP requires authentication unless explicitly overridden
@@ -446,6 +464,8 @@ npm audit --audit-level=high
 npm run release:pack
 git diff --check
 ```
+
+The roadmap-specific regression layer is also included in `npm run smoke`: `build-identity-smoke.mjs`, `runtime-lifecycle-smoke.mjs`, `capability-explain-smoke.mjs`, `context-provider-smoke.mjs`, `notebook-smoke.mjs`, `workspace-briefing-smoke.mjs`, `verification-failure-context-smoke.mjs`, `table-inspection-smoke.mjs`, `dependency-reality-smoke.mjs`, and `local-service-probe-smoke.mjs` use temporary fixtures and fail closed on the relevant security boundaries.
 
 Run stress only when concurrency/process/output-limit/release-risk changes justify it.
 

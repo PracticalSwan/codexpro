@@ -8,6 +8,7 @@ import { instructionsForPath } from "./instructionOps.js";
 import { redactSensitiveText } from "./redact.js";
 import { inspectWorkspace } from "./analysis/index.js";
 import { rankContextCandidates, type ContextItemKind, type ContextStrategy } from "./contextRanking.js";
+import { contextEvidenceFromProviders } from "./analysis/providers.js";
 import { BatchStore } from "./batches/store.js";
 import type { BatchRecord } from "./batches/types.js";
 import type { GatheredContextSection, GatheredContextV2, RankedContextItem } from "./contextOps.js";
@@ -95,10 +96,14 @@ export async function gatherContextResumable(input: {
   const targetPath = input.targetPath ? input.guard.resolve(input.workspace, input.targetPath).relPath : (input.changedPaths?.[0] ? input.guard.resolve(input.workspace, input.changedPaths[0]).relPath : ".");
   const changedPaths = [...new Set((input.changedPaths ?? []).map((item) => input.guard.resolve(input.workspace, item).relPath))];
   const analysis = await inspectWorkspace(input.config, input.guard, input.workspace);
+  const providerEvidence = strategy === "symbol" && input.targetSymbol
+    ? await contextEvidenceFromProviders(input.config, input.guard, input.workspace, input.targetSymbol, Math.min(32, input.config.maxSearchResults))
+    : { matches: [], warnings: [], providers: [] };
   const status = gitStatus(input.config, input.workspace);
   const commits = input.includeRecentChanges === false ? [] : gitRecentCommits(input.config, input.workspace, 5);
   const commitsText = commits.map((commit) => `${commit.shortSha} ${commit.subject}`).join("\n");
-  const sourceFingerprint = createHash("sha256").update(analysis.fingerprint).update("\0").update(status).update("\0").update(commits[0]?.shortSha ?? "no-head").digest("hex");
+  const providerFingerprint = createHash("sha256").update(providerEvidence.providers.join(",")).update("\0").update(providerEvidence.warnings.join("\0")).digest("hex").slice(0, 16);
+  const sourceFingerprint = createHash("sha256").update(analysis.fingerprint).update("\0").update(status).update("\0").update(commits[0]?.shortSha ?? "no-head").update("\0").update(providerFingerprint).digest("hex");
   const requestHash = requestFingerprint({ strategy, targetPath, targetSymbol: input.targetSymbol, changedPaths, includeTests: input.includeTests !== false, includeRecentChanges: input.includeRecentChanges !== false, maxBytes, targetTokens: input.targetTokens });
   const cacheKey = requestHash.slice(0, 24);
   if (!input.continuationToken) {
@@ -106,6 +111,22 @@ export async function gatherContextResumable(input: {
     if (cached) return { ...cached, cache: { hit: true, key: cacheKey, fingerprint: sourceFingerprint }, complete: true };
   }
   const candidates = rankContextCandidates({ analysis, strategy, targetPath, targetSymbol: input.targetSymbol, changedPaths, includeTests: input.includeTests });
+  const candidatePaths = new Set(candidates.map((candidate) => candidate.path));
+  for (const match of providerEvidence.matches) {
+    if (match.path === targetPath) continue;
+    const providerReason = `${match.source} structural ${match.group} evidence`;
+    if (candidatePaths.has(match.path)) {
+      const existing = candidates.find((candidate) => candidate.path === match.path);
+      if (existing) {
+        existing.score = Math.max(existing.score, Math.min(780, Math.max(1, match.score)));
+        existing.reasons = [...new Set([...existing.reasons, providerReason])].slice(0, 6);
+      }
+      continue;
+    }
+    candidatePaths.add(match.path);
+    candidates.push({ path: match.path, kind: match.group === "tests" ? "test" : "related", score: Math.min(780, Math.max(1, match.score)), reasons: [providerReason] });
+  }
+  candidates.sort((left, right) => right.score - left.score || left.path.localeCompare(right.path));
   let batch: BatchRecord;
   let state: ContextBatchPrivate;
   if (input.continuationToken) {
@@ -195,7 +216,8 @@ export async function gatherContextResumable(input: {
     omittedCandidates: state.omittedCandidates,
     estimatedTokens: Math.ceil(bytes / 4),
     ...(input.targetTokens ? { targetTokens: Math.max(1, Math.floor(input.targetTokens)) } : {}),
-    cache: { hit: false, key: cacheKey, fingerprint: sourceFingerprint }
+    cache: { hit: false, key: cacheKey, fingerprint: sourceFingerprint },
+    ...(providerEvidence.warnings.length ? { warnings: providerEvidence.warnings } : {})
   };
   if (complete) input.cache?.set(cacheKey, sourceFingerprint, result);
   return { ...result, complete, ...(complete ? {} : { continuationToken: batch.id }), batch };

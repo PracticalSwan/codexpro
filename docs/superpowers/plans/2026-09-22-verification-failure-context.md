@@ -2,6 +2,8 @@
 
 > **For agentic workers:** collect evidence only. ChatGPT diagnoses and repairs; CodexPro must not become an autonomous repair agent.
 
+**Status:** Verified
+
 **Goal:** Make failed verification immediately actionable by attaching bounded related source/test/reproduction evidence to existing results.
 
 **Architecture:** Add one shared failure-context composer above existing parser/change-impact/context primitives and call it from both synchronous and structured-job verification completion.

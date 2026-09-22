@@ -2,6 +2,8 @@
 
 > **For agentic workers:** keep v1 read-only and streaming/bounded. Do not turn this into a dataframe or analytics platform.
 
+**Status:** Verified
+
 **Goal:** Let ChatGPT understand common tabular project data without raw-file dumping or external runtimes.
 
 **Architecture:** Add one focused guarded streaming parser module and one read-only MCP tool in Standard/Full modes. Reuse existing PathGuard/redaction/result conventions.

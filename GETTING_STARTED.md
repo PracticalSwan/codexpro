@@ -228,4 +228,6 @@ codexpro doctor
 
 Saved workspace profiles under `~/.codexpro` remain separate from the package installation.
 
+For local operator evidence, use `codexpro --version --verbose`, `codexpro status --json`, and `codexpro profiles show --current --json`. These commands are read-only; the guarded `codexpro stop` command is the only new lifecycle action and requires exact recorded process/start-identity ownership. Standard/Full MCP sessions also expose bounded notebook/table/dependency readers and enriched workspace/verification evidence. The optional local-service probe remains disabled unless you explicitly enable `CODEXPRO_LOCAL_SERVICE_PROBE=1` for a Full-mode launch.
+
 For feature details and security boundaries, continue with [README.md](README.md), [FEATURES.md](FEATURES.md), [FAQ.md](FAQ.md), and [SECURITY.md](SECURITY.md).

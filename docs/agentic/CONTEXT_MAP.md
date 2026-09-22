@@ -23,6 +23,12 @@ This is a compact architecture-navigation aid. Runtime source/tests remain autho
 | `src/http.ts` | Streamable HTTP + authenticated local admin | Plan 39 improves this existing UI/control surface; no second dashboard |
 | `src/diagnosticsOps.ts` | Sanitized connection/tool/operator diagnostics | Plan 39 adds deterministic capability explanations here/nearby |
 | `scripts/codexpro.mjs` | Launcher, profiles, tunnels, operator CLI | Plan 38 adds status/guarded stop/provenance without daemon/restart authority |
+| `src/buildIdentity.ts`, `scripts/write-build-metadata.mjs` | Package/source build identity | Pack-time metadata is soft-fail at runtime and never includes secrets |
+| `src/capabilityExplain.ts` | Deterministic capability state/reason codes | Reused by diagnostics, profiles, workspace briefing, and the default-off local probe |
+| `src/notebookOps.ts`, `src/tableOps.ts` | Bounded structured file readers | Read-only, redacted, size/row/output capped; never execute kernels/dataframes |
+| `src/dependencyOps.ts` | Manifest-derived installed Node dependency evidence | The only narrow `node_modules` exception; canonical containment and exact package identity required |
+| `src/localServiceProbe.ts` | One-shot local HTTP observation | Full-only, explicit opt-in, loopback GET/HEAD, no credentials/redirects/proxy/persistence |
+| `src/workspaceBriefing.ts`, `src/verificationFailureContext.ts` | Deterministic evidence composition | Deepens workspace snapshot/verification without autonomous repair or probing |
 | `scripts/*-smoke.mjs` | Integration/regression verification | Add focused smoke per implemented plan, then shared smoke when public runtime surfaces change |
 
 ## Active roadmap touch points

@@ -31,6 +31,7 @@ const WorkspacePolicyV1Schema = z.object({
   codeGraphEnabled: z.boolean().optional(),
   lspEnabled: z.boolean().optional(),
   artifactExportEnabled: z.boolean().optional(),
+  localServiceProbeEnabled: z.boolean().optional(),
   goalsEnabled: z.boolean().optional(),
   limits: z.object({
     maxReadBytes: positiveLimit.optional(),
@@ -147,6 +148,7 @@ export function applyWorkspacePolicy(config: CodexProConfig, policy: WorkspacePo
     codeGraphEnabled: config.codeGraphEnabled && policy.codeGraphEnabled !== false,
     lspEnabled: config.lspEnabled && policy.lspEnabled !== false,
     artifactExportEnabled: config.artifactExportEnabled && policy.artifactExportEnabled !== false,
+    localServiceProbeEnabled: config.localServiceProbeEnabled && policy.localServiceProbeEnabled !== false,
     goalsEnabled: config.goalsEnabled && policy.goalsEnabled !== false,
     maxReadBytes: lower(config.maxReadBytes, limits.maxReadBytes),
     maxWriteBytes: lower(config.maxWriteBytes, limits.maxWriteBytes),

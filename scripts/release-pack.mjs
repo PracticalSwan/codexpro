@@ -14,6 +14,12 @@ function fail(message) {
 
 try {
   const release = assertCodexProReleaseEnvironment();
+  const metadata = spawnSync(process.execPath, [join(release.root, "scripts", "write-build-metadata.mjs")], {
+    cwd: release.root,
+    encoding: "utf8",
+    env: { ...process.env, INIT_CWD: release.root }
+  });
+  if (metadata.error || metadata.status !== 0) fail(`Could not generate build metadata: ${(metadata.stderr || metadata.stdout || metadata.error?.message || "unknown error").trim()}`);
   const packArgs = ["pack", "--dry-run", "--ignore-scripts", "--json"];
   const packed = spawnSync(npmCli ? process.execPath : npm, npmCli ? [npmCli, ...packArgs] : packArgs, {
     cwd: release.root,

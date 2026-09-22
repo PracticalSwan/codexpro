@@ -33,6 +33,26 @@ function packageVersion() {
   return JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8')).version;
 }
 
+function buildIdentity() {
+  const packageJson = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
+  const candidates = [path.join(projectRoot, 'dist', 'build-metadata.json'), path.join(projectRoot, 'build-metadata.json')];
+  for (const candidate of candidates) {
+    try {
+      const metadata = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+      const revision = /^[0-9a-f]{7,64}$/i.test(String(metadata?.revision ?? '')) ? String(metadata.revision) : null;
+      const channel = revision && ['release', 'main', 'source'].includes(metadata?.channel) ? metadata.channel : 'unknown';
+      return { packageName: packageJson.name, version: packageJson.version, revision, channel };
+    } catch {}
+  }
+  return { packageName: packageJson.name, version: packageJson.version, revision: null, channel: 'unknown' };
+}
+
+function displayVersion(identity = buildIdentity()) {
+  return identity.revision && ['main', 'source'].includes(identity.channel)
+    ? `${identity.version}+${identity.channel}.${identity.revision.slice(0, 12)}`
+    : identity.version;
+}
+
 function isLoopbackHost(host) {
   return host === '127.0.0.1' || host === 'localhost' || host === '::1';
 }
@@ -47,6 +67,9 @@ Usage:
   codexpro start --root /path/to/repo
   codexpro start --tunnel openai --openai-tunnel-id tunnel_...
   codexpro settings
+  codexpro profiles list|show
+  codexpro status [--root /path/to/repo] [--json]
+  codexpro stop [--root /path/to/repo] [--json]
   codexpro doctor
   codexpro connection-test --root /path/to/repo
   codexpro inspect --root /path/to/repo [--json]
@@ -117,6 +140,8 @@ Options:
   --tool-cards <on|off>      Opt in to ChatGPT widget metadata on tool descriptors. Default: off.
   --analysis <on|off>        Enable built-in repository analysis. Default: on.
   --artifact-export <on|off> Enable export_file. Default: off unless saved.
+  --local-service-probe <on|off>
+                             Enable the default-off Full-mode loopback GET/HEAD probe.
   --goals <on|off>           Enable Durable Goal tools. Default: off unless saved.
   --codegraph <on|off>       Enable optional CodeGraph integration. Default: off unless saved.
   --lsp <on|off>             Enable configured LSP integration. Default: off.
@@ -368,6 +393,8 @@ function parseArgs(argv) {
     else if (key === 'no-copy-url') out.noCopyUrl = true;
     else if (key === 'dry-run') out.dryRun = true;
     else if (key === 'json') out.json = true;
+    else if (key === 'current') out.current = true;
+    else if (key === 'verbose') out.verbose = true;
     else if (key === 'staged') out.staged = true;
     else if (key === 'once') out.once = true;
     else if (key === 'confirm') out.confirm = true;
@@ -409,7 +436,7 @@ function parseArgs(argv) {
       if (inlineValue === undefined) i += 1;
       if (key === 'allow-root' || key === 'project') out.allowRoots.push(value);
       else {
-        const aliases = { analysis: 'analysisEnabled', 'artifact-export': 'artifactExportEnabled', goals: 'goalsEnabled', codegraph: 'codeGraphEnabled', lsp: 'lspEnabled', 'allow-git-push': 'allowGitPush', 'inherit-env': 'inheritEnv' };
+        const aliases = { analysis: 'analysisEnabled', 'artifact-export': 'artifactExportEnabled', 'local-service-probe': 'localServiceProbeEnabled', goals: 'goalsEnabled', codegraph: 'codeGraphEnabled', lsp: 'lspEnabled', 'allow-git-push': 'allowGitPush', 'inherit-env': 'inheritEnv' };
         out[aliases[key] ?? key.replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = value;
       }
     }
@@ -743,6 +770,20 @@ function runtimeProcessAlive(pid) {
   catch (error) { return error?.code === 'EPERM'; }
 }
 
+function processStartIdentity(pid) {
+  const numericPid = Number(pid);
+  if (!Number.isInteger(numericPid) || numericPid <= 0) return null;
+  if (process.platform === 'win32') {
+    const command = `$p=Get-Process -Id ${numericPid} -ErrorAction Stop; $p.StartTime.ToUniversalTime().Ticks`;
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], { encoding: 'utf8', timeout: 3000, windowsHide: true });
+    const value = String(result.stdout || '').trim();
+    return result.status === 0 && /^\d+$/.test(value) ? `win:${value}` : null;
+  }
+  const result = spawnSync('ps', ['-o', 'lstart=', '-p', String(numericPid)], { encoding: 'utf8', timeout: 3000, windowsHide: true });
+  const value = String(result.stdout || '').trim();
+  return result.status === 0 && value ? `${process.platform}:${value}` : null;
+}
+
 let activeOpenAiTunnelLeasePath = '';
 
 function openAiTunnelLeasePath(tunnelId) {
@@ -892,7 +933,9 @@ function saveRuntimeConnection(root, details, options = {}) {
     version: 1,
     root,
     pid: process.pid,
+    pidStartKey: processStartIdentity(process.pid),
     runtimePid: options.runtimePid ?? null,
+    runtimePidStartKey: options.runtimePid ? processStartIdentity(options.runtimePid) : null,
     updatedAt: new Date().toISOString(),
     endpoint: details.endpoint,
     localBase: options.localBase ?? '',
@@ -913,6 +956,7 @@ function saveRuntimeConnection(root, details, options = {}) {
     transportState: options.transportState ?? 'ready',
     analysisEnabled: Boolean(options.analysisEnabled),
     artifactExportEnabled: Boolean(options.artifactExportEnabled),
+    localServiceProbeEnabled: Boolean(options.localServiceProbeEnabled),
     goalsEnabled: Boolean(options.goalsEnabled),
     codeGraphEnabled: Boolean(options.codeGraphEnabled),
     lspEnabled: Boolean(options.lspEnabled),
@@ -947,6 +991,170 @@ function clearRuntimeConnection(root) {
     const runtime = readJsonFile(filePath);
     if (runtime?.pid === process.pid) fs.rmSync(filePath, { force: true });
   } catch {}
+}
+
+function canonicalRoot(root) {
+  try { return fs.realpathSync.native(root); } catch { return path.resolve(root); }
+}
+
+function runtimeStatusForRoot(root) {
+  const selectedRoot = canonicalRoot(root);
+  const filePath = runtimeStatusPathForRoot(selectedRoot);
+  const base = {
+    state: 'stopped',
+    root: selectedRoot,
+    launcher_pid: null,
+    runtime_pid: null,
+    transport: 'unknown',
+    tunnel: '',
+    local_port: null,
+    port_release: 'unknown',
+    generation_id: null,
+    package_version: packageVersion(),
+    build_revision: buildIdentity().revision,
+    build_channel: buildIdentity().channel,
+    reason: ''
+  };
+  if (!fs.existsSync(filePath)) return base;
+  let runtime;
+  try { runtime = readJsonFile(filePath); }
+  catch { return { ...base, state: 'stale', reason: 'runtime record is malformed' }; }
+  if (!runtime || typeof runtime !== 'object' || Array.isArray(runtime)) return { ...base, state: 'stale', reason: 'runtime record is malformed' };
+  if (runtime.root && canonicalRoot(runtime.root) !== selectedRoot) return { ...base, state: 'stale', reason: 'runtime record belongs to another workspace' };
+  const launcherPid = Number(runtime.pid);
+  const runtimePid = runtime.runtimePid === null || runtime.runtimePid === undefined ? null : Number(runtime.runtimePid);
+  const launcherAlive = runtimeProcessAlive(launcherPid);
+  const runtimeAlive = runtimePid ? runtimeProcessAlive(runtimePid) : true;
+  const launcherIdentity = runtime.pidStartKey ? processStartIdentity(launcherPid) : null;
+  const runtimeIdentity = runtimePid && runtime.runtimePidStartKey ? processStartIdentity(runtimePid) : null;
+  const identityMismatch = Boolean(runtime.pidStartKey && (!launcherIdentity || launcherIdentity !== runtime.pidStartKey));
+  const runtimeIdentityMismatch = Boolean(runtime.runtimePidStartKey && (!runtimeIdentity || runtimeIdentity !== runtime.runtimePidStartKey));
+  const transport = ['ready', 'unavailable', 'unknown'].includes(runtime.transportState) ? runtime.transportState : 'unknown';
+  let state = 'running';
+  let reason = '';
+  if (!Number.isInteger(launcherPid) || launcherPid <= 0 || !launcherAlive) { state = 'stale'; reason = 'recorded launcher is not alive'; }
+  else if (identityMismatch || runtimeIdentityMismatch) { state = 'stale'; reason = 'recorded process identity no longer matches'; }
+  else if (!runtimeAlive) { state = 'degraded'; reason = 'launcher is alive but the recorded MCP server is not'; }
+  else if (transport !== 'ready') { state = 'degraded'; reason = transport === 'unavailable' ? 'transport is unavailable' : 'transport readiness is unknown'; }
+  else if (!runtime.pidStartKey) { state = 'degraded'; reason = 'legacy runtime record has no start identity'; }
+  return {
+    ...base,
+    state,
+    launcher_pid: Number.isInteger(launcherPid) && launcherPid > 0 ? launcherPid : null,
+    runtime_pid: Number.isInteger(runtimePid) && runtimePid > 0 ? runtimePid : null,
+    transport,
+    tunnel: typeof runtime.tunnel === 'string' ? runtime.tunnel : '',
+    local_port: (() => { try { return new URL(String(runtime.localBase || '')).port ? Number(new URL(String(runtime.localBase)).port) : null; } catch { return null; } })(),
+    generation_id: typeof runtime.runtimeGenerationId === 'string' && /^[A-Za-z0-9._:-]{1,160}$/.test(runtime.runtimeGenerationId) ? runtime.runtimeGenerationId : null,
+    reason
+  };
+}
+
+function printRuntimeStatus(status, json = false) {
+  if (json) {
+    const { root: _root, ...publicStatus } = status;
+    console.log(JSON.stringify(publicStatus, null, 2));
+    return;
+  }
+  printBox('CodexPro runtime status', [
+    labelValue('State', status.state),
+    labelValue('Package', `${status.package_version}${status.build_channel !== 'unknown' ? ` (${status.build_channel})` : ''}`),
+    labelValue('Revision', status.build_revision || 'unknown'),
+    labelValue('Workspace', status.root),
+    labelValue('Launcher PID', status.launcher_pid ?? 'none'),
+    labelValue('Runtime PID', status.runtime_pid ?? 'none'),
+    labelValue('Transport', status.transport),
+    labelValue('Tunnel', status.tunnel || 'none'),
+    labelValue('Local port', status.local_port ?? 'unknown'),
+    ...(status.port_release && status.port_release !== 'unknown' ? [labelValue('Port after stop', status.port_release)] : []),
+    ...(status.reason ? [labelValue('Reason', status.reason)] : [])
+  ]);
+}
+
+async function runStatus(argv) {
+  const args = parseArgs(argv);
+  const root = realDir(args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
+  printRuntimeStatus(runtimeStatusForRoot(root), Boolean(args.json));
+}
+
+function waitForRecordedProcessExit(pid, timeoutMs = 3000) {
+  const started = Date.now();
+  while (runtimeProcessAlive(pid) && Date.now() - started < timeoutMs) {
+    const wait = spawnSync(process.execPath, ['-e', 'setTimeout(() => {}, 50)'], { stdio: 'ignore', windowsHide: true, timeout: 200 });
+    if (wait.error) break;
+  }
+  return !runtimeProcessAlive(pid);
+}
+
+function runtimePortTarget(localBase) {
+  try {
+    const url = new URL(String(localBase || ''));
+    const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    if (!url.port || !['localhost', '127.0.0.1', '::1'].includes(host)) return null;
+    return { host: host === 'localhost' ? '127.0.0.1' : host, port: Number(url.port), family: host.includes(':') ? 6 : 4 };
+  } catch { return null; }
+}
+
+function probeRuntimePort(target) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const socket = net.createConnection({ host: target.host, port: target.port, family: target.family });
+    const finish = (state) => {
+      if (settled) return;
+      settled = true;
+      socket.destroy();
+      resolve(state);
+    };
+    socket.once('connect', () => finish('occupied'));
+    socket.once('error', (error) => finish(error?.code === 'ECONNREFUSED' ? 'released' : 'unknown'));
+    socket.setTimeout(500, () => finish('unknown'));
+  });
+}
+
+async function waitForRuntimePortRelease(localBase, timeoutMs = 3000) {
+  const target = runtimePortTarget(localBase);
+  if (!target) return 'unknown';
+  const deadline = Date.now() + timeoutMs;
+  let last = 'unknown';
+  while (Date.now() < deadline) {
+    last = await probeRuntimePort(target);
+    if (last === 'released' || last === 'occupied') return last;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  return last;
+}
+
+async function runStop(argv) {
+  const args = parseArgs(argv);
+  const root = realDir(args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
+  const filePath = runtimeStatusPathForRoot(root);
+  let runtime;
+  try { runtime = readJsonFile(filePath); } catch { throw new Error('Refusing to stop: runtime record is malformed.'); }
+  const status = runtimeStatusForRoot(root);
+  if (!['running', 'degraded'].includes(status.state)) throw new Error(`Refusing to stop: ${status.state} runtime cannot be proven owned (${status.reason || 'no active owned runtime'}).`);
+  const launcherPid = Number(runtime?.pid);
+  if (!runtime?.pidStartKey || processStartIdentity(launcherPid) !== runtime.pidStartKey) throw new Error('Refusing to stop: launcher process identity could not be verified.');
+  const runtimePid = runtime.runtimePid ? Number(runtime.runtimePid) : null;
+  if (runtimePid && runtimeProcessAlive(runtimePid) && (!runtime.runtimePidStartKey || processStartIdentity(runtimePid) !== runtime.runtimePidStartKey)) throw new Error('Refusing to stop: server process identity could not be verified.');
+  try { process.kill(launcherPid, 'SIGTERM'); } catch (error) { if (error?.code !== 'ESRCH') throw new Error(`Graceful runtime stop failed: ${error.message}`); }
+  let stopped = waitForRecordedProcessExit(launcherPid);
+  if (!stopped && process.platform === 'win32') {
+    const result = spawnSync('taskkill.exe', ['/PID', String(launcherPid), '/T', '/F'], { stdio: 'ignore', windowsHide: true, timeout: 5000 });
+    if (result.status !== 0 && runtimeProcessAlive(launcherPid)) throw new Error('Refusing to stop: exact owned process tree did not terminate.');
+    stopped = waitForRecordedProcessExit(launcherPid, 3000);
+  }
+  if (!stopped || (runtimePid && runtimeProcessAlive(runtimePid))) throw new Error('Refusing to clean runtime state: an owned process is still alive.');
+  const portRelease = await waitForRuntimePortRelease(runtime.localBase);
+  const current = readJsonFile(filePath);
+  if (Number(current?.pid) === launcherPid && current?.pidStartKey === runtime.pidStartKey) fs.rmSync(filePath, { force: true });
+  if (runtime.tunnel === 'openai' && typeof runtime.endpoint === 'string') {
+    const leasePath = openAiTunnelLeasePath(runtime.endpoint);
+    try {
+      const lease = readJsonFile(leasePath);
+      if (Number(lease?.pid) === launcherPid && canonicalRoot(lease?.root || '') === canonicalRoot(root)) fs.rmSync(leasePath, { force: true });
+    } catch {}
+  }
+  printRuntimeStatus({ ...status, state: 'stopped', launcher_pid: null, runtime_pid: null, port_release: portRelease, reason: portRelease === 'occupied' ? 'owned runtime stopped; local port remains occupied by another process' : portRelease === 'released' ? 'owned runtime stopped; local port released' : 'owned runtime stopped; local port release could not be verified' }, Boolean(args.json));
 }
 
 function sanitizedProfile(profile) {
@@ -1062,6 +1270,7 @@ function capabilityProfileEntries(args, profile = {}) {
   const specs = [
     ['analysisEnabled', ['CODEXPRO_ANALYSIS'], true],
     ['artifactExportEnabled', ['CODEXPRO_ARTIFACT_EXPORT'], false],
+    ['localServiceProbeEnabled', ['CODEXPRO_LOCAL_SERVICE_PROBE'], false],
     ['goalsEnabled', ['CODEXPRO_GOALS'], false],
     ['codeGraphEnabled', ['CODEXPRO_CODEGRAPH'], false],
     ['lspEnabled', ['CODEXPRO_LSP'], false],
@@ -3490,6 +3699,7 @@ async function runDoctor(argv) {
 
   const root = realDir(args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
   const profile = args.noProfile ? {} : loadWorkspaceProfile(root);
+  const identity = buildIdentity();
   const effectiveArgs = { ...profile, ...args };
   const tunnel = optionValue(args, profile, 'tunnel', ['CODEXPRO_TUNNEL'], 'openai');
   const host = optionValue(args, profile, 'host', ['CODEXPRO_HOST'], '127.0.0.1');
@@ -3550,6 +3760,8 @@ async function runDoctor(argv) {
     labelValue('Workspace', root),
     labelValue('Mode', `${mode}  tools=${toolMode}  write=${write}  bash=${bash}`),
     labelValue('Tunnel', tunnel),
+    labelValue('Package', `${identity.packageName} ${identity.version}`),
+    labelValue('Build', `${identity.revision || 'unknown'} / ${identity.channel}`),
     ...(stableHostname ? [labelValue('Hostname', stableHostname)] : []),
     ...(profile.profilePath ? [labelValue('Profile', profile.profilePath)] : [])
   ]);
@@ -3557,6 +3769,7 @@ async function runDoctor(argv) {
   record(compareMajorVersion(process.versions.node, 20) ? 'ok' : 'fail', 'Node', `v${process.versions.node} (requires >=20)`);
   record(fs.existsSync(httpPath) && fs.existsSync(serverPath) ? 'ok' : 'fail', 'Build artifacts', fs.existsSync(httpPath) ? 'dist ready' : 'missing dist/http.js; run npm install && npm run build');
   record(fs.existsSync(path.join(projectRoot, 'package.json')) ? 'ok' : 'fail', 'Package root', projectRoot);
+  record(identity.version !== 'unknown' ? 'ok' : 'warn', 'Build provenance', `${identity.revision || 'revision unknown'} (${identity.channel})`);
   record(profile.profilePath ? 'ok' : 'warn', 'Saved profile', profile.profilePath ? profileSummary(profile) || profile.profilePath : 'none for this workspace');
   record(['agent', 'handoff', 'pro'].includes(mode) ? 'ok' : 'fail', 'Mode', ['agent', 'handoff', 'pro'].includes(mode) ? mode : '--mode must be agent, handoff, or pro');
   record(['off', 'safe', 'full'].includes(bash) ? 'ok' : 'fail', 'Bash mode', ['off', 'safe', 'full'].includes(bash) ? bash : '--bash must be off, safe, or full');
@@ -4075,6 +4288,7 @@ function printProfile(root, profile) {
     labelValue('Sync call deadline', safe.syncCallDeadlineMode === 'observe' ? 'Unlimited (observe only)' : `${Math.round((safe.syncCallDeadlineMs ?? DEFAULT_SYNC_CALL_DEADLINE_MS) / 60_000)} min`),
     labelValue('Analysis', safe.analysisEnabled === undefined ? 'on' : safe.analysisEnabled ? 'on' : 'off'),
     labelValue('Artifact export', safe.artifactExportEnabled ? 'on' : 'off'),
+    labelValue('Local service probe', safe.localServiceProbeEnabled ? 'on (Full mode)' : 'off'),
     labelValue('Durable Goals', safe.goalsEnabled ? 'on' : 'off'),
     labelValue('CodeGraph', safe.codeGraphEnabled ? 'on' : 'off'),
     labelValue('LSP', safe.lspEnabled ? 'on' : 'off'),
@@ -4106,6 +4320,35 @@ function printProfileList(profiles = listWorkspaceProfiles()) {
     return;
   }
   printBox('CodexPro saved setups', profiles.slice(0, 50).map((profile, index) => profileOneLine(profile, index + 1)));
+}
+
+function printProfilesJson(profiles) {
+  console.log(JSON.stringify(profiles.map((profile) => sanitizedProfile(profile)), null, 2));
+}
+
+function runProfiles(argv) {
+  const action = argv[0] && !argv[0].startsWith('--') ? argv[0] : 'list';
+  const args = parseArgs(action === 'list' ? argv : argv.slice(1));
+  const profiles = listWorkspaceProfiles();
+  if (action === 'list' || action === 'ls') {
+    if (args.json) {
+      printProfilesJson(profiles);
+      return;
+    }
+    printProfileList(profiles);
+    return;
+  }
+  if (action === 'show') {
+    const root = realDir(args.current ? (process.env.CODEXPRO_ROOT ?? process.cwd()) : (args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd()));
+    const profile = loadWorkspaceProfile(root);
+    if (args.json) {
+      console.log(JSON.stringify(sanitizedProfile(profile), null, 2));
+      return;
+    }
+    printProfile(root, profile);
+    return;
+  }
+  throw new Error(`Unknown profiles action: ${action}`);
 }
 
 async function saveSettingsFromArgs(root, args, profile) {
@@ -4502,10 +4745,28 @@ async function main() {
   let argv = process.argv.slice(2);
   let connectionTest = false;
   if (argv[0] === '--version' || argv[0] === '-v' || argv[0] === 'version') {
-    console.log(packageVersion());
+    const identity = buildIdentity();
+    if (argv.includes('--verbose')) {
+      console.log(`Package: ${identity.packageName}`);
+      console.log(`Version: ${identity.version}`);
+      console.log(`Build revision: ${identity.revision || 'unknown'}`);
+      console.log(`Build channel: ${identity.channel}`);
+    } else console.log(identity.version);
     return;
   }
   let subcommand = argv[0];
+  if (subcommand === 'status') {
+    await runStatus(argv.slice(1));
+    return;
+  }
+  if (subcommand === 'profiles') {
+    runProfiles(argv.slice(1));
+    return;
+  }
+  if (subcommand === 'stop') {
+    await runStop(argv.slice(1));
+    return;
+  }
   if (subcommand === 'inspect' || subcommand === 'review') {
     await runAnalysisCli(subcommand, argv.slice(1));
     return;
@@ -4594,7 +4855,13 @@ async function main() {
   }
   if (argv[0] === 'start' || argv[0] === 'connect') argv.shift();
   if (argv[0] === '--version' || argv[0] === '-v' || argv[0] === 'version') {
-    console.log(packageVersion());
+    const identity = buildIdentity();
+    if (argv.includes('--verbose')) {
+      console.log(`Package: ${identity.packageName}`);
+      console.log(`Version: ${identity.version}`);
+      console.log(`Build revision: ${identity.revision || 'unknown'}`);
+      console.log(`Build channel: ${identity.channel}`);
+    } else console.log(identity.version);
     return;
   }
   if (argv[0] === 'help') argv[0] = '--help';
@@ -4689,6 +4956,7 @@ async function main() {
   const syncCallDeadline = syncCallDeadlineOption(args, profile);
   const analysisEnabled = optionBool(args, profile, 'analysisEnabled', ['CODEXPRO_ANALYSIS'], true);
   const artifactExportEnabled = optionBool(args, profile, 'artifactExportEnabled', ['CODEXPRO_ARTIFACT_EXPORT'], false);
+  const localServiceProbeEnabled = optionBool(args, profile, 'localServiceProbeEnabled', ['CODEXPRO_LOCAL_SERVICE_PROBE'], false);
   const goalsEnabled = optionBool(args, profile, 'goalsEnabled', ['CODEXPRO_GOALS'], false);
   const codeGraphEnabled = optionBool(args, profile, 'codeGraphEnabled', ['CODEXPRO_CODEGRAPH'], false);
   const codeGraphExecutable = String(optionValue(args, profile, 'codeGraphExecutable', ['CODEXPRO_CODEGRAPH_EXECUTABLE'], '') ?? '').trim();
@@ -4733,6 +5001,7 @@ async function main() {
     CODEXPRO_CONNECTION_TEST: connectionTest ? '1' : '0',
     CODEXPRO_ANALYSIS: analysisEnabled ? '1' : '0',
     CODEXPRO_ARTIFACT_EXPORT: artifactExportEnabled ? '1' : '0',
+    CODEXPRO_LOCAL_SERVICE_PROBE: localServiceProbeEnabled ? '1' : '0',
     CODEXPRO_GOALS: goalsEnabled ? '1' : '0',
     CODEXPRO_CODEGRAPH: codeGraphEnabled ? '1' : '0',
     CODEXPRO_CODEGRAPH_ARGS: codeGraphArgs,
@@ -4828,6 +5097,7 @@ async function main() {
     connectionTest,
     analysisEnabled,
     artifactExportEnabled,
+    localServiceProbeEnabled,
     goalsEnabled,
     codeGraphEnabled,
     lspEnabled,

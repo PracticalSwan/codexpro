@@ -63,6 +63,7 @@ codexpro setup</code>
             <span>loopback + bearer protected</span>
             <span>safe bash default</span>
             <span>repo-backed context</span>
+            <span>bounded evidence readers</span>
             <span>0.32.4 tunnel heartbeat + child recovery</span>
           </div>
           <div class="hero-actions">
@@ -92,7 +93,7 @@ codexpro setup</code>
               <div>
                 <span>02</span>
                 <strong>CodexPro</strong>
-                <p>Token-protected MCP server with workspace, bash, write, and tool modes.</p>
+            <p>Token-protected MCP server with workspace, bash, write, evidence-reader, and tool modes.</p>
               </div>
               <div>
                 <span>03</span>
@@ -518,6 +519,10 @@ codexpro settings delete --yes</code></pre>
             <span>git_history</span>
             <span>git_blame</span>
             <span>code_intelligence_status</span>
+            <span>read_notebook</span>
+            <span>inspect_table</span>
+            <span>inspect_dependency</span>
+            <span>probe_local_service (opt-in Full)</span>
             <span>inspect_archive</span>
             <span>read_document</span>
             <span>export_file</span>
@@ -531,7 +536,7 @@ codexpro settings delete --yes</code></pre>
           <article>
             <small>Safety defaults</small>
             <h3>Blocked paths</h3>
-            <p><code>.env</code>, private keys, <code>.git</code>, <code>node_modules</code>, generated build/cache folders, paths outside the workspace, and symlink escapes are refused.</p>
+            <p><code>.env</code>, private keys, <code>.git</code>, generic <code>node_modules</code> access, generated build/cache folders, paths outside the workspace, and symlink escapes are refused. The exact declared-dependency reader and opt-in loopback probe keep separate containment/host gates.</p>
           </article>
           <article>
             <small>Safe bash</small>

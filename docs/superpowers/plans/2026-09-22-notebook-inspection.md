@@ -2,6 +2,8 @@
 
 > **For agentic workers:** implement this plan task-by-task. Keep version 1 strictly read-only and JSON-structural; do not add a kernel.
 
+**Status:** Verified
+
 **Goal:** Add a bounded `read_notebook` tool that presents `.ipynb` structure and outputs cleanly without executing or rewriting notebooks.
 
 **Architecture:** Parse notebook JSON in a focused guarded module, normalize cells/outputs to small typed summaries, and register one read-only MCP tool in Standard/Full mode.

@@ -2,6 +2,8 @@
 
 > **For agentic workers:** implement this plan task-by-task. Prefer pure helpers and existing admin/profile infrastructure; do not create another dashboard.
 
+**Status:** Verified
+
 **Goal:** Make existing CodexPro runtime, capability, and saved-profile state understandable without adding a new control plane.
 
 **Architecture:** Add one deterministic capability-explanation module, project it through existing diagnostics/admin HTML, and add read-only profile CLI commands. Existing profile mutation, auth, policy, and diagnostics remain authoritative.

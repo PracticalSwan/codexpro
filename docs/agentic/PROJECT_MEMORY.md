@@ -79,6 +79,8 @@ Plan 38 Runtime Lifecycle and Build Provenance
 - **Plan 45 (P1):** add one read-only installed Node dependency inspector for exact version/export/type/docs/symbol evidence. Keep generic `node_modules` blocking unchanged; no registry/network/install/package execution.
 - **Plan 46 (P1):** add one default-off Full-mode loopback HTTP GET/HEAD sensor with bounded/redacted responses. No browser, credentials, redirects, proxies, arbitrary hosts, crawling, or service-ownership claims.
 
+Implementation status: Plans 38–46 are complete in the authoritative sequence. The current source includes the bounded cumulative regression fixture `scripts/roadmap-38-46-smoke.mjs` plus named focused build/runtime, capability, provider, notebook, briefing, failure-context, table, dependency, and local-service smokes; public tool additions are limited to `read_notebook`, `inspect_table`, `inspect_dependency`, and the explicitly gated `probe_local_service`, while `workspace_snapshot` and `verify_changes` were deepened in place. Generic `node_modules` blocking, PathGuard, authentication, redaction, policy, and the no-browser/no-Telegram boundary remain unchanged.
+
 Research-only/watch items: future MCP protocol/Tasks/interactive-approval capabilities. Reopen only when stable connected-client support provides a concrete benefit over existing primitives.
 
 ## Maintenance and release state

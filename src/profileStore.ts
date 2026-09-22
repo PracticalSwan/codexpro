@@ -45,6 +45,7 @@ export interface WorkspaceProfile {
   widgetDomain?: string;
   analysisEnabled?: boolean;
   artifactExportEnabled?: boolean;
+  localServiceProbeEnabled?: boolean;
   goalsEnabled?: boolean;
   codeGraphEnabled?: boolean;
   codeGraphExecutable?: string;
@@ -63,10 +64,13 @@ export interface RuntimeConnection {
   version?: number;
   root?: string;
   pid?: number;
+  pidStartKey?: string;
   updatedAt?: string;
   endpoint?: string;
   localBase?: string;
   localStatusUrl?: string;
+  runtimePid?: number | null;
+  runtimePidStartKey?: string | null;
   tunnel?: TunnelMode | string;
   mode?: ConnectorMode | string;
   bash?: BashMode | string;
@@ -83,6 +87,7 @@ export interface RuntimeConnection {
   transportState?: "ready" | "unavailable" | "unknown";
   analysisEnabled?: boolean;
   artifactExportEnabled?: boolean;
+  localServiceProbeEnabled?: boolean;
   goalsEnabled?: boolean;
   codeGraphEnabled?: boolean;
   lspEnabled?: boolean;

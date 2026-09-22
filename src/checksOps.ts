@@ -9,6 +9,7 @@ import { discoverVerificationCommands, reviewWorkspaceChanges } from "./analysis
 import type { ChangeAnalysis } from "./analysis/types.js";
 import { parseTestOutput, type StructuredTestResult, type TestFramework } from "./testResultOps.js";
 import { buildVerificationRepairContract, type VerificationRepairContract } from "./verificationEvidence.js";
+import { composeVerificationFailureContext, type VerificationFailureContext } from "./verificationFailureContext.js";
 
 export interface TrustedCheck {
   id: string;
@@ -201,12 +202,13 @@ export interface VerificationPlanResult {
   repair: VerificationRepairContract;
   routing: VerificationRoutingHint;
   execution_hint: Record<string, unknown>;
+  failure_context?: VerificationFailureContext[];
 }
 
 export function finalizeVerificationResult(analysis: ChangeAnalysis, selectedChecks: TrustedCheck[], results: CheckExecutionResult[], state: { complete: boolean; deadlineYielded?: boolean; deadlineLimitedChild?: boolean; remainingCheckIds?: string[] }, routing: VerificationRoutingHint): VerificationPlanResult {
   const repair = buildVerificationRepairContract(analysis, results);
   const effectiveRepair = !state.complete && repair.status === "passed" ? buildVerificationRepairContract(analysis, []) : repair;
-  return { analysis, selectedChecks, results, ok: state.complete ? results.every((result) => result.ok) : null, complete: state.complete, deadlineYielded: Boolean(state.deadlineYielded), deadlineLimitedChild: Boolean(state.deadlineLimitedChild), remainingCheckIds: state.remainingCheckIds ?? [], repair: effectiveRepair, routing, execution_hint: routing.executionHint };
+  return { analysis, selectedChecks, results, ok: state.complete ? results.every((result) => result.ok) : null, complete: state.complete, deadlineYielded: Boolean(state.deadlineYielded), deadlineLimitedChild: Boolean(state.deadlineLimitedChild), remainingCheckIds: state.remainingCheckIds ?? [], repair: effectiveRepair, routing, execution_hint: routing.executionHint, failure_context: composeVerificationFailureContext(analysis, results) };
 }
 
 export async function verifyChanges(request: {

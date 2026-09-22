@@ -13,6 +13,7 @@ import { runHooks } from "./hooks/runner.js";
 import { z } from "zod";
 import type { CodexProConfig } from "./config.js";
 import { CODEXPRO_PACKAGE_NAME, CODEXPRO_VERSION } from "./packageIdentity.js";
+import { buildIdentity } from "./buildIdentity.js";
 import { withSyncCallDeadline } from "./deadline.js";
 import { classifyExecutionHint, executionHintPublic, executionThresholds } from "./executionGuidance.js";
 import { WorkspaceManager, PathGuard, CodexProError, type Workspace, type WorkspaceRegistry } from "./guard.js";
@@ -55,6 +56,12 @@ import { preflightChanges } from "./preflightOps.js";
 import { gitStage, gitCommit, gitPush } from "./gitWriteOps.js";
 import { inspectArchive, extractArchive } from "./archiveOps.js";
 import { readDocument } from "./documentOps.js";
+import { readNotebook } from "./notebookOps.js";
+import { inspectTable } from "./tableOps.js";
+import { inspectDependency } from "./dependencyOps.js";
+import { probeLocalService } from "./localServiceProbe.js";
+import { explainCapabilities } from "./capabilityExplain.js";
+import { composeWorkspaceBriefing } from "./workspaceBriefing.js";
 import { exportWorkspaceFile } from "./exportOps.js";
 import { GoalStore } from "./goals/store.js";
 import { JobStore, publicJobRecord } from "./jobs/store.js";
@@ -445,6 +452,9 @@ const STANDARD_TOOL_NAMES = [
   "code_intelligence_status",
   "inspect_archive",
   "read_document",
+  "read_notebook",
+  "inspect_table",
+  "inspect_dependency",
   "read_many",
   "search_many",
   "gather_context",
@@ -486,6 +496,10 @@ const FULL_TOOL_NAMES = [
   "code_intelligence_status",
   "inspect_archive",
   "read_document",
+  "read_notebook",
+  "inspect_table",
+  "inspect_dependency",
+  "probe_local_service",
   "read_many",
   "search_many",
   "gather_context",
@@ -632,6 +646,7 @@ export function toolNamesForMode(config: CodexProConfig): string[] {
   if (!config.allowGitPush) { const pushIndex = names.indexOf("git_push"); if (pushIndex !== -1) names.splice(pushIndex, 1); }
   if (!config.codeGraphEnabled || config.writeMode !== "workspace") { const syncIndex = names.indexOf("codegraph_sync"); if (syncIndex !== -1) names.splice(syncIndex, 1); }
   if (!config.artifactExportEnabled) { const exportIndex = names.indexOf("export_file"); if (exportIndex !== -1) names.splice(exportIndex, 1); }
+  if (!config.localServiceProbeEnabled) { const probeIndex = names.indexOf("probe_local_service"); if (probeIndex !== -1) names.splice(probeIndex, 1); }
   const goalsAvailable = config.goalsEnabled && config.writeMode === "workspace" && config.bashMode !== "off" && !config.connectionTest && goalPlatformStatus(config.goalDir).available;
   if (!goalsAvailable) {
     for (const goalTool of GOAL_TOOL_NAMES) { const goalIndex = names.indexOf(goalTool); if (goalIndex !== -1) names.splice(goalIndex, 1); }
@@ -675,6 +690,7 @@ function shouldRegisterTool(config: CodexProConfig, name: string): boolean {
   if (name === "git_push" && !config.allowGitPush) return false;
   if (name === "codegraph_sync" && (!config.codeGraphEnabled || config.writeMode !== "workspace")) return false;
   if (name === "export_file" && !config.artifactExportEnabled) return false;
+  if (name === "probe_local_service" && (!config.localServiceProbeEnabled || config.toolMode !== "full")) return false;
   if (GOAL_TOOL_NAMES.has(name)) {
     if (!config.goalsEnabled || config.writeMode !== "workspace" || config.bashMode === "off" || config.connectionTest) return false;
     if (!goalPlatformStatus(config.goalDir).available) return false;
@@ -1644,6 +1660,7 @@ export function createCodexProServer(
       const safeConfig = {
         packageName: CODEXPRO_PACKAGE_NAME,
         version: CODEXPRO_VERSION,
+        build: buildIdentity(),
         defaultRoot: config.defaultRoot,
         allowedRoots: config.allowedRoots,
         host: config.host,
@@ -1677,6 +1694,8 @@ export function createCodexProServer(
         codeGraphConfigured: Boolean(config.codeGraphExecutable || resolveCommand("codegraph")),
         lspEnabled: config.lspEnabled,
         lspConfigured: Boolean(config.lspExecutable),
+        artifactExportEnabled: config.artifactExportEnabled,
+        localServiceProbeEnabled: config.localServiceProbeEnabled,
         goalsEnabled: config.goalsEnabled,
         goalPlatform,
         maxGoals: config.maxGoals,
@@ -2881,6 +2900,37 @@ export function createCodexProServer(
         includeGlobalSkills: parseBool(args.include_global_skills, false)
       });
       const ai = await readAiBridgeContext(configForWorkspace(workspace), guard, workspace);
+      const instructionSources = await instructionsForPath(workspaceConfig, guard, workspace, ".").catch(() => ({ sources: [] as string[] }));
+      const analysis = workspaceConfig.analysisEnabled
+        ? await inspectWorkspace(workspaceConfig, guard, workspace).catch(() => null)
+        : null;
+      const checks = await discoverTrustedChecks(workspaceConfig, guard, workspace).catch(() => []);
+      const providerStatuses = workspaceConfig.analysisEnabled
+        ? await resolveAnalysisProviders(workspaceConfig, workspace).catch(() => [])
+        : [];
+      const jobs = await jobStore.list(workspace.id).catch(() => []);
+      const batches = await batchStore.list(workspace.id).catch(() => []);
+      const goals = workspaceConfig.goalsEnabled ? await goalStoreFor(workspace).list(workspace.id).catch(() => []) : [];
+      const processes = processManagerFor(workspace).list();
+      const activeStates = new Set(["queued", "running", "paused", "waiting", "active", "approved", "awaiting_review", "awaiting_projection"]);
+      const activeWork = {
+        processes: processes.filter((process) => process.state === "running").length,
+        jobs: jobs.filter((job) => activeStates.has(job.state)).length,
+        batches: batches.filter((batch) => activeStates.has(batch.state)).length,
+        goals: goals.filter((goal) => activeStates.has(goal.state)).length,
+        failed: jobs.filter((job) => job.state === "failed").length + batches.filter((batch) => batch.state === "stale").length,
+        interrupted: jobs.filter((job) => job.state === "interrupted").length
+      };
+      const briefing = composeWorkspaceBriefing({
+        workspace: { id: workspace.id, pathLabel: workspace.id },
+        gitStatus: summary.gitStatus,
+        recentCommits: summary.recentCommits,
+        instructions: instructionSources.sources.map((source) => ({ path: source, scope: "." })),
+        project: analysis ? { languages: analysis.languages, projectTypes: analysis.projectTypes, entrypoints: analysis.entrypoints } : undefined,
+        checks: checks.map((check) => ({ id: check.id, label: check.command })),
+        activeWork,
+        capabilities: explainCapabilities({ config: workspaceConfig, registeredTools: toolNamesForMode(workspaceConfig), providerStatuses })
+      });
       const text = `${summary.text}\n\n## AI handoff context\n\n${ai.text}`;
       const aiContextTruncated = ai.text.length > STRUCTURED_STRING_MAX_CHARS;
       const aiContextText = aiContextTruncated
@@ -2901,7 +2951,8 @@ export function createCodexProServer(
         ai_context: { files: ai.files, text: aiContextText, truncated: aiContextTruncated },
         bash_mode: workspaceConfig.bashMode,
         write_mode: workspaceConfig.writeMode,
-        tool_mode: workspaceConfig.toolMode
+        tool_mode: workspaceConfig.toolMode,
+        briefing
       });
     }
   );
@@ -3710,6 +3761,115 @@ export function createCodexProServer(
       const workspace = workspaces.getWorkspace(args.workspace_id);
       const result = await readDocument(configForWorkspace(workspace), guard, workspace, { path: String(args.path ?? ""), maxOutputBytes: args.max_output_bytes });
       return textResult(`# Document\n\nFormat: ${result.format}\nSections: ${result.sections}\nBytes: ${result.bytes}\n\n${result.text}`, { workspace_id: workspace.id, ...result });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "read_notebook",
+    {
+      title: "Read Notebook",
+      description: "Read bounded structured metadata, cells, and output summaries from a Jupyter notebook without executing it.",
+      inputSchema: {
+        workspace_id: z.string().optional(),
+        path: z.string().describe("Jupyter notebook path relative to the workspace root."),
+        cell_indices: z.array(z.number().int().min(0)).max(100).optional(),
+        start_cell: z.number().int().min(0).optional(),
+        end_cell: z.number().int().min(0).optional(),
+        include_outputs: z.boolean().optional(),
+        max_output_bytes: z.number().int().min(1000).optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await readNotebook(configForWorkspace(workspace), guard, workspace, {
+        path: String(args.path ?? ""),
+        cellIndices: args.cell_indices,
+        startCell: args.start_cell,
+        endCell: args.end_cell,
+        includeOutputs: args.include_outputs,
+        maxOutputBytes: args.max_output_bytes
+      });
+      return textResult(`# Notebook\n\nPath: ${result.path}\nCells: ${result.cellCount} (code ${result.codeCells}, markdown ${result.markdownCells}, raw ${result.rawCells})\nSelected: ${result.selectedCells.length}\n\n${result.selectedCells.map((cell) => `## Cell ${cell.index} (${cell.cellType})\n${cell.source}`).join("\n\n")}`, { workspace_id: workspace.id, ...result });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "inspect_table",
+    {
+      title: "Inspect Table",
+      description: "Inspect a bounded CSV, TSV, JSONL, or NDJSON dataset for schema, primitive types, quality counts, numeric summaries, and deterministic samples without mutation.",
+      inputSchema: {
+        workspace_id: z.string().optional(),
+        path: z.string().describe("CSV, TSV, JSONL, or NDJSON path relative to the workspace root."),
+        max_rows: z.number().int().min(1).max(100000).optional(),
+        max_output_bytes: z.number().int().min(1000).optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await inspectTable(configForWorkspace(workspace), guard, workspace, { path: String(args.path ?? ""), maxRows: args.max_rows, maxOutputBytes: args.max_output_bytes });
+      return textResult(`# Table inspection\n\nPath: ${result.path}\nFormat: ${result.format}\nRows scanned: ${result.rowsScanned}${result.totalRows !== undefined ? `\nTotal rows: ${result.totalRows}` : ""}\nMalformed rows: ${result.malformedRows}\n\nColumns: ${result.columns.map((column) => `${column.name} (${column.type})`).join(", ") || "none"}`, { workspace_id: workspace.id, ...result });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "inspect_dependency",
+    {
+      title: "Inspect Dependency",
+      description: "Inspect the exact workspace-local installed Node dependency selected by a direct package declaration, without executing or browsing arbitrary node_modules paths.",
+      inputSchema: {
+        workspace_id: z.string().optional(),
+        package_name: z.string().min(1).max(214),
+        package_path: z.string().optional().describe("Owning workspace package directory or package.json; defaults to the workspace root."),
+        symbol: z.string().max(160).optional(),
+        include_readme: z.boolean().optional(),
+        max_matches: z.number().int().min(1).max(32).optional(),
+        max_output_bytes: z.number().int().min(1000).optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await inspectDependency(configForWorkspace(workspace), guard, workspace, {
+        packageName: String(args.package_name ?? ""),
+        packagePath: args.package_path,
+        symbol: args.symbol,
+        includeReadme: args.include_readme,
+        maxMatches: args.max_matches,
+        maxOutputBytes: args.max_output_bytes
+      });
+      return textResult(`# Dependency inspection\n\nPackage: ${result.packageName}\nKind: ${result.kind}\nInstalled version: ${result.installedVersion ?? "not resolved"}\nEntry point: ${result.resolvedEntrypoint ?? "unknown"}\nTypes: ${result.typesEntrypoint ?? "unknown"}\nWarnings: ${result.warnings.length || "none"}`, { workspace_id: workspace.id, ...result });
+    }
+  );
+
+  registerCodexTool(
+    config,
+    server,
+    "probe_local_service",
+    {
+      title: "Probe Local Service",
+      description: "Observe one explicitly requested loopback HTTP GET or HEAD response. Full mode and CODEXPRO_LOCAL_SERVICE_PROBE=1 are required; redirects, credentials, proxies, and arbitrary hosts are rejected.",
+      inputSchema: {
+        workspace_id: z.string().optional(),
+        url: z.string().min(1).max(2048),
+        method: z.enum(["GET", "HEAD"]).optional(),
+        timeout_ms: z.number().int().min(250).max(10000).optional(),
+        max_body_bytes: z.number().int().min(1000).max(256000).optional()
+      },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    async (args) => {
+      const workspace = workspaces.getWorkspace(args.workspace_id);
+      const result = await probeLocalService({ url: String(args.url ?? ""), method: args.method, timeoutMs: args.timeout_ms, maxBodyBytes: args.max_body_bytes });
+      return textResult(`# Local service probe\n\n${result.method} ${result.url}\nStatus: ${result.status} ${result.statusText}\nElapsed: ${result.elapsedMs} ms\nOwnership: ${result.workspaceOwnership}\n\n${result.body?.preview ?? "No text body returned."}`, { workspace_id: workspace.id, ...result });
     }
   );
 

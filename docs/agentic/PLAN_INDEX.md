@@ -52,21 +52,23 @@ These are baseline behavior, not pending roadmap work. New long-running features
 
 | ID | Priority | Subsystem | Authoritative design / plan | Status |
 |---|---|---|---|---|
-| 38 | P0 | Runtime Lifecycle and Build Provenance | [design](../superpowers/specs/2026-09-22-runtime-lifecycle-build-provenance-design.md) · [plan](../superpowers/plans/2026-09-22-runtime-lifecycle-build-provenance.md) | Planned |
-| 39 | P0 | Operator UX and Diagnostics Polish | [design](../superpowers/specs/2026-09-22-operator-ux-diagnostics-design.md) · [plan](../superpowers/plans/2026-09-22-operator-ux-diagnostics.md) | Planned |
-| 40 | P1 | Context and Code-Intelligence Provider Integration | [design](../superpowers/specs/2026-09-22-context-provider-integration-design.md) · [plan](../superpowers/plans/2026-09-22-context-provider-integration.md) | Planned |
-| 41 | P1 | Structured Notebook Inspection | [design](../superpowers/specs/2026-09-22-notebook-inspection-design.md) · [plan](../superpowers/plans/2026-09-22-notebook-inspection.md) | Planned |
-| 42 | P0 | AI-Ready Workspace Briefing v2 | [design](../superpowers/specs/2026-09-22-workspace-briefing-v2-design.md) · [plan](../superpowers/plans/2026-09-22-workspace-briefing-v2.md) | Planned |
-| 43 | P0/P1 | Verification Failure Context Pack | [design](../superpowers/specs/2026-09-22-verification-failure-context-design.md) · [plan](../superpowers/plans/2026-09-22-verification-failure-context.md) | Planned |
-| 44 | P1 | Structured Dataset / Table Inspection | [design](../superpowers/specs/2026-09-22-table-inspection-design.md) · [plan](../superpowers/plans/2026-09-22-table-inspection.md) | Planned |
-| 45 | P1 | Dependency Reality Engine | [design](../superpowers/specs/2026-09-22-dependency-reality-engine-design.md) · [plan](../superpowers/plans/2026-09-22-dependency-reality-engine.md) | Planned |
-| 46 | P1 | Local Service Observatory | [design](../superpowers/specs/2026-09-22-local-service-observatory-design.md) · [plan](../superpowers/plans/2026-09-22-local-service-observatory.md) | Planned |
+| 38 | P0 | Runtime Lifecycle and Build Provenance | [design](../superpowers/specs/2026-09-22-runtime-lifecycle-build-provenance-design.md) · [plan](../superpowers/plans/2026-09-22-runtime-lifecycle-build-provenance.md) | Verified |
+| 39 | P0 | Operator UX and Diagnostics Polish | [design](../superpowers/specs/2026-09-22-operator-ux-diagnostics-design.md) · [plan](../superpowers/plans/2026-09-22-operator-ux-diagnostics.md) | Verified |
+| 40 | P1 | Context and Code-Intelligence Provider Integration | [design](../superpowers/specs/2026-09-22-context-provider-integration-design.md) · [plan](../superpowers/plans/2026-09-22-context-provider-integration.md) | Verified |
+| 41 | P1 | Structured Notebook Inspection | [design](../superpowers/specs/2026-09-22-notebook-inspection-design.md) · [plan](../superpowers/plans/2026-09-22-notebook-inspection.md) | Verified |
+| 42 | P0 | AI-Ready Workspace Briefing v2 | [design](../superpowers/specs/2026-09-22-workspace-briefing-v2-design.md) · [plan](../superpowers/plans/2026-09-22-workspace-briefing-v2.md) | Verified |
+| 43 | P0/P1 | Verification Failure Context Pack | [design](../superpowers/specs/2026-09-22-verification-failure-context-design.md) · [plan](../superpowers/plans/2026-09-22-verification-failure-context.md) | Verified |
+| 44 | P1 | Structured Dataset / Table Inspection | [design](../superpowers/specs/2026-09-22-table-inspection-design.md) · [plan](../superpowers/plans/2026-09-22-table-inspection.md) | Verified |
+| 45 | P1 | Dependency Reality Engine | [design](../superpowers/specs/2026-09-22-dependency-reality-engine-design.md) · [plan](../superpowers/plans/2026-09-22-dependency-reality-engine.md) | Verified |
+| 46 | P1 | Local Service Observatory | [design](../superpowers/specs/2026-09-22-local-service-observatory-design.md) · [plan](../superpowers/plans/2026-09-22-local-service-observatory.md) | Verified |
 
 ## Recommended sequence
 
 `38 → 39 → 40 → 41 → 42 → 43 → 44 → 45 → 46`
 
 Plans 38 and 39 may be implemented together only if explicitly authorized, because both touch launcher/admin diagnostics; otherwise keep each plan independently verifiable. Plans 40–45 are independent read-only/intelligence improvements and should not delay the P0 operator reliability work. Plan 46 should follow Plan 39 so its default-off capability uses the established capability-explanation/profile/admin conventions rather than adding a parallel settings surface.
+
+The complete sequence is locally verified on the current implementation branch. The verification record is the named per-plan focused smoke layer (`scripts/*-smoke.mjs`), cumulative roadmap smoke, repository build, full smoke, stress, audit, package, documentation, secret-exposure, and final-diff gates recorded in the task handoff; no hosted CI result is inferred.
 
 ## Cross-plan integration rules
 

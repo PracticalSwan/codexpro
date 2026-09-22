@@ -2,6 +2,8 @@
 
 > **For agentic workers:** deepen `workspace_snapshot`; do not create a parallel context/task/workspace-summary subsystem.
 
+**Status:** Verified
+
 **Goal:** Make one read-only snapshot call sufficient for first-turn project orientation by aggregating existing authoritative evidence.
 
 **Architecture:** Add a focused pure briefing composer that calls/reuses existing bounded read APIs, then project its result through the existing `workspace_snapshot` response.

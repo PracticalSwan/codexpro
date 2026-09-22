@@ -39,6 +39,8 @@ For cross-session workspace targeting, keep the returned `workspace_id` and pass
 | Stable saved profiles | `codexpro setup`, `codexpro settings` | Save tunnel, port, modes, capabilities, and non-secret defaults for later starts. |
 | Connection test | `codexpro connection-test` | Diagnose whether ChatGPT requests reach the local MCP server without enabling mutation tools. |
 | Health check | `codexpro doctor` | Check Node/build/profile/port/tunnel prerequisites before connecting. |
+| Runtime/build provenance | `codexpro status`, `codexpro --version --verbose` | Read current owned-runtime state and package/source revision without start/restart authority. |
+| Profile inspection | `codexpro profiles list|show` | Read saved next-launch settings with secrets masked; `--current` selects the current workspace. |
 
 ## 2. Capability and safety gates
 
@@ -62,6 +64,7 @@ CodexPro exposes tools according to the active configuration and optional `.code
 | LSP | on/off | Enables an explicitly configured language-server adapter. |
 | Git push | on/off | Controls whether `git_push` exists at all. No force-push interface exists. |
 | Environment inheritance | on/off | Controls whether unrestricted parent environment inheritance is allowed. |
+| Local service probe | off by default; Full-only when enabled | Allows one bounded loopback HTTP GET/HEAD observation; no credentials, redirects, proxies, or arbitrary hosts. |
 
 Use `effective_policy` to see how a workspace policy tightens the global/profile configuration. Workspace policy can reduce authority; it cannot widen it.
 
@@ -213,6 +216,18 @@ These are read-only history tools. They do not attach to or control a live Codex
 | Artifact export | `export_file` | Export a workspace file as an opaque `codexpro-export://...` embedded resource. |
 
 Artifact export intentionally avoids making a raw local path the user-facing resource identity.
+
+## 12a. Structured project evidence
+
+| Capability | Tools | Boundary |
+| --- | --- | --- |
+| Notebook inspection | `read_notebook` | Reads bounded `.ipynb` metadata, selected cells, and redacted output summaries without a kernel or execution. |
+| Dataset/table inspection | `inspect_table` | Parses bounded CSV/TSV/JSONL/NDJSON rows for schema, null/type/numeric summaries, malformed counts, and deterministic samples. No dataframe or SQL runtime is introduced. |
+| Installed dependency reality | `inspect_dependency` | Reports exact workspace-local declared Node dependency metadata, entrypoints, README, and optional bounded symbol evidence. It does not install, import, execute, fetch, or relax generic `node_modules` blocking. |
+| Workspace briefing | `workspace_snapshot.briefing` | Combines existing Git, instruction, project, trusted-check, durable-work, and capability evidence; it never probes services or scans dependencies automatically. |
+| Verification failure context | `verify_changes.failure_context` | Adds bounded failure locations, related tests, context paths, and redacted reproduction commands to existing verification results. No autonomous repair loop runs. |
+
+These readers are synchronous and read-only. They preserve the ordinary PathGuard, policy, redaction, and output-budget gates.
 
 ## 13. Durable Goals
 

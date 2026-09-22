@@ -8,6 +8,7 @@ import { createHttpTransportCompat, isInitializeRequestCompat } from "./mcpCompa
 import type { NodeStreamableHTTPServerTransport } from "@modelcontextprotocol/node";
 import { expandHome, loadConfig, type CodexProConfig } from "./config.js";
 import { CODEXPRO_PACKAGE_NAME, CODEXPRO_VERSION } from "./packageIdentity.js";
+import { buildIdentity } from "./buildIdentity.js";
 import {
   profilePathForRoot,
   readRuntimeConnection,
@@ -28,6 +29,7 @@ import { JobStore } from "./jobs/store.js";
 import { diagnosticsSnapshot } from "./diagnosticsOps.js";
 import { redactConfigPaths } from "./pathLabels.js";
 import { WorkspaceRegistry } from "./guard.js";
+import { explainCapabilities } from "./capabilityExplain.js";
 
 function escapeHtml(value: unknown): string {
   return String(value ?? "")
@@ -102,6 +104,7 @@ const AdminProfilePatch = z.object({
   widgetDomain: textField(2048),
   analysisEnabled: z.boolean().optional(),
   artifactExportEnabled: z.boolean().optional(),
+  localServiceProbeEnabled: z.boolean().optional(),
   goalsEnabled: z.boolean().optional(),
   codeGraphEnabled: z.boolean().optional(),
   codeGraphExecutable: textField(4096),
@@ -148,6 +151,7 @@ interface ProfileFormValues {
   widgetDomain: string;
   analysisEnabled: boolean;
   artifactExportEnabled: boolean;
+  localServiceProbeEnabled: boolean;
   goalsEnabled: boolean;
   codeGraphEnabled: boolean;
   codeGraphExecutable: string;
@@ -241,6 +245,7 @@ function profileValues(config: CodexProConfig, profile = readWorkspaceProfile(co
     widgetDomain: String(profile.widgetDomain ?? config.widgetDomain),
     analysisEnabled: Boolean(profile.analysisEnabled ?? config.analysisEnabled),
     artifactExportEnabled: Boolean(profile.artifactExportEnabled ?? config.artifactExportEnabled),
+    localServiceProbeEnabled: Boolean(profile.localServiceProbeEnabled ?? config.localServiceProbeEnabled),
     goalsEnabled: Boolean(profile.goalsEnabled ?? config.goalsEnabled),
     codeGraphEnabled: Boolean(profile.codeGraphEnabled ?? config.codeGraphEnabled),
     codeGraphExecutable: String(profile.codeGraphExecutable ?? config.codeGraphExecutable ?? ""),
@@ -415,6 +420,7 @@ function profileForm(config: CodexProConfig): string {
           </div>
           <label class="check-row"><input name="analysisEnabled" type="checkbox" value="true"${values.analysisEnabled ? " checked" : ""}><span>Enable built-in repository analysis</span></label>
           <label class="check-row"><input name="artifactExportEnabled" type="checkbox" value="true"${values.artifactExportEnabled ? " checked" : ""}><span>Enable artifact export</span></label>
+          <label class="check-row"><input name="localServiceProbeEnabled" type="checkbox" value="true"${values.localServiceProbeEnabled ? " checked" : ""}><span>Enable local service probe <small>Full mode, loopback HTTP GET/HEAD only</small></span></label>
           <label class="check-row"><input name="goalsEnabled" type="checkbox" value="true"${values.goalsEnabled ? " checked" : ""}><span>Enable Durable Goals</span></label>
           <label class="check-row"><input name="codeGraphEnabled" type="checkbox" value="true"${values.codeGraphEnabled ? " checked" : ""}><span>Enable CodeGraph</span></label>
           <label class="check-row"><input name="lspEnabled" type="checkbox" value="true"${values.lspEnabled ? " checked" : ""}><span>Enable LSP provider</span></label>
@@ -500,6 +506,7 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
     ...(next.widgetDomain ? { widgetDomain: next.widgetDomain } : {}),
     analysisEnabled: next.analysisEnabled,
     artifactExportEnabled: next.artifactExportEnabled,
+    localServiceProbeEnabled: next.localServiceProbeEnabled,
     goalsEnabled: next.goalsEnabled,
     codeGraphEnabled: next.codeGraphEnabled,
     ...(next.codeGraphExecutable ? { codeGraphExecutable: next.codeGraphExecutable } : {}),
@@ -518,12 +525,31 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
 function profileResponse(config: CodexProConfig): Record<string, unknown> {
   const profile = readWorkspaceProfile(config.defaultRoot);
   const runtime = readRuntimeConnection(config.defaultRoot);
+  const effective = profileValues(config, profile);
+  const currentCapabilities = explainCapabilities({ config, registeredTools: toolNamesForMode(config), takesEffect: "current" });
   return redactStructured({
     ok: true,
     profile_path: profile.profilePath ?? profilePathForRoot(config.defaultRoot),
     exists: Boolean(profile.profilePath),
     profile: sanitizeWorkspaceProfile(profile),
-    effective: profileValues(config, profile),
+    effective,
+    current_runtime: {
+      toolMode: config.toolMode,
+      localServiceProbeEnabled: config.localServiceProbeEnabled,
+      writeMode: config.writeMode,
+      bashMode: config.bashMode,
+      syncCallDeadlineMode: config.syncCallDeadlineMode,
+      syncCallDeadlineMs: config.syncCallDeadlineMs
+    },
+    saved_next_launch: {
+      toolMode: effective.toolMode,
+      writeMode: effective.write,
+      bashMode: effective.bash,
+      localServiceProbeEnabled: effective.localServiceProbeEnabled,
+      syncCallDeadlineMode: effective.syncCallDeadlineMode,
+      syncCallDeadlineMs: effective.syncCallDeadlineMinutes * 60_000
+    },
+    capability_explanations: currentCapabilities,
     runtime_connection: runtime,
     runtime: {
       defaultRoot: config.defaultRoot,
@@ -542,6 +568,7 @@ function profileResponse(config: CodexProConfig): Record<string, unknown> {
       widgetDomain: config.widgetDomain,
       analysisEnabled: config.analysisEnabled,
       artifactExportEnabled: config.artifactExportEnabled,
+      localServiceProbeEnabled: config.localServiceProbeEnabled,
       goalsEnabled: config.goalsEnabled,
       codeGraphEnabled: config.codeGraphEnabled,
       codeGraphExecutable: config.codeGraphExecutable ?? "",
@@ -589,6 +616,8 @@ function onboardingPage(config: CodexProConfig): string {
   const allowedRoots = config.allowedRoots.map((root) => `<li>${escapeHtml(root)}</li>`).join("");
   const authLabel = config.authToken ? "Token protected" : "Disabled";
   const writeTone = config.writeMode === "workspace" ? "agent" : config.writeMode;
+  const capabilities = explainCapabilities({ config, registeredTools: toolNamesForMode(config), takesEffect: "current" });
+  const capabilityRows = capabilities.map((capability) => `<div class="row"><span class="label">${escapeHtml(capability.id.replaceAll("_", " "))}</span><span class="pill ${capability.state === "available" ? "" : "warn"}">${escapeHtml(capability.state)}</span><span class="mono">${escapeHtml(capability.reason)}</span></div>`).join("");
   const rootArg = shellQuote(config.defaultRoot);
   const sessionArg = shellQuote(config.bashSessionId || "main");
   const githubUrl = "https://github.com/PracticalSwan/codexpro";
@@ -1389,6 +1418,18 @@ function onboardingPage(config: CodexProConfig): string {
       <a href="#access">Access</a>
       <a href="#cli">CLI</a>
     </nav>
+    <section class="panel" id="overview" aria-label="Runtime overview">
+      <div class="section-head"><div><h2>Runtime overview</h2><p>Current effective state. Saved profile edits are labeled next launch and never mutate the running process.</p></div></div>
+      <div class="status">
+        <div class="row"><span class="label">Package</span><span class="mono">${escapeHtml(buildIdentity().packageName)} ${escapeHtml(buildIdentity().version)}</span></div>
+        <div class="row"><span class="label">Build</span><span class="mono">${escapeHtml(buildIdentity().revision || "unknown")} / ${escapeHtml(buildIdentity().channel)}</span></div>
+        <div class="row"><span class="label">Workspace</span><span class="mono">${escapeHtml(config.defaultRoot)}</span></div>
+        <div class="row"><span class="label">Transport</span><span class="pill">${escapeHtml(config.host)}:${escapeHtml(config.port)}</span></div>
+        <div class="row"><span class="label">Tools / write / bash</span><span class="pill">${escapeHtml(config.toolMode)} / ${escapeHtml(config.writeMode)} / ${escapeHtml(config.bashMode)}</span></div>
+      </div>
+      <h3>Capabilities</h3>
+      <div class="status">${capabilityRows}</div>
+    </section>
     <section class="overview">
       ${profileForm(config)}
       <aside class="side-stack">
@@ -1602,6 +1643,7 @@ function onboardingPage(config: CodexProConfig): string {
           widgetDomain: data.widgetDomain,
           analysisEnabled: Boolean(form.elements.analysisEnabled?.checked),
           artifactExportEnabled: Boolean(form.elements.artifactExportEnabled?.checked),
+          localServiceProbeEnabled: Boolean(form.elements.localServiceProbeEnabled?.checked),
           goalsEnabled: Boolean(form.elements.goalsEnabled?.checked),
           codeGraphEnabled: Boolean(form.elements.codeGraphEnabled?.checked),
           codeGraphExecutable: data.codeGraphExecutable,
@@ -1903,6 +1945,7 @@ async function main(): Promise<void> {
       name: "CodexPro",
       packageName: CODEXPRO_PACKAGE_NAME,
       version: CODEXPRO_VERSION,
+      build: buildIdentity(),
       defaultRoot: config.defaultRoot,
       allowedRoots: config.allowedRoots,
       bashMode: config.bashMode,

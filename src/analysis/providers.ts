@@ -58,13 +58,20 @@ export async function searchOptionalAnalysisProviders(
   intent: AnalysisSearchIntent,
   maxResults: number,
   override?: AnalysisProvider[]
-): Promise<{ matches: StructuredSearchMatch[]; warnings: string[] }> {
+): Promise<{ matches: StructuredSearchMatch[]; warnings: string[]; providerStates: string[] }> {
   const matches: StructuredSearchMatch[] = [];
   const warnings: string[] = [];
+  const providerStates: string[] = [];
   for (const provider of override ?? configuredProviders(config)) {
     let availability;
     try { availability = await provider.availability(workspace); }
-    catch (error) { warnings.push(`${provider.id}: ${redactSensitiveText(error instanceof Error ? error.message : String(error))}`); continue; }
+    catch (error) {
+      const detail = redactSensitiveText(error instanceof Error ? error.message : String(error));
+      providerStates.push(`${provider.id}:error:${detail.slice(0, 180)}`);
+      warnings.push(`${provider.id}: ${detail}`);
+      continue;
+    }
+    providerStates.push(`${provider.id}:${availability.available ? "available" : "unavailable"}:${redactSensitiveText(availability.detail ?? "").slice(0, 180)}`);
     if (!availability.available || !provider.search) {
       if (availability.detail) warnings.push(`${provider.id}: ${redactSensitiveText(availability.detail)}`);
       continue;
@@ -86,5 +93,29 @@ export async function searchOptionalAnalysisProviders(
     }
     if (matches.length >= maxResults) break;
   }
-  return { matches, warnings };
+  return { matches, warnings, providerStates };
+}
+
+export interface ProviderContextEvidence {
+  matches: StructuredSearchMatch[];
+  warnings: string[];
+  providers: string[];
+}
+
+export async function contextEvidenceFromProviders(
+  config: CodexProConfig,
+  guard: PathGuard,
+  workspace: Workspace,
+  query: string,
+  maxResults: number
+): Promise<ProviderContextEvidence> {
+  const bounded = Math.max(1, Math.min(32, Math.min(config.maxSearchResults, Math.floor(maxResults))));
+  if (!query.trim() || !config.analysisEnabled) return { matches: [], warnings: [], providers: [] };
+  const configured = configuredProviders(config);
+  const result = await searchOptionalAnalysisProviders(config, guard, workspace, query.trim().slice(0, 240), "references", bounded, configured);
+  return {
+    matches: result.matches.slice(0, bounded),
+    warnings: result.warnings.slice(0, 16),
+    providers: (result.providerStates ?? configured.map((provider) => provider.id)).slice(0, 16)
+  };
 }

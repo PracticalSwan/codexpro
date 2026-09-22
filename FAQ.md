@@ -36,6 +36,10 @@ The main differences are:
 - The normal workflow emphasizes diffs, `show_changes`, smoke tests, and handoff status files.
 - CodexPro keeps a strict boundary: no model proxying, account pooling, third-party Pro site scraping, quota bypassing, or OS sandbox claims.
 
+## What was added in the current Unreleased roadmap batch?
+
+The current `main` implementation includes bounded runtime/build provenance and guarded local status/stop commands, deterministic capability/profile diagnostics, provider-backed symbol context, read-only notebook/table/dependency evidence, workspace briefings, and verification failure context. `probe_local_service` is a separate default-off Full-mode capability limited to one explicit loopback HTTP GET/HEAD request. It never follows redirects, sends credentials, or claims that the target listener belongs to the selected workspace. Generic `node_modules` access remains blocked; only the exact declared-dependency inspector has a containment-checked exception.
+
 CodexPro connects ChatGPT to a user-approved local repository over MCP. Repository access, command permissions, and change review remain explicit.
 
 ## What does Repository Analysis understand?

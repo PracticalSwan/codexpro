@@ -2,6 +2,8 @@
 
 > **For agentic workers:** implement this plan task-by-task. Deepen existing `gather_context`; do not create a replacement context engine.
 
+**Status:** Verified
+
 **Goal:** Feed bounded optional CodeGraph/LSP structural evidence into symbol-oriented `gather_context` while preserving deterministic built-in fallback.
 
 **Architecture:** Add a narrow provider-evidence helper to the existing analysis provider seam, merge guarded provider paths/reasons into existing context candidates, and extend the current cache/resumable fingerprint only as much as required.
