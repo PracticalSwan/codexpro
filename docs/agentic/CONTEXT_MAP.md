@@ -41,7 +41,7 @@ This is a compact architecture-navigation aid. Runtime source/tests remain autho
 - **Plan 43:** current verification/check/change-impact/context evidence plus one shared failure-context composer.
 - **Plan 44:** new focused `tableOps.ts`, one read-only Standard/Full tool, bounded streaming parser tests.
 - **Plan 45:** new focused `dependencyOps.ts` over package manifests/package graph plus a tool-specific, containment-checked installed-package reader; generic `node_modules` blocking stays unchanged.
-- **Plan 46:** new focused `localServiceProbe.ts` plus existing config/profile/admin capability seams; one default-off Full-mode loopback HTTP GET/HEAD tool only.
+- **Plan 46:** focused `localServiceProbe.ts` plus existing config/profile/admin capability seams; one package-default-off Full-mode loopback HTTP GET/HEAD tool only. The 0.33.1 patch adds a per-OS-user future-profile preference under that user's CodexPro home without changing the runtime/network security boundary.
 
 ## High-risk neighbors
 

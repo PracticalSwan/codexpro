@@ -67,6 +67,7 @@ Usage:
   codexpro start --root /path/to/repo
   codexpro start --tunnel openai --openai-tunnel-id tunnel_...
   codexpro settings
+  codexpro settings user-default --local-service-probe on|off
   codexpro profiles list|show
   codexpro status [--root /path/to/repo] [--json]
   codexpro stop [--root /path/to/repo] [--json]
@@ -244,6 +245,7 @@ Workspace settings:
   codexpro settings list
   codexpro settings set --tunnel ngrok --hostname your-domain.ngrok-free.dev
   codexpro settings set --project /path/to/another/repo
+  codexpro settings user-default --local-service-probe on|off
   codexpro settings set --clear-projects
   codexpro settings use
   codexpro settings delete --yes
@@ -849,6 +851,28 @@ function acquireOpenAiTunnelLease(tunnelId, root, port) {
   throw new Error(`Could not acquire the OpenAI tunnel lease for ${tunnelId}. Retry after the other CodexPro launcher exits.`);
 }
 
+function userProbePreference() {
+  try {
+    return readJsonFile(path.join(codexProHome(), 'user-preferences.json'))?.localServiceProbeEnabled === true;
+  } catch {
+    return false; // An invalid preference file must never enable an opt-in capability.
+  }
+}
+
+function userDefaultProfile() {
+  return userProbePreference() ? { localServiceProbeEnabled: true } : {};
+}
+
+function saveUserProbePreference(enabled) {
+  const home = codexProHome();
+  fs.mkdirSync(home, { recursive: true, mode: 0o700 });
+  const filePath = path.join(home, 'user-preferences.json');
+  const existing = readJsonFile(filePath);
+  const payload = { ...(existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {}), localServiceProbeEnabled: enabled };
+  fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+  try { fs.chmodSync(filePath, 0o600); } catch {}
+}
+
 function profileDir() {
   return path.join(codexProHome(), 'profiles');
 }
@@ -879,12 +903,13 @@ function readJsonFile(filePath) {
 }
 
 function loadWorkspaceProfile(root) {
+  const inherited = userDefaultProfile();
   const profilePath = profilePathForRoot(root);
-  if (!fs.existsSync(profilePath)) return {};
+  if (!fs.existsSync(profilePath)) return inherited;
   const profile = readJsonFile(profilePath);
-  if (!profile || typeof profile !== 'object' || Array.isArray(profile)) return {};
-  if (profile.root && profile.root !== root) return {};
-  return { ...profile, profilePath };
+  if (!profile || typeof profile !== 'object' || Array.isArray(profile)) return inherited;
+  if (profile.root && profile.root !== root) return inherited;
+  return { ...inherited, ...profile, profilePath };
 }
 
 function listWorkspaceProfiles() {
@@ -917,6 +942,7 @@ function saveWorkspaceProfile(root, profile) {
     version: 1,
     root,
     updatedAt: new Date().toISOString(),
+    ...userDefaultProfile(),
     ...profile
   };
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
@@ -4515,7 +4541,17 @@ async function runSettings(argv) {
     return;
   }
   const root = realDir(args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
-  const profile = args.noProfile ? {} : loadWorkspaceProfile(root);
+  const profile = args.noProfile ? userDefaultProfile() : loadWorkspaceProfile(root);
+
+  if (action === 'user-default') {
+    if (args.localServiceProbeEnabled !== undefined) {
+      saveUserProbePreference(boolFromValue(args.localServiceProbeEnabled, false));
+      statusLine('ok', `Local service probe user preference: ${userProbePreference() ? 'on' : 'off'}`);
+    } else {
+      console.log(JSON.stringify({ localServiceProbeEnabled: userProbePreference() }));
+    }
+    return;
+  }
 
   if (action === 'list' || action === 'ls') {
     printProfileList();
@@ -4881,7 +4917,7 @@ async function main() {
   }
 
   const root = realDir(args.root ?? process.env.CODEXPRO_ROOT ?? process.cwd());
-  let profile = args.noProfile ? {} : loadWorkspaceProfile(root);
+  let profile = args.noProfile ? userDefaultProfile() : loadWorkspaceProfile(root);
   profile = await maybeConfigureFirstRun(root, args, profile);
   if (!connectionTest && optionBool(args, profile, 'connectionTest', ['CODEXPRO_CONNECTION_TEST'], false)) {
     connectionTest = true;

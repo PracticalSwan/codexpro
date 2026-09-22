@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.33.1 (2026-09-23)
+
+- Corrected Artifact Export capability diagnostics to check the real `export_file` MCP registration rather than the nonexistent `export_artifact` name, with enabled, missing-tool, and disabled regression cases.
+- Added an explicit per-OS-user Local Service Probe preference (`codexpro settings user-default --local-service-probe on|off`) stored only in that user's CodexPro home. Newly created launcher/admin workspace profiles inherit the user's opt-in unless a workspace explicitly opts out. The package-wide default stays off, and the existing Full-mode, loopback, HTTP GET/HEAD and credential/redirect restrictions are unchanged.
+- Added an isolated fresh-user/inherited-profile/explicit-opt-out regression to the standard smoke suite. No persistent profile data, credentials, or user preference files are included in release packages.
+
 ## 0.33.0 (2026-09-22)
 
 - Made the cumulative roadmap smoke version-independent so future SemVer releases do not retain hard-coded prior-version assertions.

@@ -100,6 +100,19 @@ export function codexProHome(): string {
   return customHome ? path.resolve(expandHome(customHome)) : path.join(os.homedir(), ".codexpro");
 }
 
+function userProbePreference(): boolean {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(codexProHome(), "user-preferences.json"), "utf8")) as unknown;
+    return Boolean(raw && typeof raw === "object" && !Array.isArray(raw) && (raw as { localServiceProbeEnabled?: unknown }).localServiceProbeEnabled === true);
+  } catch {
+    return false; // Missing/invalid preferences never turn on the default-off probe.
+  }
+}
+
+function userDefaultProfile(): WorkspaceProfile {
+  return userProbePreference() ? { localServiceProbeEnabled: true } : {};
+}
+
 export function profileDir(): string {
   return path.join(codexProHome(), "profiles");
 }
@@ -139,13 +152,14 @@ function readJsonFile(filePath: string): unknown {
 }
 
 export function readWorkspaceProfile(root: string): WorkspaceProfile {
+  const inherited = userDefaultProfile();
   const profilePath = profilePathForRoot(root);
-  if (!fs.existsSync(profilePath)) return {};
+  if (!fs.existsSync(profilePath)) return inherited;
   const profile = readJsonFile(profilePath);
-  if (!profile || typeof profile !== "object" || Array.isArray(profile)) return {};
+  if (!profile || typeof profile !== "object" || Array.isArray(profile)) return inherited;
   const typed = profile as WorkspaceProfile;
-  if (typed.root && canonicalRootForIdentity(typed.root) !== canonicalRootForIdentity(root)) return {};
-  return { ...typed, profilePath };
+  if (typed.root && canonicalRootForIdentity(typed.root) !== canonicalRootForIdentity(root)) return inherited;
+  return { ...inherited, ...typed, profilePath };
 }
 
 export function saveWorkspaceProfile(root: string, profile: WorkspaceProfile): string {
@@ -157,6 +171,7 @@ export function saveWorkspaceProfile(root: string, profile: WorkspaceProfile): s
   const payload: WorkspaceProfile = {
     version: 1,
     updatedAt: new Date().toISOString(),
+    ...userDefaultProfile(),
     ...rest,
     root: canonicalRoot
   };

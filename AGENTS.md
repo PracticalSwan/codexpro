@@ -21,7 +21,7 @@ Scope: this repository and all descendants.
 - MCP Tasks/extra interactive-approval work beyond the delivered compatibility seam is retired from the active roadmap. Do not resurrect it from historical files/commits without a new requirement and current client-capability evidence.
 - Do not add browser automation, messaging-control channels, or remote-desktop behavior as a CodexPro feature without a new explicitly approved architecture decision.
 - Plan 45 may inspect declared installed dependencies only through its dedicated bounded read-only seam; it must not weaken the global `node_modules` block or turn generic file/context tools into dependency browsers.
-- Plan 46 remains default-off, Full-mode, loopback HTTP GET/HEAD observation only: no credentials, redirects, proxying, arbitrary network access, browser behavior, or target-service ownership claims.
+- Plan 46 remains default-off for fresh users; a per-OS-user `user-preferences.json` opt-in may enable the probe for that user's future workspace profiles, which can explicitly opt out. Never change the package-wide default or import another user's preferences. Full-mode, loopback HTTP GET/HEAD observation only: no credentials, redirects, proxying, arbitrary network access, browser behavior, or target-service ownership claims.
 - Never persist or expose secrets, private browser state, personal identifiers, raw prompts/transcripts, or hidden reasoning in diagnostics, packages, logs, docs, or commits.
 
 ## Runtime lifecycle

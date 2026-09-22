@@ -109,3 +109,7 @@
 ## D-038 — Runtime provenance and structured readers stay bounded seams
 **Decision:** Build provenance is generated at packaging time and surfaced as read-only identity; runtime status/stop uses recorded launcher/server PID start identities and exact-tree ownership, with no start/restart operation. Notebook, table, dependency, briefing, and verification evidence reuse PathGuard, existing policy/tool-mode registration, bounded readers, and redaction. The dependency exception is package-name/manifest-derived and the local-service exception is opt-in loopback-only.
 **Why:** The Plans 38–46 gaps are evidence and operator gaps, not reasons to create another scheduler, store, context engine, browser/network platform, or lifecycle controller. Keeping each capability behind a small existing seam makes the sequence independently reviewable and preserves fail-closed defaults.
+
+## D-039 — Local Service Probe user preferences never change the packaged default
+**Decision:** Keep the probe package-default-off. Users may explicitly store a per-OS-account opt-in under their own CodexPro home so future workspace profiles inherit it; explicit workspace off and launch overrides remain possible. Existing profiles of other accounts are not migrated. This preference does not change the Full-mode, loopback, GET/HEAD, no-credentials, and no-redirect restrictions.
+**Why:** A user's preferred development workflow should persist without silently enabling HTTP observation for every installation or exposing unrelated accounts.

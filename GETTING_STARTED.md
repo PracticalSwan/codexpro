@@ -11,13 +11,13 @@ CodexPro Full is the `PracticalSwan/codexpro` fork. The installed command is sti
 Use the GitHub Release artifact when you want the latest tagged/stable build:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.0/codexpro-full-0.33.0.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.1/codexpro-full-0.33.1.tgz
 codexpro --version
 ```
 
 ### Latest `main`
 
-Stable **0.33.0** includes all completed Plans 38–46, the post-0.32.4 Windows Bash and handoff maintenance, and current tunnel/HTTP continuity fixes. Build current main only when future verified **Unreleased** changes are required:
+Stable **0.33.1** includes all completed Plans 38–46, the post-0.32.4 Windows Bash and handoff maintenance, and current tunnel/HTTP continuity fixes. Build current main only when future verified **Unreleased** changes are required:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -27,11 +27,15 @@ git pull --ff-only origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.0.tgz
+npm install -g ./codexpro-full-0.33.1.tgz
 codexpro --version
 ```
 
 Do **not** install `codexpro@latest` from npm expecting CodexPro Full; that is the upstream distribution, not this fork.
+
+### Optional per-user Local Service Probe preference (0.33.1+)
+
+The probe remains **off by default** in the distributed package and for every user who has not opted in. To enable it for only your own operating-system account and all workspace profiles you create later, run `codexpro settings user-default --local-service-probe on`. This saves a preference under your account's CodexPro home; it does not change the machine-wide or packaged defaults or retroactively rewrite other users' profiles. Use `codexpro settings set --local-service-probe on --tool-mode full` in each existing profile you want to enable. An individual workspace can override the user preference with `codexpro settings set --local-service-probe off`; an explicit launch flag also overrides it. To restore your account's default-off behavior for new profiles, run `codexpro settings user-default --local-service-probe off`. Changes affect the next launch; the probe is Full-mode only and restricted to explicit loopback GET/HEAD without credentials or redirects.
 
 ## 2. Prerequisites
 
@@ -103,7 +107,7 @@ When `open_workspace` returns a `workspace_id`, keep using that ID explicitly af
 
 ## 6. Recommended: multiple ChatGPT sessions, multiple projects
 
-For most users, run **one CodexPro runtime** and allow every project you want that runtime to serve. Stable 0.33.0 includes the current multi-session/isolation fixes. If later changes are listed under **Unreleased** in `CHANGELOG.md`, use current `main` only when you specifically need those newer changes.
+For most users, run **one CodexPro runtime** and allow every project you want that runtime to serve. Stable 0.33.1 includes the current multi-session/isolation fixes. If later changes are listed under **Unreleased** in `CHANGELOG.md`, use current `main` only when you specifically need those newer changes.
 
 Example:
 
@@ -221,7 +225,7 @@ git pull --ff-only origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.0.tgz
+npm install -g ./codexpro-full-0.33.1.tgz
 codexpro --version
 codexpro doctor
 ```

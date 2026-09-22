@@ -2,7 +2,7 @@
 
 CodexPro Full is PracticalSwan's independently maintained CodexPro fork. It keeps the `codexpro` CLI and MCP compatibility while adding the 0.31–0.33 agentic, continuity, safety, code-intelligence, artifact, and Durable Goal features. The release package is `codexpro-full`; installing it still provides the `codexpro` CLI.
 
-> **Release status:** the latest tagged stable artifact is **0.33.0**. Plans 38–46 and previous Unreleased runtime/Windows improvements are included in this release; future changes will be listed under **Unreleased**.
+> **Release status:** the latest tagged stable artifact is **0.33.1**. Patch 0.33.1 corrects Artifact Export registration diagnostics and adds a per-OS-user opt-in for future Local Service Probe profiles; the global probe default remains off. Plans 38–46 and previous Unreleased runtime/Windows improvements are included in this release; future changes will be listed under **Unreleased**.
 
 > Repository: `https://github.com/PracticalSwan/codexpro`
 > Upstream lineage: `https://github.com/rebel0789/codexpro`

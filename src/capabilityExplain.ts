@@ -110,7 +110,7 @@ export function explainCapabilities(input: CapabilityExplanationInput): Capabili
   const exportDescriptor = descriptors[8];
   result.push(!config.artifactExportEnabled
     ? item(exportDescriptor, "disabled", "artifact_export_disabled", "Artifact export is disabled in the current profile.", "profile", effect)
-    : !registered.has("export_artifact")
+    : !registered.has("export_file")
       ? item(exportDescriptor, "unavailable", "artifact_export_tool_not_registered", "Artifact export is enabled but its tool is not registered in this mode.", "policy", effect)
       : item(exportDescriptor, "available", "artifact_export_enabled", "Artifact export is enabled and registered.", "runtime", effect));
 

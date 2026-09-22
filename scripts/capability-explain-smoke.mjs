@@ -13,4 +13,10 @@ assert.equal(capabilities.find((item) => item.id === 'codegraph')?.state, 'unava
 assert.equal(capabilities.find((item) => item.id === 'lsp')?.state, 'available');
 const unknown = explainCapabilities({ config: { ...config, codeGraphEnabled: true }, registeredTools: ['codegraph_sync'] });
 assert.equal(unknown.find((item) => item.id === 'codegraph')?.state, 'degraded');
+const availableExport = explainCapabilities({ config: { ...config, artifactExportEnabled: true }, registeredTools: ['export_file'] });
+assert.equal(availableExport.find((item) => item.id === 'artifact_export')?.state, 'available');
+const absentExport = explainCapabilities({ config: { ...config, artifactExportEnabled: true }, registeredTools: [] });
+assert.equal(absentExport.find((item) => item.id === 'artifact_export')?.state, 'unavailable');
+const disabledExport = explainCapabilities({ config: { ...config, artifactExportEnabled: false }, registeredTools: ['export_file'] });
+assert.equal(disabledExport.find((item) => item.id === 'artifact_export')?.state, 'disabled');
 console.log('capability explanation smoke passed');
