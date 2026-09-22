@@ -1,6 +1,6 @@
 # CodexPro Project Memory
 
-Last verified: 2026-09-22 (Asia/Bangkok)
+Last verified: 2026-09-23 (Asia/Bangkok)
 
 ## Canonical workspace and identity
 
@@ -9,7 +9,7 @@ Last verified: 2026-09-22 (Asia/Bangkok)
 - Upstream: `rebel0789/codexpro`.
 - Latest fetched upstream baseline observed on 2026-09-22: `482d0035e0c08cceb5916958df652b325b4c52d8`. It moved after the 2026-09-19 maintenance closeout and has not been reconciled by the 2026-09-22 roadmap/documentation cleanup.
 - Product identity: **CodexPro Full**. Distribution package: `codexpro-full`; installed CLI and compatibility surface remain `codexpro`.
-- Current public stable release: **v0.33.0**, tag commit `97cb4fb36a75eb345b892d28ad026115b20aaea3`; published GitHub tarball SHA-256 `b1f10a975893d2e36165b05872ba4d73e45fadd9226c8fde6c329ecd214c73b8` verified against its sidecar. GitHub Releases are canonical; npm-registry publication remains a separately authenticated channel.
+- Current public stable release: **v0.33.2**, tag commit `24943686055f3da75b73766bdfa2d6d747686c59`; published GitHub tarball SHA-256 `b355b38b157049652bafb1b063a40956a0ea30c5229fac820e304c4b40b76a69` independently verified against its release sidecar and installed globally. GitHub Releases are canonical; npm-registry publication remains a separately authenticated channel.
 - Exact local/origin HEAD, runtime PIDs, and tunnel state are execution state: recover them from Git/runtime evidence at the start of each task rather than treating old values as durable memory.
 
 ## Product boundary
@@ -85,9 +85,9 @@ Research-only/watch items: future MCP protocol/Tasks/interactive-approval capabi
 
 ## Maintenance and release state
 
-- The 2026-09-22 v0.33.0 release commit `97cb4fb36a75eb345b892d28ad026115b20aaea3` passed the complete local release gate, hosted Windows/Node 24, Ubuntu/Node 20, Release Integrity, and Pages checks. The tag-triggered release workflow passed, its tarball and checksum were independently verified, a disposable public-artifact install passed, and the exact artifact is installed globally; CodexPro remains stopped. The protected profiles, secrets, hooks, and trust stores were hash-verified unchanged.
+- The 2026-09-23 (Bangkok time) v0.33.2 patch passed the complete local release gate, hosted Windows/Node 24, Ubuntu/Node 20, Release Integrity, Pages, and tag-triggered release workflow. The public tarball and sidecar matched independently; the exact published artifact is installed globally with the matching tag revision, and CodexPro remains stopped. The patch fixes Artifact Export capability diagnostics to look for `export_file`, and introduces a per-OS-user, default-off-unless-opted-in Local Service Probe preference for future profiles. This operator's seven existing profiles were explicitly enabled, with local profile backups retained; other users' package defaults remain off. The preceding v0.33.1 tag was not published as a GitHub Release after hosted smoke-fixture failures; the corrected patch is v0.33.2.
 - The 2026-09-22 fetch found upstream advanced to `482d0035...`; no upstream merge/reconciliation is part of this roadmap/documentation cleanup.
-- Public release `v0.33.0` supersedes `v0.32.4`; release tarball and SHA-256 sidecar are hosted on GitHub Releases and the live Pages site documents v0.33.0. npm-registry publication of `codexpro-full` is unavailable because this machine has no existing npm authentication or configured trusted-publishing path.
+- Public release `v0.33.2` supersedes `v0.33.0`; the release tarball and SHA-256 sidecar are hosted on GitHub Releases and the live Pages site documents v0.33.2. npm-registry publication of `codexpro-full` is unavailable because this machine has no existing npm authentication or configured trusted-publishing path.
 - Historical release tarball hashes, CI run IDs, process IDs, and intermediate maintenance commits belong in `CHANGELOG.md`, Git/GitHub, and task handoffs rather than this memory file.
 
 ## Runtime lifecycle boundary
