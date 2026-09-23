@@ -58,10 +58,14 @@ function isLoopbackHost(host) {
 }
 
 function usage() {
-  console.log(`CodexPro easy launcher
+  const version = packageVersion();
+  console.log(`CodexPro Full launcher
+
+Install from GitHub Releases:
+  npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v${version}/codexpro-full-${version}.tgz
+  https://github.com/PracticalSwan/codexpro/releases
 
 Usage:
-  npm install -g codexpro
   codexpro setup
   codexpro start
   codexpro start --root /path/to/repo
