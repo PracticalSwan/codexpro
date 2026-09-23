@@ -41,6 +41,7 @@ Implementation begins only when the user authorizes the exact plan scope. Read t
 ## Verification policy
 - Documentation-only planning: inspect generated Markdown, links/paths, feature coverage, and Git diff; do not run runtime test suites.
 - Local module behavior: focused smoke + `npm run build`.
+- Git-backed workspace analysis must use Git's tracked and non-ignored untracked inventory; explicitly tracked ignored paths remain eligible, and non-Git workspaces retain guarded discovery. Every candidate still passes PathGuard and text/size checks. Regression fixtures must cover ignored generated outputs, legitimate untracked source, force-tracked ignored files, and non-Git roots.
 - Shared MCP/tool registration/config: focused smoke + `npm run build` + `npm run smoke`.
 - Process/concurrency/output budgets: add `npm run stress`.
 - Windows smoke tests that spawn child processes and then remove temporary trees must use bounded `fs.rm` retries for transient `EBUSY`/`EPERM`/`ENOTEMPTY` cleanup races after real teardown completion; prefer condition-based teardown evidence over arbitrary sleeps.

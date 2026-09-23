@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fixed Git-aware workspace inspection to include tracked files and non-ignored untracked files rather than treating Git-ignored build/output dependencies as project source. Preserved explicitly tracked ignored files, non-Git workspace discovery, and existing PathGuard checks; added CLI regressions for all four cases.
 - Stabilized Windows CI lock regressions by keeping the exclusive file lock until the parent begins its retry probe, selecting PowerShell 7 on hosted runners, and bounding fixture readiness and teardown. Checks smoke now tolerates a timeout before its child can create `slow.pid`, while retaining process-exit verification when the marker exists.
 
 ## 0.33.4 (2026-09-23)
