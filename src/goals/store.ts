@@ -17,13 +17,15 @@ function pidAlive(pid: number): boolean {
 async function delay(ms: number): Promise<void> { await new Promise((resolve) => setTimeout(resolve, ms)); }
 const WINDOWS_RENAME_RETRY_CODES = new Set(["EPERM", "EACCES", "EBUSY"]);
 async function replaceFileAtomic(temp: string, target: string): Promise<void> {
-  const attempts = process.platform === "win32" ? 10 : 1;
+  // Busy Windows runners can retain an exclusive/AV lock beyond the original ~1s retry window.
+  const attempts = process.platform === "win32" ? 30 : 1;
+  const retryUntil = Date.now() + 5_000;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try { await fsp.rename(temp, target); return; }
     catch (error) {
       const code = (error as NodeJS.ErrnoException).code ?? "";
-      if (attempt + 1 >= attempts || process.platform !== "win32" || !WINDOWS_RENAME_RETRY_CODES.has(code)) throw error;
-      await delay(Math.min(200, 25 * (attempt + 1)));
+      if (attempt + 1 >= attempts || process.platform !== "win32" || !WINDOWS_RENAME_RETRY_CODES.has(code) || Date.now() >= retryUntil) throw error;
+      await delay(Math.min(250, 25 * (attempt + 1), Math.max(1, retryUntil - Date.now())));
     }
   }
 }

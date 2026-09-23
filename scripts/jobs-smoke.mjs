@@ -99,12 +99,13 @@ async function boundedStep(label, operation, timeoutMs = 15_000) {
   if (process.platform === 'win32') {
     const target = path.join(stateDir, 'records', `${job.id}.json`);
     const current = await store.require(job.id);
-    const locker = await holdExclusive(target, 350);
+    // Cover a legitimate Windows exclusive lock that outlasts the old ~1s retry window.
+    const locker = await holdExclusive(target, 1_850);
     const retryStarted = Date.now();
     current.progress.phase = 'atomic-retry-probe';
     current.updatedAt = new Date().toISOString();
     await store.save(current);
-    assert(Date.now() - retryStarted >= 200, 'job atomic replacement did not exercise the Windows retry path');
+    assert(Date.now() - retryStarted >= 1_350, 'job atomic replacement did not outlive the old Windows retry window');
     if (locker.exitCode === null) await new Promise((resolve) => locker.once('exit', resolve));
     assert.equal((await store.require(job.id)).progress.phase, 'atomic-retry-probe');
   }

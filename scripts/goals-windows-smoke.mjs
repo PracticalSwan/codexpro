@@ -36,10 +36,11 @@ try {
     const retryGoal={schemaVersion:1,id:"goal_retry-atomic",workspaceId:workspace.id,workspaceRoot:workspace.root,title:"atomic retry",state:"proposed",control:"run",fingerprint:"a".repeat(64),maxWorkers:1,tasks:[],createdAt:now,updatedAt:now};
     await store.save(retryGoal);
     const target=path.join(goalBase,"records",`${retryGoal.id}.json`);
-    const locker=await holdExclusive(target,350);
+    // Exercise a lock longer than the previous ~1s Windows retry budget.
+    const locker=await holdExclusive(target,1850);
     const retryStarted=Date.now();
     await store.save({...retryGoal,title:"atomic retry updated",updatedAt:new Date().toISOString()});
-    assert(Date.now()-retryStarted>=200,"goal atomic replacement did not exercise the Windows retry path");
+    assert(Date.now()-retryStarted>=1350,"goal atomic replacement did not outlive the old Windows retry window");
     if(locker.exitCode===null) await new Promise((resolve)=>locker.once("exit",resolve));
     assert.equal((await store.require(retryGoal.id)).title,"atomic retry updated");
   }
