@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { withWindowsExclusiveLock } from './windows-exclusive-lock.mjs';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { loadConfig } from '../dist/config.js';
@@ -57,25 +58,6 @@ async function settle(id, attempts = Math.ceil(STRUCTURED_JOB_ATTESTATION_GRACE_
   return store.require(id);
 }
 
-async function holdExclusive(filePath, milliseconds) {
-  const escaped = filePath.replaceAll("'", "''");
-  const script = `$f=[System.IO.File]::Open('${escaped}',[System.IO.FileMode]::Open,[System.IO.FileAccess]::ReadWrite,[System.IO.FileShare]::None); [Console]::Out.WriteLine('LOCKED'); Start-Sleep -Milliseconds ${milliseconds}; $f.Dispose()`;
-  const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
-  await new Promise((resolve, reject) => {
-    let out = '', err = '';
-    const timeoutMs = 20_000;
-    const timer = setTimeout(() => {
-      child.kill();
-      reject(new Error(`lock process readiness timeout after ${timeoutMs} ms: ${err}`));
-    }, timeoutMs);
-    child.once('error', (error) => { clearTimeout(timer); reject(error); });
-    child.stdout.on('data', (chunk) => { out += String(chunk); if (out.includes('LOCKED')) { clearTimeout(timer); resolve(); } });
-    child.stderr.on('data', (chunk) => { err += String(chunk); });
-    child.on('exit', (code) => { if (!out.includes('LOCKED')) { clearTimeout(timer); reject(new Error(`lock process exited ${code}: ${err}`)); } });
-  });
-  return child;
-}
-
 async function boundedStep(label, operation, timeoutMs = 15_000) {
   console.log(`[jobs smoke] ${label}`);
   let timer;
@@ -100,13 +82,13 @@ async function boundedStep(label, operation, timeoutMs = 15_000) {
     const target = path.join(stateDir, 'records', `${job.id}.json`);
     const current = await store.require(job.id);
     // Cover a legitimate Windows exclusive lock that outlasts the old ~1s retry window.
-    const locker = await holdExclusive(target, 1_850);
-    const retryStarted = Date.now();
-    current.progress.phase = 'atomic-retry-probe';
-    current.updatedAt = new Date().toISOString();
-    await store.save(current);
-    assert(Date.now() - retryStarted >= 1_350, 'job atomic replacement did not outlive the old Windows retry window');
-    if (locker.exitCode === null) await new Promise((resolve) => locker.once('exit', resolve));
+    console.log('[jobs smoke] Windows exclusive-lock retry probe');
+    const { elapsedMs } = await withWindowsExclusiveLock(target, 1_850, async () => {
+      current.progress.phase = 'atomic-retry-probe';
+      current.updatedAt = new Date().toISOString();
+      await store.save(current);
+    });
+    assert(elapsedMs >= 1_350, 'job atomic replacement did not outlive the old Windows retry window');
     assert.equal((await store.require(job.id)).progress.phase, 'atomic-retry-probe');
   }
 

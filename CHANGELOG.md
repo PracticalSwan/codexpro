@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Stabilized Windows CI lock regressions by keeping the exclusive file lock until the parent begins its retry probe, selecting PowerShell 7 on hosted runners, and bounding fixture readiness and teardown. Checks smoke now tolerates a timeout before its child can create `slow.pid`, while retaining process-exit verification when the marker exists.
+
 ## 0.33.4 (2026-09-23)
 
 - Extended bounded Windows atomic file-replacement retries for structured Job and Durable Goal state to tolerate temporary `EPERM`/`EACCES`/`EBUSY` locks for up to approximately five seconds without weakening persistence, ownership, or failure-path cleanup.

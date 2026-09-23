@@ -2,28 +2,14 @@ import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
+import { withWindowsExclusiveLock } from "./windows-exclusive-lock.mjs";
 import { createIsolatedExecution, removeIsolatedExecution, sourceGitState } from "../dist/goals/isolation.js";
 import { GoalStore } from "../dist/goals/store.js";
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), "codexpro-goal-platform-"));
 const goalBase = await fs.mkdtemp(path.join(os.tmpdir(), "codexpro-goal-store-"));
 function git(args) { const r=spawnSync("git",args,{cwd:root,encoding:"utf8"}); if(r.status!==0) throw new Error(r.stderr||r.stdout); return r.stdout.trim(); }
-async function holdExclusive(filePath, milliseconds) {
-  const escaped=filePath.replaceAll("'", "''");
-  const script=`$f=[System.IO.File]::Open('${escaped}',[System.IO.FileMode]::Open,[System.IO.FileAccess]::ReadWrite,[System.IO.FileShare]::None); [Console]::Out.WriteLine('LOCKED'); Start-Sleep -Milliseconds ${milliseconds}; $f.Dispose()`;
-  const child=spawn("powershell.exe",["-NoProfile","-NonInteractive","-Command",script],{stdio:["ignore","pipe","pipe"],windowsHide:true});
-  await new Promise((resolve,reject)=>{
-    let out="",err="";
-    const timeoutMs=20_000;
-    const timer=setTimeout(()=>{child.kill();reject(new Error(`lock process readiness timeout after ${timeoutMs} ms: ${err}`));},timeoutMs);
-    child.once("error",(error)=>{clearTimeout(timer);reject(error);});
-    child.stdout.on("data",(c)=>{out+=String(c);if(out.includes("LOCKED")){clearTimeout(timer);resolve();}});
-    child.stderr.on("data",(c)=>{err+=String(c)});
-    child.on("exit",(code)=>{if(!out.includes("LOCKED")){clearTimeout(timer);reject(new Error(`lock process exited ${code}: ${err}`));}});
-  });
-  return child;
-}
 try {
   git(["init"]); await fs.writeFile(path.join(root,"tracked.txt"),"base\n"); git(["add","tracked.txt"]);
   git(["-c","user.email=goal@example.com","-c","user.name=Goal Smoke","commit","-m","base"]);
@@ -37,11 +23,10 @@ try {
     await store.save(retryGoal);
     const target=path.join(goalBase,"records",`${retryGoal.id}.json`);
     // Exercise a lock longer than the previous ~1s Windows retry budget.
-    const locker=await holdExclusive(target,1850);
-    const retryStarted=Date.now();
-    await store.save({...retryGoal,title:"atomic retry updated",updatedAt:new Date().toISOString()});
-    assert(Date.now()-retryStarted>=1350,"goal atomic replacement did not outlive the old Windows retry window");
-    if(locker.exitCode===null) await new Promise((resolve)=>locker.once("exit",resolve));
+    console.log('[goals smoke] Windows exclusive-lock retry probe');
+    const { elapsedMs }=await withWindowsExclusiveLock(target,1850,()=>
+      store.save({...retryGoal,title:"atomic retry updated",updatedAt:new Date().toISOString()}));
+    assert(elapsedMs>=1350,"goal atomic replacement did not outlive the old Windows retry window");
     assert.equal((await store.require(retryGoal.id)).title,"atomic retry updated");
   }
   const isolation=await createIsolatedExecution(store,workspace,"goal_platform",before);
@@ -52,4 +37,4 @@ try {
   await removeIsolatedExecution(workspace,isolation);
   assert.equal(await fs.readFile(path.join(root,"tracked.txt"),"utf8"),"user dirty\n");
   console.log(`goals platform smoke passed (${process.platform})`);
-} finally { await fs.rm(root,{recursive:true,force:true}); await fs.rm(goalBase,{recursive:true,force:true}); }
+} finally { await fs.rm(root,{recursive:true,force:true,maxRetries:5,retryDelay:50}); await fs.rm(goalBase,{recursive:true,force:true,maxRetries:5,retryDelay:50}); }

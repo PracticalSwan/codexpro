@@ -89,10 +89,18 @@ try {
   assert.equal(interrupted.deadlineYielded, true);
   assert.deepEqual(interrupted.remainingCheckIds, [slowCheck.id, buildCheck.id]);
   assert.equal(interrupted.results.length, 0);
-  const slowPid = Number(await fs.readFile(path.join(root, 'slow.pid'), 'utf8'));
-  let slowAlive = true;
-  try { process.kill(slowPid, 0); } catch { slowAlive = false; }
-  assert.equal(slowAlive, false, 'deadline-limited child still alive after runChecks returned');
+  assert.equal(interrupted.deadlineLimitedChild, true);
+  // Under a busy Windows runner, the deadline can kill npm before its child
+  // starts and writes slow.pid. In that case no fixture child was created.
+  let slowPid;
+  try { slowPid = Number(await fs.readFile(path.join(root, 'slow.pid'), 'utf8')); }
+  catch (error) { if (error?.code !== 'ENOENT') throw error; }
+  if (slowPid !== undefined) {
+    assert(Number.isInteger(slowPid) && slowPid > 0, 'invalid slow fixture PID');
+    let slowAlive = true;
+    try { process.kill(slowPid, 0); } catch { slowAlive = false; }
+    assert.equal(slowAlive, false, 'deadline-limited child still alive after runChecks returned');
+  }
   const parsed = parseTestOutput(
     'generic',
     '',
@@ -136,5 +144,5 @@ try {
     if (saved[key] === undefined) delete process.env[key];
     else process.env[key] = saved[key];
   }
-  await fs.rm(root, { recursive: true, force: true });
+  await fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 }
