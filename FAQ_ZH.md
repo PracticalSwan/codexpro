@@ -19,7 +19,7 @@ CodexPro 不解锁自定义 MCP App，不解锁模型，不绕过账号限制，
 Recommended GitHub Release install:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.2/codexpro-full-0.33.2.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.3/codexpro-full-0.33.3.tgz
 ```
 
 Or build from the PracticalSwan source checkout:
@@ -31,12 +31,14 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.2.tgz
+npm install -g ./codexpro-full-0.33.3.tgz
 ```
+
+In 0.33.3, `codexpro doctor` distinguishes an existing identity-verified runtime in the same workspace from an unrelated port collision, reports a warning instead of a false blocker, and never starts or stops the runtime.
 
 In 0.33.2, Artifact Export diagnostics check the real `export_file` tool. The Local Service Probe stays off by default globally; only your OS account can opt into inherited future-profile defaults using `codexpro settings user-default --local-service-probe on`.
 
-Then run `codexpro setup` in the workspace you want ChatGPT to access. Daily startup is `codexpro start`. The tagged tarball is stable 0.33.0 and includes Plans 38–46 plus long-lived OpenAI tunnel recovery and continuity/isolation fixes. Upstream `codexpro@latest` is not the fork release.
+Then run `codexpro setup` in the workspace you want ChatGPT to access. Daily startup is `codexpro start`. The tagged tarball is stable 0.33.3 and includes Plans 38–46 plus long-lived OpenAI tunnel recovery and continuity/isolation fixes. Upstream `codexpro@latest` is not the fork release.
 
 ## CodexPro Full update
 
@@ -48,7 +50,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.2.tgz
+npm install -g ./codexpro-full-0.33.3.tgz
 codexpro --version
 ```
 

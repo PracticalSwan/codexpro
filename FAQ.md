@@ -2,7 +2,7 @@
 
 ## What is CodexPro Full?
 
-CodexPro Full is the independently maintained `PracticalSwan/codexpro` fork. It preserves the `codexpro` CLI, MCP protocol, profile format, and upstream MIT lineage, but maintains its own 0.31-0.32 feature line including durable operations, process/event continuity, repository intelligence, optional CodeGraph/LSP integration, artifact I/O, guarded Git writes, and Durable Goals.
+CodexPro Full is the independently maintained `PracticalSwan/codexpro` fork. It preserves the `codexpro` CLI, MCP protocol, profile format, and upstream MIT lineage, but maintains its own 0.31-0.33 feature line including durable operations, process/event continuity, repository intelligence, optional CodeGraph/LSP integration, artifact I/O, guarded Git writes, and Durable Goals.
 
 Canonical fork: `https://github.com/PracticalSwan/codexpro`
 
@@ -35,6 +35,10 @@ The main differences are:
 - Durable context is repo-backed through `AGENTS.md` and `.ai-bridge/*`, so important project memory stays reviewable in files.
 - The normal workflow emphasizes diffs, `show_changes`, smoke tests, and handoff status files.
 - CodexPro keeps a strict boundary: no model proxying, account pooling, third-party Pro site scraping, quota bypassing, or OS sandbox claims.
+
+## What changed in the 0.33.3 maintenance release?
+
+`codexpro doctor` now reports an existing identity-verified runtime for the same workspace and port as a warning rather than a false startup blocker. It explicitly warns against launching a second instance. Genuine or stale port conflicts remain failures; this diagnostic change does not start, stop, or reconfigure any runtime.
 
 ## What changed in the 0.33.2 maintenance release?
 
@@ -91,10 +95,10 @@ For the full first-time setup, OpenAI tunnel/key steps, and multi-project exampl
 Install the latest tagged/stable artifact directly from GitHub Releases:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.2/codexpro-full-0.33.2.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.3/codexpro-full-0.33.3.tgz
 ```
 
-Stable **0.33.2 includes Plans 38–46**, long-lived OpenAI tunnel recovery, Windows Bash/handoff maintenance, and current continuity/isolation hardening. Build main from source only for future **Unreleased** fixes:
+Stable **0.33.3 includes Plans 38–46**, long-lived OpenAI tunnel recovery, Windows Bash/handoff maintenance, and current continuity/isolation hardening. Build main from source only for future **Unreleased** fixes:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -103,7 +107,7 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.2.tgz
+npm install -g ./codexpro-full-0.33.3.tgz
 ```
 
 Then run setup from the repository you want ChatGPT to work on:
@@ -131,7 +135,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.2.tgz
+npm install -g ./codexpro-full-0.33.3.tgz
 codexpro --version
 ```
 

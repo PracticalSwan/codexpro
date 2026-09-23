@@ -3804,11 +3804,19 @@ async function runDoctor(argv) {
   record(clipboard ? 'ok' : 'warn', 'Clipboard', clipboard || 'not found; URL will be printed for manual copy');
   record(browser ? 'ok' : 'warn', 'Browser open', browser || 'not found; open ChatGPT manually');
 
+  let existingRuntimeOnPort = false;
   try {
     await assertPortAvailable(host, port);
     record('ok', 'Local port', `${host}:${port} available`);
   } catch (error) {
-    record('fail', 'Local port', error instanceof Error ? error.message.split('\n')[0] : String(error));
+    const portOccupied = error instanceof Error && error.message === portInUseHelp(host, port);
+    const active = portOccupied ? runtimeStatusForRoot(root) : null;
+    if (active?.state === 'running' && active.runtime_pid && active.local_port === Number(port)) {
+      existingRuntimeOnPort = true;
+      record('warn', 'Local port', `${host}:${port} is occupied while this workspace has a recorded running CodexPro runtime (PID ${active.runtime_pid}). Do not launch a second instance; verify ownership with codexpro status.`);
+    } else {
+      record('fail', 'Local port', error instanceof Error ? error.message.split('\n')[0] : String(error));
+    }
   }
 
   if (tunnel === 'openai') {
@@ -3851,7 +3859,9 @@ async function runDoctor(argv) {
     process.exitCode = 1;
     return;
   }
-  statusLine('ok', warnings ? `Ready with ${warnings} warning${warnings === 1 ? '' : 's'}.` : 'Ready.');
+  statusLine('ok', existingRuntimeOnPort
+    ? `Existing runtime detected; do not launch another instance. ${warnings} warning${warnings === 1 ? '' : 's'}.`
+    : warnings ? `Ready with ${warnings} warning${warnings === 1 ? '' : 's'}.` : 'Ready.');
 }
 
 function normalizeSetupChoice(value, allowed, fallback) {

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.33.3 (2026-09-23)
+
+- Corrected `codexpro doctor` diagnostics for an already-running runtime in the same workspace: an occupied port with a live, start-identity-verified runtime record is an explicit warning rather than a false blocker; unrelated and stale port conflicts remain failures. No running process is stopped or restarted.
+- Added same-runtime and stale-owner port regression coverage, and guaranteed cleanup of doctor-smoke test-owned temporary workspaces/profiles on success or failure.
+
 ## 0.33.2 (2026-09-23)
 
 - Corrected Artifact Export capability diagnostics to check the real `export_file` MCP registration rather than the nonexistent `export_artifact` name, with enabled, missing-tool, and disabled regression cases.
