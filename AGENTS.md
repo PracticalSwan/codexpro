@@ -25,7 +25,7 @@ Scope: this repository and all descendants.
 - Never persist or expose secrets, private browser state, personal identifiers, raw prompts/transcripts, or hidden reasoning in diagnostics, packages, logs, docs, or commits.
 
 ## Runtime lifecycle
-- Detect whether CodexPro is running before reinstall, tunnel/runtime replacement, or process termination.
+- Before globally reinstalling, inspect every saved CodexPro workspace profile and exact owned OS processes. `codexpro status --root <current-project>` is workspace-scoped; a stopped result does not mean the global installation is idle. Also check runtime ownership before tunnel/runtime replacement or process termination.
 - If running, **do not stop it without explicit user approval for that specific stop**. Explain why a stop is required.
 - Agents must **never start or restart CodexPro**, including after an approved stop, reinstall, commit, or release.
 - If stopping is approved, terminate only the exact CodexPro-owned process tree required, verify ownership, leave it stopped, and do not touch unrelated Node processes/tunnels/services.

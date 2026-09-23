@@ -77,7 +77,7 @@ When the operator explicitly authorizes release/publication, treat the release a
 - For first-time host-window discovery, guide the user to a disposable new chat, temporarily select Unlimited/observe, run only the mutation-free `tool_time_probe`, note the ChatGPT-side closure time, then restore a bounded value with safety margin. Never measure by leaving real project mutations open-ended.
 
 ## Runtime lifecycle rule
-- Detect whether CodexPro is already running before any step that could require replacing the global installation, changing its tunnel/runtime state, or terminating processes.
+- Before replacing the global installation, inspect **all saved workspace profiles** and the exact CodexPro-owned OS processes; `codexpro status --root <current-project>` checks only that workspace and cannot establish that other profiles are stopped. Apply the same ownership check before changing tunnel/runtime state or terminating processes.
 - If CodexPro is running, **do not stop it without explicit user approval for that specific stop**. Explain why stopping is required before requesting approval.
 - Agents must **never start or restart CodexPro**. This prohibition applies even after an approved stop, successful reinstall, verification, commit, or push.
 - If stop approval is granted, stop only the CodexPro-owned process tree necessary for the authorized operation, leave CodexPro stopped afterward, and do not terminate unrelated Node processes, tunnels, or other services.
