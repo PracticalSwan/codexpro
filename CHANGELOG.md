@@ -6,6 +6,7 @@
 
 - Extended bounded Windows atomic file-replacement retries for structured Job and Durable Goal state to tolerate temporary `EPERM`/`EACCES`/`EBUSY` locks for up to approximately five seconds without weakening persistence, ownership, or failure-path cleanup.
 - Reproduced the post-release Windows/Node 24 CI failure with an exclusive lock exceeding the previous roughly one-second retry budget. Added longer-lock regressions for both stores while preserving fast failure for unrelated errors and non-Windows behavior.
+- Removed the redundant push-time Release Integrity CI job. Cross-platform Windows/Node 24 and Ubuntu/Node 20 smoke checks remain mandatory on `main`; the local pre-tag release gate and tag-triggered GitHub Release retain stress, audit, packaging, and integrity checks. GitHub Pages deployment is unchanged.
 
 ## 0.33.3 (2026-09-23)
 
