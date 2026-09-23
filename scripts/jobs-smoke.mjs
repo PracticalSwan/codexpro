@@ -20,6 +20,7 @@ import {
   STRUCTURED_JOB_ATTESTATION_GRACE_MS
 } from '../dist/jobs/runner.js';
 
+console.log('[jobs smoke] initializing fixture');
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-jobs-smoke-'));
 const stateDir = path.join(root, 'state');
 const workspace = { id: 'ws_jobs_smoke', root, openedAt: new Date().toISOString() };
@@ -48,6 +49,7 @@ await runStructuredJobWorker(async (ctx) => {
 });
 `, 'utf8');
 const unregister = registerStructuredJobProducer({ kind: 'verification', workerEntrypoint: fixtureWorker, resumable: true });
+console.log('[jobs smoke] fixture initialized');
 
 async function settle(id, attempts = Math.ceil(STRUCTURED_JOB_ATTESTATION_GRACE_MS / 100) + 20) {
   for (let i = 0; i < attempts; i += 1) {

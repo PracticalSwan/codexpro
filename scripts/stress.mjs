@@ -20,6 +20,18 @@ async function pathExists(file) {
   }
 }
 
+async function cleanupStressFixtures(...dirs) {
+  const errors = [];
+  for (const dir of dirs) {
+    try {
+      await fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length) throw new AggregateError(errors, `Failed to remove ${errors.length} stress fixture(s).`);
+}
+
 class McpStdioClient {
   constructor(root, env = {}) {
     this.child = spawn(process.execPath, ['dist/stdio.js'], {
@@ -420,7 +432,7 @@ async function runGlobalSkillStress(root) {
     assert(loadedByName.structuredContent.text.includes('# Global Only Skill'), 'load_skill did not load unique user skill by name');
   } finally {
     client?.close();
-    await fs.rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    await cleanupStressFixtures(dir, isolatedRoot);
   }
 }
 
@@ -450,6 +462,7 @@ async function runRedactionStress() {
     }
   } finally {
     client.close();
+    await cleanupStressFixtures(root);
   }
 }
 
@@ -490,6 +503,7 @@ async function runMcpInventoryStress() {
     }
   } finally {
     client.close();
+    await cleanupStressFixtures(root, fakeHome);
   }
 }
 
@@ -581,6 +595,7 @@ async function runMaxReadSearchStress() {
     assert(!search.structuredContent.matches.some((match) => match.path === 'huge.txt'), `search scanned file beyond text scan cap: ${JSON.stringify(search.structuredContent.matches)}`);
   } finally {
     client.close();
+    await cleanupStressFixtures(root);
   }
 }
 
@@ -621,6 +636,7 @@ async function runNodeFallbackSearchLimitStress() {
       `node fallback did not reject an invalid regex cleanly: ${JSON.stringify(invalidRegex.structuredContent)}`);
   } finally {
     client.close();
+    await cleanupStressFixtures(root);
   }
 }
 
@@ -758,6 +774,7 @@ async function runGuardEdgeStress() {
     }
   } finally {
     client.close();
+    await cleanupStressFixtures(root, outside);
   }
 }
 
@@ -835,6 +852,7 @@ async function runShowChangesStatsStress() {
     assert(changedUntrackedChanges.structuredContent.changed && changedUntrackedChanges.structuredContent.review_checkpoint_hit !== true, `show_changes checkpoint hid changed untracked file content: ${JSON.stringify(changedUntrackedChanges.structuredContent)}`);
   } finally {
     client.close();
+    await cleanupStressFixtures(root);
   }
 }
 
@@ -953,19 +971,23 @@ async function runBashHomeEnvStress() {
 }
 
 const root = await makeFixture();
-await runFullModeStress(root);
-await runGlobalSkillStress(root);
-await runRedactionStress();
-await runMcpInventoryStress();
-await runMaxReadSearchStress();
-await runNodeFallbackSearchLimitStress();
-await runAnalysisInventoryPriorityStress();
-await runBashOutputTerminationStress();
-await runBashHomeEnvStress();
-await runGuardEdgeStress();
-await runSupertoolModeStress(root);
-await runShowChangesStatsStress();
-await runMinimalHandoffStress(root);
-await runCardStress(root);
-await runAnalysisBudgetStress();
-console.log(`✓ stress test passed (${root})`);
+try {
+  await runFullModeStress(root);
+  await runGlobalSkillStress(root);
+  await runRedactionStress();
+  await runMcpInventoryStress();
+  await runMaxReadSearchStress();
+  await runNodeFallbackSearchLimitStress();
+  await runAnalysisInventoryPriorityStress();
+  await runBashOutputTerminationStress();
+  await runBashHomeEnvStress();
+  await runGuardEdgeStress();
+  await runSupertoolModeStress(root);
+  await runShowChangesStatsStress();
+  await runMinimalHandoffStress(root);
+  await runCardStress(root);
+  await runAnalysisBudgetStress();
+} finally {
+  await cleanupStressFixtures(root);
+}
+console.log('✓ stress test passed; temporary fixtures cleaned');

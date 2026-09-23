@@ -59,12 +59,14 @@ try {
   assert.notEqual(stopped.state, 'running');
   assert.equal(stopped.terminationReason, 'shutdown');
 
-  console.log('process smoke passed');
 } finally {
+  console.log('[process smoke] test fixture teardown');
   await manager.close().catch(() => {});
   for (const key of keys) {
     if (saved[key] === undefined) delete process.env[key];
     else process.env[key] = saved[key];
   }
   await fs.rm(rootRaw, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  console.log('[process smoke] test fixture teardown complete');
 }
+console.log('process smoke passed');
