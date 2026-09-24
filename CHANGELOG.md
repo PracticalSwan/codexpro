@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.33.6 (2026-09-25)
+
+- Fixed an owner-verified Windows shutdown race: codexpro stop now waits up to five seconds for the recorded MCP server child after its launcher exits, rather than falsely failing while normal child teardown is still underway. A delayed-child regression failed before and passed after the fix; PID/start-identity and no-unverified-signaling safeguards remain unchanged.
+
 ## 0.33.5 (2026-09-25)
 
 - Closed stress-smoke fixture leaks by cleaning test-owned temporary roots in `finally` with bounded Windows retries and surfacing cleanup failures. Added explicit process teardown and Job fixture startup markers to localize occasional long hosted-Windows smoke delays without changing runtime process ownership.

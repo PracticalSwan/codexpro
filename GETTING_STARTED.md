@@ -11,13 +11,13 @@ CodexPro Full is the `PracticalSwan/codexpro` fork. The installed command is sti
 Use the GitHub Release artifact when you want the latest tagged/stable build:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.5/codexpro-full-0.33.5.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.6/codexpro-full-0.33.6.tgz
 codexpro --version
 ```
 
 ### Latest `main`
 
-Stable **0.33.5** includes all completed Plans 38–46, the post-0.32.4 Windows Bash and handoff maintenance, and current tunnel/HTTP continuity fixes. Build current main only when future verified **Unreleased** changes are required:
+Stable **0.33.6** includes all completed Plans 38–46, the post-0.32.4 Windows Bash and handoff maintenance, and current tunnel/HTTP continuity fixes. Build current main only when future verified **Unreleased** changes are required:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -27,11 +27,11 @@ git pull --ff-only origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.5.tgz
+npm install -g ./codexpro-full-0.33.6.tgz
 codexpro --version
 ```
 
-Release 0.33.5 additionally fixes Git-ignore-aware workspace inspection, canonical GitHub Release install guidance, bounded stress fixture cleanup, and pinned Ubuntu 24.04 CI/release runners. As of 0.33.4, structured Job and Durable Goal persistence tolerate longer temporary Windows file locks with bounded retries. The runtime must still be stopped by the operator before replacing an active global installation.
+Release 0.33.6 fixes an owner-verified Windows shutdown race by waiting boundedly for the MCP server child after its launcher exits without signaling unverified PIDs. Release 0.33.5 additionally fixes Git-ignore-aware workspace inspection, canonical GitHub Release install guidance, bounded stress fixture cleanup, and pinned Ubuntu 24.04 CI/release runners. As of 0.33.4, structured Job and Durable Goal persistence tolerate longer temporary Windows file locks with bounded retries. The runtime must still be stopped by the operator before replacing an active global installation.
 
 When an existing runtime uses the configured port, `codexpro doctor` reports the identity-verified running instance from that workspace as a warning rather than an unrelated conflict. Do not launch a second instance; use `codexpro status --root <workspace>` to check the current runtime.
 
@@ -111,7 +111,7 @@ When `open_workspace` returns a `workspace_id`, keep using that ID explicitly af
 
 ## 6. Recommended: multiple ChatGPT sessions, multiple projects
 
-For most users, run **one CodexPro runtime** and allow every project you want that runtime to serve. Stable 0.33.5 includes the current multi-session/isolation fixes. If later changes are listed under **Unreleased** in `CHANGELOG.md`, use current `main` only when you specifically need those newer changes.
+For most users, run **one CodexPro runtime** and allow every project you want that runtime to serve. Stable 0.33.6 includes the current multi-session/isolation fixes. If later changes are listed under **Unreleased** in `CHANGELOG.md`, use current `main` only when you specifically need those newer changes.
 
 Example:
 
@@ -229,7 +229,7 @@ git pull --ff-only origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.5.tgz
+npm install -g ./codexpro-full-0.33.6.tgz
 codexpro --version
 codexpro doctor
 ```

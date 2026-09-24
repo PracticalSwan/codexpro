@@ -1173,7 +1173,9 @@ async function runStop(argv) {
     if (result.status !== 0 && runtimeProcessAlive(launcherPid)) throw new Error('Refusing to stop: exact owned process tree did not terminate.');
     stopped = waitForRecordedProcessExit(launcherPid, 3000);
   }
-  if (!stopped || (runtimePid && runtimeProcessAlive(runtimePid))) throw new Error('Refusing to clean runtime state: an owned process is still alive.');
+  // On Windows the launcher may exit before its owned MCP server finishes teardown.
+  // Wait boundedly for that child; never signal a PID whose ownership may have changed.
+  if (!stopped || (runtimePid && !waitForRecordedProcessExit(runtimePid, 5000))) throw new Error('Refusing to clean runtime state: an owned process is still alive.');
   const portRelease = await waitForRuntimePortRelease(runtime.localBase);
   const current = readJsonFile(filePath);
   if (Number(current?.pid) === launcherPid && current?.pidStartKey === runtime.pidStartKey) fs.rmSync(filePath, { force: true });
