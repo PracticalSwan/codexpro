@@ -53,11 +53,11 @@
             安装 CLI，在项目里运行 setup，然后用 OpenAI Platform 创建的 Tunnel ID 连接 ChatGPT 自定义 MCP App。CodexPro 会处理本地 server、token、`tunnel-client` 和 workspace 工具。
           </p>
           <div class="install-line" role="group" aria-label="安装命令">
-            <code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.4/codexpro-full-0.33.4.tgz
+            <code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.5/codexpro-full-0.33.5.tgz
 codexpro setup</code>
-            <button class="copy-button" data-copy="npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.4/codexpro-full-0.33.4.tgz&#10;codexpro setup">复制</button>
+            <button class="copy-button" data-copy="npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.5/codexpro-full-0.33.5.tgz&#10;codexpro setup">复制</button>
           </div>
-          <p class="eyebrow"><strong>稳定版：0.33.4。</strong> 结构化任务及 Durable Goal 状态文件现在会对 Windows 临时文件锁进行有界重试。 <code>codexpro doctor</code> 现在能识别同工作区已运行的服务并显示警告，而非误报端口阻断；其他端口冲突仍会阻断启动。 修复 Artifact Export 工具注册诊断，新增当前用户未来配置的本机探测选项，其他用户仍默认关闭。包含 Plans 38–46：构建溯源、运行时状态、诊断、CodeGraph/LSP 上下文、只读 notebook/表格/依赖检查、工作区概览、失败上下文及默认关闭的本机 HTTP 检查，并保留此前的 Tunnel 与 Windows 稳定性修复。</p>
+          <p class="eyebrow"><strong>稳定版：0.33.5。</strong> Git 工作区检查遵守忽略规则，CLI 帮助提供对应版本的 GitHub 安装地址，压力测试清理临时目录，CI 与发布验证固定 Ubuntu 24.04。此前 0.33.4：结构化任务及 Durable Goal 状态文件现在会对 Windows 临时文件锁进行有界重试。 <code>codexpro doctor</code> 现在能识别同工作区已运行的服务并显示警告，而非误报端口阻断；其他端口冲突仍会阻断启动。 修复 Artifact Export 工具注册诊断，新增当前用户未来配置的本机探测选项，其他用户仍默认关闭。包含 Plans 38–46：构建溯源、运行时状态、诊断、CodeGraph/LSP 上下文、只读 notebook/表格/依赖检查、工作区概览、失败上下文及默认关闭的本机 HTTP 检查，并保留此前的 Tunnel 与 Windows 稳定性修复。</p>
           <div class="hero-proof" aria-label="核心能力">
             <span>AGENTS.md 上下文</span>
             <span>.ai-bridge handoff</span>
@@ -85,7 +85,7 @@ codexpro setup</code>
             <div class="demo-grid">
               <div class="chat-pane">
                 <small>安装</small>
-                <p><code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.4/codexpro-full-0.33.4.tgz</code><br /><code>codexpro --version</code></p>
+                <p><code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.5/codexpro-full-0.33.5.tgz</code><br /><code>codexpro --version</code></p>
                 <div class="message-chip">OpenAI Tunnel 默认连接</div>
               </div>
               <div class="tool-pane">
@@ -123,7 +123,7 @@ codexpro setup</code>
         <div>
           <span>01</span>
           <strong>Install</strong>
-          <p>稳定版安装 0.33.4；只有在明确需要后续 Unreleased 修复时才从当前 <code>main</code> 构建。</p>
+          <p>稳定版安装 0.33.5；只有在明确需要后续 Unreleased 修复时才从当前 <code>main</code> 构建。</p>
         </div>
         <div>
           <span>02</span>
@@ -146,7 +146,7 @@ codexpro setup</code>
           <p>该恢复机制已经包含在 <strong>0.33.0</strong> 稳定制品中。</p>
         </div>
         <div class="value-matrix">
-          <div><small>稳定制品</small><strong>GitHub Releases 上的 0.33.4</strong></div>
+          <div><small>稳定制品</small><strong>GitHub Releases 上的 0.33.5</strong></div>
           <div><small>发布线</small><strong>0.33.0 连续性和 Tunnel 修复</strong></div>
           <div><small>恢复范围</small><strong>只重启 tunnel-client，不重启本地 MCP runtime</strong></div>
           <div><small>运行状态</small><strong>恢复期间为 unavailable，readiness 成功后才回到 ready</strong></div>
@@ -200,7 +200,7 @@ codexpro setup</code>
             <span>1</span>
             <div>
               <strong>全局安装</strong>
-              <pre><code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.4/codexpro-full-0.33.4.tgz
+              <pre><code>npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.5/codexpro-full-0.33.5.tgz
 codexpro --version</code></pre>
             </div>
           </div>

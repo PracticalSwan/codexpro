@@ -36,6 +36,10 @@ The main differences are:
 - The normal workflow emphasizes diffs, `show_changes`, smoke tests, and handoff status files.
 - CodexPro keeps a strict boundary: no model proxying, account pooling, third-party Pro site scraping, quota bypassing, or OS sandbox claims.
 
+## What changed in the 0.33.5 maintenance release?
+
+Git-aware workspace inspection excludes ignored generated dependencies while retaining explicitly tracked ignored files and legitimate untracked sources. CLI help now uses the version-matched CodexPro Full GitHub Release URL, not the unrelated npm package. Windows stress fixtures are removed with bounded cleanup and phase markers; Ubuntu CI/release runners are pinned to 24.04.
+
 ## What changed in the 0.33.4 maintenance release?
 
 Structured Job and Durable Goal persistence now retry temporary Windows atomic-rename failures within a bounded five-second window. Longer exclusive-file-lock regression tests protect the hosted Windows build. Unrelated errors still fail immediately, and the fix does not change permissions, cancellation, worker ownership, or live runtime lifecycle.
@@ -99,10 +103,10 @@ For the full first-time setup, OpenAI tunnel/key steps, and multi-project exampl
 Install the latest tagged/stable artifact directly from GitHub Releases:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.4/codexpro-full-0.33.4.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.5/codexpro-full-0.33.5.tgz
 ```
 
-Stable **0.33.4 includes Plans 38–46**, long-lived OpenAI tunnel recovery, Windows Bash/handoff maintenance, and current continuity/isolation hardening. Build main from source only for future **Unreleased** fixes:
+Stable **0.33.5 includes Plans 38–46**, long-lived OpenAI tunnel recovery, Windows Bash/handoff maintenance, and current continuity/isolation hardening. Build main from source only for future **Unreleased** fixes:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -111,7 +115,7 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.4.tgz
+npm install -g ./codexpro-full-0.33.5.tgz
 ```
 
 Then run setup from the repository you want ChatGPT to work on:
@@ -139,7 +143,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.4.tgz
+npm install -g ./codexpro-full-0.33.5.tgz
 codexpro --version
 ```
 

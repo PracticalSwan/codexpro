@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.33.5 (2026-09-25)
+
 - Closed stress-smoke fixture leaks by cleaning test-owned temporary roots in `finally` with bounded Windows retries and surfacing cleanup failures. Added explicit process teardown and Job fixture startup markers to localize occasional long hosted-Windows smoke delays without changing runtime process ownership.
 - Corrected the CLI's `--help` installation example to point to the version-matched CodexPro Full GitHub Release archive, rather than the unrelated upstream `codexpro` npm package. Added a release-identity regression so future versions do not reintroduce the misleading command.
 - Pinned Ubuntu CI and tag-triggered release verification to the previously tested 24.04 runner instead of the moving `ubuntu-latest` label ahead of GitHub's announced October 2026 migration. Windows/Node 24 and Ubuntu/Node 20 smoke coverage and the independent release gate remain unchanged.
