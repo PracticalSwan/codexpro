@@ -809,7 +809,15 @@ function releaseOpenAiTunnelLease() {
 function acquireOpenAiTunnelLease(tunnelId, root, port) {
   const filePath = openAiTunnelLeasePath(tunnelId);
   fs.mkdirSync(path.dirname(filePath), { recursive: true, mode: 0o700 });
-  const payload = { version: 1, tunnelId, pid: process.pid, root, port: String(port), createdAt: new Date().toISOString() };
+  const payload = {
+    version: 1,
+    tunnelId,
+    pid: process.pid,
+    pidStartKey: processStartIdentity(process.pid),
+    root,
+    port: String(port),
+    createdAt: new Date().toISOString()
+  };
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const fd = fs.openSync(filePath, 'wx', 0o600);
@@ -835,15 +843,23 @@ function acquireOpenAiTunnelLease(tunnelId, root, port) {
       }
       const existingPid = Number(existing?.pid);
       const ownerRoot = typeof existing?.root === 'string' && existing.root ? existing.root : '';
+      const existingAlive = runtimeProcessAlive(existingPid);
+      const livePidStartKey = existingAlive ? processStartIdentity(existingPid) : null;
       let matchingRuntime = false;
-      if (ownerRoot && runtimeProcessAlive(existingPid)) {
+      if (ownerRoot && existingAlive) {
         try {
           const runtime = readJsonFile(runtimeStatusPathForRoot(ownerRoot));
-          matchingRuntime = Number(runtime?.pid) === existingPid && runtime?.tunnel === 'openai' && runtime?.endpoint === tunnelId;
+          const runtimeIdentityMatches = typeof runtime?.pidStartKey !== 'string' ||
+            !livePidStartKey || livePidStartKey === runtime.pidStartKey;
+          matchingRuntime = Number(runtime?.pid) === existingPid &&
+            runtimeIdentityMatches &&
+            runtime?.tunnel === 'openai' && runtime?.endpoint === tunnelId;
         } catch {}
       }
       const createdMs = Date.parse(String(existing?.createdAt ?? ''));
-      const recentlyAcquired = runtimeProcessAlive(existingPid) && Number.isFinite(createdMs) && Date.now() - createdMs < 300_000;
+      const leaseIdentityMatches = typeof existing?.pidStartKey !== 'string' ||
+        !livePidStartKey || livePidStartKey === existing.pidStartKey;
+      const recentlyAcquired = existingAlive && leaseIdentityMatches && Number.isFinite(createdMs) && Date.now() - createdMs < 300_000;
       if (matchingRuntime || recentlyAcquired) {
         const ownerLabel = ownerRoot || 'another workspace';
         const ownerPort = existing?.port ? ` on local port ${existing.port}` : '';

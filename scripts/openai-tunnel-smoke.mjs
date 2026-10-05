@@ -228,7 +228,27 @@ ${fallbackDoctor}`);
 
 const leasePath = path.join(home, 'runtime', 'openai-tunnels', `${tunnelId}.json`);
 await fs.mkdir(path.dirname(leasePath), { recursive: true });
-await fs.writeFile(leasePath, JSON.stringify({ version: 1, tunnelId, pid: process.pid, root: 'stale-root', port: '1', createdAt: '2000-01-01T00:00:00.000Z' }));
+const staleOwnerRuntimePath = await runtimeStatusPath(duplicateRoot, home);
+await fs.writeFile(staleOwnerRuntimePath, JSON.stringify({
+  version: 1,
+  root: duplicateRoot,
+  pid: process.pid,
+  pidStartKey: 'stale-pid-reuse-fixture',
+  runtimePid: null,
+  transportState: 'ready',
+  tunnel: 'openai',
+  endpoint: tunnelId,
+  localBase: 'http://127.0.0.1:1'
+}));
+await fs.writeFile(leasePath, JSON.stringify({
+  version: 1,
+  tunnelId,
+  pid: process.pid,
+  pidStartKey: 'stale-pid-reuse-fixture',
+  root: duplicateRoot,
+  port: '1',
+  createdAt: new Date().toISOString()
+}));
 const port = await getFreePort();
 const runtimePath = await runtimeStatusPath(root, home);
 const child = spawn(process.execPath, [
@@ -272,8 +292,8 @@ try {
   const leaseRootMatches = process.platform === 'win32'
     ? leaseRoot.toLowerCase() === expectedLeaseRoot.toLowerCase()
     : leaseRoot === expectedLeaseRoot;
-  if (liveLease.pid !== child.pid || liveLease.tunnelId !== tunnelId || !leaseRootMatches) {
-    throw new Error(`OpenAI tunnel lease did not replace stale ownership correctly: expected pid=${child.pid} root=${expectedLeaseRoot}; actual=${JSON.stringify(liveLease)}`);
+  if (liveLease.pid !== child.pid || liveLease.pidStartKey !== runtime.pidStartKey || liveLease.tunnelId !== tunnelId || !leaseRootMatches) {
+    throw new Error(`OpenAI tunnel lease did not replace stale ownership correctly: expected pid=${child.pid} start=${runtime.pidStartKey} root=${expectedLeaseRoot}; actual=${JSON.stringify(liveLease)}`);
   }
 
   const tunnelArgs = JSON.parse(await waitForFile(argsFile, 'fake tunnel-client args'));

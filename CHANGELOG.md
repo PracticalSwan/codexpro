@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed false OpenAI tunnel ownership after OS PID reuse: tunnel leases now record the launcher start identity, and existing runtime/lease ownership must remain identity-consistent before a reused PID can block another launch. Legacy leases retain the existing bounded acquisition safeguard, while mismatched saved identities are reclaimed. Added regressions for both stale runtime ownership and a recently created stale lease.
+
 ## 0.33.6 (2026-09-25)
 
 - Fixed an owner-verified Windows shutdown race: codexpro stop now waits up to five seconds for the recorded MCP server child after its launcher exits, rather than falsely failing while normal child teardown is still underway. A delayed-child regression failed before and passed after the fix; PID/start-identity and no-unverified-signaling safeguards remain unchanged.
