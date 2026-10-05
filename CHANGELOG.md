@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.33.8 (2026-10-05)
+
+- Fixed OpenAI tunnel health scratch cleanup after an externally initiated, ownership-verified `codexpro stop`, especially on Windows where launcher-tree termination can bypass launcher exit hooks. Runtime state now records only the exact validated `codexpro-openai-tunnel-*` directory directly under the OS temp root, refreshes that path after tunnel recovery, and removes only that owned directory after the verified launcher/server tree exits. Cleanup retries transient Windows locks; corrupted or non-owned paths are rejected. The runtime-lifecycle regression failed before the fix and passes after it, including a guard that an arbitrary path from runtime state is never deleted.
+
 ## 0.33.7 (2026-10-05)
 
 - Fixed false OpenAI tunnel ownership after OS PID reuse: tunnel leases now record the launcher start identity, and existing runtime/lease ownership must remain identity-consistent before a reused PID can block another launch. Legacy leases retain the existing bounded acquisition safeguard, while mismatched saved identities are reclaimed. Added regressions for both stale runtime ownership and a recently created stale lease.

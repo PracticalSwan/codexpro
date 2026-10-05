@@ -19,7 +19,7 @@ CodexPro 不解锁自定义 MCP App，不解锁模型，不绕过账号限制，
 Recommended GitHub Release install:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.7/codexpro-full-0.33.7.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.8/codexpro-full-0.33.8.tgz
 ```
 
 Or build from the PracticalSwan source checkout:
@@ -31,8 +31,10 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.7.tgz
+npm install -g ./codexpro-full-0.33.8.tgz
 ```
+
+0.33.8 修复外部 `codexpro stop` 后 OpenAI Tunnel 健康检查临时目录可能残留的问题。运行状态只记录系统临时目录直属层级下经过校验的 `codexpro-openai-tunnel-*` 目录；在已验证 launcher/runtime 进程树结束后只删除该目录，Tunnel recovery 会刷新路径，Windows 临时删除锁会有界重试，非归属路径不会被删除。
 
 0.33.7 修复 OpenAI Tunnel 租约在 Windows PID 重用后的错误占用；本地 handoff 在直接子进程退出后会有界完成，即使后代进程仍持有输出管道；`execution-log.jsonl` 继续由 CodexPro runner 独占写入。发布验证新增打包后干净安装检查，并更新兼容范围内依赖以清除当前高危审计告警。
 
@@ -46,7 +48,7 @@ In 0.33.3, `codexpro doctor` distinguishes an existing identity-verified runtime
 
 In 0.33.2, Artifact Export diagnostics check the real `export_file` tool. The Local Service Probe stays off by default globally; only your OS account can opt into inherited future-profile defaults using `codexpro settings user-default --local-service-probe on`.
 
-Then run `codexpro setup` in the workspace you want ChatGPT to access. Daily startup is `codexpro start`. The tagged tarball is stable 0.33.7 and includes Plans 38–46 plus long-lived OpenAI tunnel recovery and continuity/isolation fixes. Upstream `codexpro@latest` is not the fork release.
+Then run `codexpro setup` in the workspace you want ChatGPT to access. Daily startup is `codexpro start`. The tagged tarball is stable 0.33.8 and adds ownership-safe OpenAI tunnel scratch cleanup while retaining Plans 38–46 plus long-lived OpenAI tunnel recovery and continuity/isolation fixes. Upstream `codexpro@latest` is not the fork release.
 
 ## CodexPro Full update
 
@@ -58,7 +60,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.7.tgz
+npm install -g ./codexpro-full-0.33.8.tgz
 codexpro --version
 ```
 

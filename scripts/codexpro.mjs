@@ -1007,7 +1007,8 @@ function saveRuntimeConnection(root, details, options = {}) {
     codeGraphEnabled: Boolean(options.codeGraphEnabled),
     lspEnabled: Boolean(options.lspEnabled),
     allowGitPush: Boolean(options.allowGitPush),
-    inheritEnv: Boolean(options.inheritEnv)
+    inheritEnv: Boolean(options.inheritEnv),
+    openAiHealthRoot: ownedOpenAiHealthRoot(options.openAiHealthRoot)
   };
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
   try {
@@ -1031,6 +1032,22 @@ function updateRuntimeTransportState(root, runtimeGenerationId, transportState) 
   }
 }
 
+function updateRuntimeOpenAiHealthRoot(root, runtimeGenerationId, healthRoot) {
+  const ownedRoot = ownedOpenAiHealthRoot(healthRoot);
+  if (!ownedRoot) return false;
+  try {
+    const filePath = runtimeStatusPathForRoot(root);
+    const runtime = readJsonFile(filePath);
+    if (runtime?.pid !== process.pid || runtime?.runtimeGenerationId !== runtimeGenerationId) return false;
+    const payload = { ...runtime, updatedAt: new Date().toISOString(), openAiHealthRoot: ownedRoot };
+    fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+    try { fs.chmodSync(filePath, 0o600); } catch {}
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function clearRuntimeConnection(root) {
   try {
     const filePath = runtimeStatusPathForRoot(root);
@@ -1041,6 +1058,34 @@ function clearRuntimeConnection(root) {
 
 function canonicalRoot(root) {
   try { return fs.realpathSync.native(root); } catch { return path.resolve(root); }
+}
+
+function ownedOpenAiHealthRoot(value) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  const resolved = path.resolve(value);
+  const tempRoot = path.resolve(os.tmpdir());
+  const parent = path.dirname(resolved);
+  const sameTempRoot = process.platform === 'win32' ? parent.toLowerCase() === tempRoot.toLowerCase() : parent === tempRoot;
+  if (!sameTempRoot) return '';
+  if (!path.basename(resolved).startsWith('codexpro-openai-tunnel-')) return '';
+  try {
+    const stat = fs.lstatSync(resolved);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) return '';
+  } catch (error) {
+    if (error?.code !== 'ENOENT') return '';
+  }
+  return resolved;
+}
+
+function removeOwnedOpenAiHealthRoot(value) {
+  const ownedRoot = ownedOpenAiHealthRoot(value);
+  if (!ownedRoot) return false;
+  try {
+    fs.rmSync(ownedRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function runtimeStatusForRoot(root) {
@@ -1192,6 +1237,11 @@ async function runStop(argv) {
   // On Windows the launcher may exit before its owned MCP server finishes teardown.
   // Wait boundedly for that child; never signal a PID whose ownership may have changed.
   if (!stopped || (runtimePid && !waitForRecordedProcessExit(runtimePid, 5000))) throw new Error('Refusing to clean runtime state: an owned process is still alive.');
+  if (runtime.tunnel === 'openai' && runtime.openAiHealthRoot) {
+    const healthRoot = ownedOpenAiHealthRoot(runtime.openAiHealthRoot);
+    if (!healthRoot) statusLine('warn', 'Skipped invalid OpenAI tunnel health scratch path from runtime state.');
+    else if (!removeOwnedOpenAiHealthRoot(healthRoot)) statusLine('warn', 'Could not remove the owned OpenAI tunnel health scratch directory after stop.');
+  }
   const portRelease = await waitForRuntimePortRelease(runtime.localBase);
   const current = readJsonFile(filePath);
   if (Number(current?.pid) === launcherPid && current?.pidStartKey === runtime.pidStartKey) fs.rmSync(filePath, { force: true });
@@ -5233,7 +5283,7 @@ async function main() {
       const cleanupHealth = () => {
         if (cleaned) return;
         cleaned = true;
-        try { fs.rmSync(tmpRoot, { recursive: true, force: true }); } catch {}
+        removeOwnedOpenAiHealthRoot(tmpRoot);
       };
       const tunnelArgs = [
         'run',
@@ -5254,7 +5304,7 @@ async function main() {
       tunnelChild.once('error', cleanupHealth);
       try {
         const ready = await waitForOpenAiTunnelReady(healthUrlFile, tunnelChild);
-        return { child: tunnelChild, healthBase: ready.healthBase, uiUrl: ready.uiUrl, cleanupHealth };
+        return { child: tunnelChild, healthBase: ready.healthBase, uiUrl: ready.uiUrl, healthRoot: tmpRoot, cleanupHealth };
       } catch (error) {
         if (tunnelChild.exitCode === null && tunnelChild.signalCode === null) killProcess(tunnelChild);
         cleanupHealth();
@@ -5281,6 +5331,7 @@ async function main() {
     }
     cloudflared = tunnelReady.child;
     activeTunnelCleanup = tunnelReady.cleanupHealth;
+    runtimeOptions.openAiHealthRoot = tunnelReady.healthRoot;
     cleanupTunnelCredentials = () => {
       openAiSupervisorStopping = true;
       activeTunnelCleanup();
@@ -5309,6 +5360,7 @@ async function main() {
         const recovered = await startOpenAiTunnel();
         cloudflared = recovered.child;
         activeTunnelCleanup = recovered.cleanupHealth;
+        updateRuntimeOpenAiHealthRoot(root, runtimeOptions.runtimeGenerationId, recovered.healthRoot);
         return recovered;
       },
       (state) => updateRuntimeTransportState(root, runtimeOptions.runtimeGenerationId, state),

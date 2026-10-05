@@ -12,6 +12,7 @@ const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-runtime-home-'));
 const env = { ...process.env, CODEXPRO_HOME: home };
 let fakeLauncher = null;
 let fakeServerPid = null;
+let ownedOpenAiHealthRoot = null;
 let fixtureStopped = false;
 const run = (args) => spawnSync(process.execPath, ['scripts/codexpro.mjs', ...args], { cwd: path.resolve('.'), env, encoding: 'utf8' });
 
@@ -76,10 +77,13 @@ try {
       fakeLauncher.once('exit', (code) => { clearTimeout(timeout); reject(new Error(`Test launcher exited early: ${code}`)); });
     });
     assert(Number.isInteger(fakeServerPid) && fakeServerPid > 0);
+    ownedOpenAiHealthRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-openai-tunnel-'));
+    await fs.writeFile(path.join(ownedOpenAiHealthRoot, 'health.url'), 'http://127.0.0.1:1\n', 'utf8');
     const owned = {
       version: 1, root, pid: fakeLauncher.pid, pidStartKey: processStartKey(fakeLauncher.pid),
       runtimePid: fakeServerPid, runtimePidStartKey: processStartKey(fakeServerPid),
-      transportState: 'ready', localBase: '', tunnel: 'none'
+      transportState: 'ready', localBase: '', tunnel: 'openai', endpoint: 'tunnel_0123456789abcdef0123456789abcdef',
+      openAiHealthRoot: ownedOpenAiHealthRoot
     };
     await fs.writeFile(runtimePath, JSON.stringify(owned));
     const running = run(['status', '--root', root, '--json']);
@@ -89,6 +93,35 @@ try {
     assert.equal(delayedStop.status, 0, delayedStop.stderr);
     assert.equal(JSON.parse(delayedStop.stdout).state, 'stopped');
     assert.equal(await fs.stat(runtimePath).then(() => true, () => false), false);
+    assert.equal(await fs.stat(ownedOpenAiHealthRoot).then(() => true, () => false), false, 'owned OpenAI tunnel health root remained after stop');
+    ownedOpenAiHealthRoot = null;
+
+    const protectedRoot = path.join(root, 'do-not-delete');
+    const protectedSentinel = path.join(protectedRoot, 'sentinel.txt');
+    await fs.mkdir(protectedRoot, { recursive: true });
+    await fs.writeFile(protectedSentinel, 'keep\n', 'utf8');
+    fakeLauncher = spawn(process.execPath, [launcherScript, serverScript],
+      { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    fakeServerPid = await new Promise((resolve, reject) => {
+      let output = '';
+      const timeout = setTimeout(() => reject(new Error('Second test launcher did not report its child PID')), 10000);
+      fakeLauncher.stdout.on('data', (chunk) => {
+        output += String(chunk);
+        if (output.includes('\n')) { clearTimeout(timeout); resolve(Number(output.trim())); }
+      });
+      fakeLauncher.once('error', (error) => { clearTimeout(timeout); reject(error); });
+      fakeLauncher.once('exit', (code) => { clearTimeout(timeout); reject(new Error(`Second test launcher exited early: ${code}`)); });
+    });
+    const unsafeOwned = {
+      version: 1, root, pid: fakeLauncher.pid, pidStartKey: processStartKey(fakeLauncher.pid),
+      runtimePid: fakeServerPid, runtimePidStartKey: processStartKey(fakeServerPid),
+      transportState: 'ready', localBase: '', tunnel: 'openai', endpoint: 'tunnel_0123456789abcdef0123456789abcdef',
+      openAiHealthRoot: protectedRoot
+    };
+    await fs.writeFile(runtimePath, JSON.stringify(unsafeOwned));
+    const unsafeStop = run(['stop', '--root', root, '--json']);
+    assert.equal(unsafeStop.status, 0, unsafeStop.stderr);
+    assert.equal(await fs.stat(protectedSentinel).then(() => true, () => false), true, 'stop deleted an unowned path from runtime state');
     fixtureStopped = true;
   }
   console.log('runtime lifecycle smoke passed');
@@ -97,6 +130,7 @@ try {
     try { fakeLauncher?.kill('SIGTERM'); } catch {}
     if (fakeServerPid) { try { process.kill(fakeServerPid, 'SIGTERM'); } catch {} }
   }
+  if (ownedOpenAiHealthRoot) await fs.rm(ownedOpenAiHealthRoot, { recursive: true, force: true });
   await removeFixture(fixture);
   await fs.rm(home, { recursive: true, force: true });
 }

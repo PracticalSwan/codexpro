@@ -11,8 +11,8 @@
 <p align="center">
   <a href="https://github.com/PracticalSwan/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/PracticalSwan/codexpro/ci.yml?branch=main&style=flat-square"></a>
   <a href="https://github.com/PracticalSwan/codexpro/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/PracticalSwan/codexpro?style=flat-square"></a>
-  <img alt="Stable release 0.33.7" src="https://img.shields.io/badge/stable-0.33.7-2563eb?style=flat-square">
-  <img alt="Main 0.33.7" src="https://img.shields.io/badge/main-0.33.7-0f766e?style=flat-square">
+  <img alt="Stable release 0.33.8" src="https://img.shields.io/badge/stable-0.33.8-2563eb?style=flat-square">
+  <img alt="Main 0.33.8" src="https://img.shields.io/badge/main-0.33.8-0f766e?style=flat-square">
 </p>
 
 ## Project status
@@ -22,8 +22,8 @@
 ```text
 Canonical fork: https://github.com/PracticalSwan/codexpro
 Upstream:       https://github.com/rebel0789/codexpro
-Stable release: 0.33.7
-Current main:   0.33.7 release line
+Stable release: 0.33.8
+Current main:   0.33.8 release line
 ```
 
 CodexPro Full uses the independent distribution package **`codexpro-full`** while preserving the installed CLI command **`codexpro`**, MCP protocol, profiles, and workspace model. **GitHub Releases are the canonical public release channel.** The upstream npm package `codexpro` is a different distribution; the `codexpro-full` npm registry package is not published yet.
@@ -54,6 +54,8 @@ Depending on the active profile, ChatGPT can:
 
 See **[FEATURES.md](FEATURES.md)** for the complete feature map and short usage examples.
 
+**0.33.8 maintenance:** Ownership-verified external stops now remove the exact validated OpenAI tunnel health scratch directory after the launcher/server tree exits, including Windows force-termination paths that can bypass launcher exit hooks. Tunnel recovery refreshes the recorded scratch path, transient Windows deletion locks are retried, and non-owned or corrupted paths are rejected.
+
 **0.33.7 maintenance:** OpenAI tunnel leases now reject stale PID reuse correctly; Windows local handoffs settle after the direct child exits even when descendants retain output handles; handoff execution logs remain runner-owned; the release gate clean-installs the packed artifact; and the in-range dependency refresh clears the current high-severity audit finding.
 
 **0.33.6 maintenance:** Guarded shutdown now waits boundedly for the identity-verified MCP server child after its launcher exits. A reproduced Windows shutdown race is covered by a delayed-child regression, without weakening PID ownership checks.
@@ -73,11 +75,11 @@ CodexPro Full is not a hosted SaaS service, model proxy, quota bypass, account p
 ### From the GitHub Release
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.7/codexpro-full-0.33.7.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.8/codexpro-full-0.33.8.tgz
 codexpro --version
 ```
 
-This installs the latest tagged/stable artifact. **0.33.7 includes the PID-reuse tunnel fix, Windows handoff settlement and runner-owned execution logging fixes, clean packed-artifact installation verification, refreshed compatible dependencies, and the complete Plans 38–46 feature batch plus the Artifact Export diagnostic and per-user Local Service Probe preference fixes:** build provenance, operator diagnostics, CodeGraph/LSP context, read-only notebook/table/dependency inspectors, AI-ready workspace briefing, verification failure context, and default-off loopback service observation. Previous 0.32.4 tunnel/Windows continuity fixes remain included. Build main only for future Unreleased changes.
+This installs the latest tagged/stable artifact. **0.33.8 adds ownership-safe OpenAI tunnel health scratch cleanup on external stop and includes all 0.33.7 fixes, including the PID-reuse tunnel fix, Windows handoff settlement and runner-owned execution logging fixes, clean packed-artifact installation verification, refreshed compatible dependencies, and the complete Plans 38–46 feature batch plus the Artifact Export diagnostic and per-user Local Service Probe preference fixes:** build provenance, operator diagnostics, CodeGraph/LSP context, read-only notebook/table/dependency inspectors, AI-ready workspace briefing, verification failure context, and default-off loopback service observation. Previous 0.32.4 tunnel/Windows continuity fixes remain included. Build main only for future Unreleased changes.
 
 ### From a source checkout
 
@@ -88,14 +90,14 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.7.tgz
+npm install -g ./codexpro-full-0.33.8.tgz
 codexpro --version
 ```
 
 Expected package version for this release line:
 
 ```text
-0.33.7
+0.33.8
 ```
 
 `main` may move ahead of the latest tag after release; use the Git commit and **Unreleased** changelog entries to distinguish later unreleased builds.
