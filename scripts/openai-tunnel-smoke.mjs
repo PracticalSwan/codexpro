@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { rmSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
@@ -93,13 +94,31 @@ async function waitForFile(filePath, label, timeoutMs = 15000) {
   throw new Error(`timed out waiting for ${label}`);
 }
 
-const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-openai-root-'));
-const duplicateRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-openai-duplicate-root-'));
-const home = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-openai-home-'));
-const fixtureDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-openai-fixture-'));
+const ownedTempRoots = [];
+async function trackedMkdtemp(prefix) {
+  const root = await fs.mkdtemp(prefix);
+  ownedTempRoots.push(root);
+  return root;
+}
+function cleanupOwnedTempRoots() {
+  for (const root of [...ownedTempRoots].reverse()) {
+    try {
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    } catch (error) {
+      console.error(`OpenAI smoke fixture cleanup failed for ${root}: ${error instanceof Error ? error.message : String(error)}`);
+      process.exitCode = 1;
+    }
+  }
+}
+process.on('exit', cleanupOwnedTempRoots);
+
+const root = await trackedMkdtemp(path.join(os.tmpdir(), 'codexpro-openai-root-'));
+const duplicateRoot = await trackedMkdtemp(path.join(os.tmpdir(), 'codexpro-openai-duplicate-root-'));
+const home = await trackedMkdtemp(path.join(os.tmpdir(), 'codexpro-openai-home-'));
+const fixtureDir = await trackedMkdtemp(path.join(os.tmpdir(), 'codexpro-openai-fixture-'));
 const env = { ...process.env, CODEXPRO_HOME: home };
-const noProfileRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-openai-default-root-'));
-const noProfileHome = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-openai-default-home-'));
+const noProfileRoot = await trackedMkdtemp(path.join(os.tmpdir(), 'codexpro-openai-default-root-'));
+const noProfileHome = await trackedMkdtemp(path.join(os.tmpdir(), 'codexpro-openai-default-home-'));
 const defaultFailure = runFail(['start', '--root', noProfileRoot, '--no-profile', '--headless'], {
   ...process.env,
   CODEXPRO_HOME: noProfileHome,
@@ -110,7 +129,7 @@ if (!/--openai-tunnel-id must match tunnel_<32 lowercase hexadecimal/i.test(defa
 ${defaultFailure}`);
 }
 
-const promptHome = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-openai-prompt-home-'));
+const promptHome = await trackedMkdtemp(path.join(os.tmpdir(), 'codexpro-openai-prompt-home-'));
 const promptInput = new PassThrough();
 promptInput.isTTY = true;
 promptInput.isRaw = false;

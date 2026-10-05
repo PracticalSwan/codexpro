@@ -2,7 +2,14 @@
 
 ## Unreleased
 
+## 0.33.7 (2026-10-05)
+
 - Fixed false OpenAI tunnel ownership after OS PID reuse: tunnel leases now record the launcher start identity, and existing runtime/lease ownership must remain identity-consistent before a reused PID can block another launch. Legacy leases retain the existing bounded acquisition safeguard, while mismatched saved identities are reclaimed. Added regressions for both stale runtime ownership and a recently created stale lease.
+- Ported the applicable upstream Windows handoff lifecycle fix: local handoff execution now settles from the direct child exit after a bounded close grace instead of waiting indefinitely for descendant-held stdout/stderr handles. Completion provenance is recorded in status, execution logs, and durable run state, while timeout/interruption process-tree safeguards remain intact.
+- Kept `.ai-bridge/execution-log.jsonl` runner-owned by removing the generated instruction that asked implementation agents to append to it; a regression now verifies the handoff contract and prevents future dual-writer guidance.
+- Hardened release validation with a clean install of the packed `codexpro-full` tarball in an isolated consumer project and version checks for all three shipped CLI entrypoints. The fixture creates its own package boundary so npm cannot walk up to an unrelated ancestor project on Windows.
+- Fixed the OpenAI tunnel smoke fixture leak: all seven current test-owned temporary roots are tracked and synchronously removed on process exit with bounded Windows retry behavior. The maintenance pass also removed 1,096 verified historical `codexpro-openai-*` test directories after confirming they were non-reparse, unreferenced by live processes, and matched known fixture prefixes.
+- Refreshed dependencies within existing semver ranges: MCP client/server to 2.3.0, MCP node to 2.1.1, Node 24 types to 24.19.1, tsx to 4.23.15, and transitive `brace-expansion` to 5.0.12. `npm audit --audit-level=high` returns zero vulnerabilities; TypeScript remains on the supported 5.x line.
 
 ## 0.33.6 (2026-09-25)
 

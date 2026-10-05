@@ -1201,7 +1201,6 @@ ${options.plan.trim()}
 - Run focused verification before handing work back.
 - Update ${options.statusPath} with files touched, checks run, results, blockers, and review notes.
 - Save the final review diff to ${options.diffPath} when practical.
-- Append notable execution events to ${options.executionLogPath} when the implementation agent supports logging.
 `;
 }
 

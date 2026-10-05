@@ -1,6 +1,6 @@
 {
   "name": "codexpro-full",
-  "version": "0.33.6",
+  "version": "0.33.7",
   "description": "CodexPro Full: PracticalSwan's local MCP bridge for full ChatGPT coding workflows on explicitly allowed repos.",
   "type": "module",
   "license": "MIT",
@@ -101,7 +101,8 @@
     "pro:apply": "node scripts/pro-apply.mjs",
     "release:guard": "node scripts/release-guard.mjs",
     "release:pack": "node scripts/release-pack.mjs",
-    "release:check": "npm run release:guard && npm run build && npm run smoke && npm run stress && npm audit --audit-level=high && npm run release:pack",
+    "package:smoke": "node scripts/package-install-smoke.mjs",
+    "release:check": "npm run release:guard && npm run build && npm run smoke && npm run stress && npm audit --audit-level=high && npm run release:pack && npm run package:smoke",
     "release:publish": "node scripts/release-publish.mjs"
   },
   "dependencies": {

@@ -36,6 +36,10 @@ The main differences are:
 - The normal workflow emphasizes diffs, `show_changes`, smoke tests, and handoff status files.
 - CodexPro keeps a strict boundary: no model proxying, account pooling, third-party Pro site scraping, quota bypassing, or OS sandbox claims.
 
+## What changed in the 0.33.7 maintenance release?
+
+OpenAI tunnel leases now use launcher start identity so a reused Windows PID cannot falsely block a later manual launch. Local handoff execution also settles after the direct child exits when descendants retain inherited output handles, while preserving timeout/interruption process-tree safeguards. Generated handoff plans no longer ask agents to write the runner-owned execution log. The release gate now clean-installs the packed tarball and verifies all shipped CLI entrypoints, and compatible dependency updates clear the current high-severity audit finding.
+
 ## What changed in the 0.33.6 maintenance release?
 
 When a verified launcher exits before its MCP server child finishes shutting down, `codexpro stop` now waits up to five seconds for the child before clearing runtime state. A Windows regression reproduced the previous false failure and verifies the bounded fix. PID/start-identity safeguards and fail-closed behavior are unchanged.
@@ -107,10 +111,10 @@ For the full first-time setup, OpenAI tunnel/key steps, and multi-project exampl
 Install the latest tagged/stable artifact directly from GitHub Releases:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.6/codexpro-full-0.33.6.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.7/codexpro-full-0.33.7.tgz
 ```
 
-Stable **0.33.6 includes Plans 38–46**, long-lived OpenAI tunnel recovery, Windows Bash/handoff maintenance, and current continuity/isolation hardening. Build main from source only for future **Unreleased** fixes:
+Stable **0.33.7 includes Plans 38–46**, long-lived OpenAI tunnel recovery, PID-reuse-safe tunnel ownership, bounded Windows handoff settlement, runner-owned execution logging, packed-artifact installation verification, refreshed compatible dependencies, and current continuity/isolation hardening. Build main from source only for future **Unreleased** fixes:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -119,7 +123,7 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.6.tgz
+npm install -g ./codexpro-full-0.33.7.tgz
 ```
 
 Then run setup from the repository you want ChatGPT to work on:
@@ -147,7 +151,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.6.tgz
+npm install -g ./codexpro-full-0.33.7.tgz
 codexpro --version
 ```
 

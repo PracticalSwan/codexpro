@@ -19,7 +19,7 @@ CodexPro 不解锁自定义 MCP App，不解锁模型，不绕过账号限制，
 Recommended GitHub Release install:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.6/codexpro-full-0.33.6.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.7/codexpro-full-0.33.7.tgz
 ```
 
 Or build from the PracticalSwan source checkout:
@@ -31,8 +31,10 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.6.tgz
+npm install -g ./codexpro-full-0.33.7.tgz
 ```
+
+0.33.7 修复 OpenAI Tunnel 租约在 Windows PID 重用后的错误占用；本地 handoff 在直接子进程退出后会有界完成，即使后代进程仍持有输出管道；`execution-log.jsonl` 继续由 CodexPro runner 独占写入。发布验证新增打包后干净安装检查，并更新兼容范围内依赖以清除当前高危审计告警。
 
 0.33.6 修复 Windows 关闭竞态：启动器退出后，`codexpro stop` 会有界等待已验证的 MCP 子进程结束，再清理运行状态；PID 与启动身份校验保持不变。
 
@@ -44,7 +46,7 @@ In 0.33.3, `codexpro doctor` distinguishes an existing identity-verified runtime
 
 In 0.33.2, Artifact Export diagnostics check the real `export_file` tool. The Local Service Probe stays off by default globally; only your OS account can opt into inherited future-profile defaults using `codexpro settings user-default --local-service-probe on`.
 
-Then run `codexpro setup` in the workspace you want ChatGPT to access. Daily startup is `codexpro start`. The tagged tarball is stable 0.33.6 and includes Plans 38–46 plus long-lived OpenAI tunnel recovery and continuity/isolation fixes. Upstream `codexpro@latest` is not the fork release.
+Then run `codexpro setup` in the workspace you want ChatGPT to access. Daily startup is `codexpro start`. The tagged tarball is stable 0.33.7 and includes Plans 38–46 plus long-lived OpenAI tunnel recovery and continuity/isolation fixes. Upstream `codexpro@latest` is not the fork release.
 
 ## CodexPro Full update
 
@@ -56,7 +58,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.6.tgz
+npm install -g ./codexpro-full-0.33.7.tgz
 codexpro --version
 ```
 
