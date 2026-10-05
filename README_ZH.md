@@ -11,8 +11,8 @@
 <p align="center">
   <a href="https://github.com/PracticalSwan/codexpro/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/PracticalSwan/codexpro/ci.yml?branch=main&style=flat-square"></a>
   <a href="https://github.com/PracticalSwan/codexpro/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/PracticalSwan/codexpro?style=flat-square"></a>
-  <img alt="Stable release 0.33.4" src="https://img.shields.io/badge/stable-0.33.4-2563eb?style=flat-square">
-  <img alt="Main 0.33.4" src="https://img.shields.io/badge/main-0.33.4-0f766e?style=flat-square">
+  <img alt="Stable release 0.33.7" src="https://img.shields.io/badge/stable-0.33.7-2563eb?style=flat-square">
+  <img alt="Main 0.33.7" src="https://img.shields.io/badge/main-0.33.7-0f766e?style=flat-square">
 </p>
 
 <p align="center">
@@ -29,7 +29,7 @@
 
 `PracticalSwan/codexpro` is the canonical independently maintained fork. It preserves the `codexpro` CLI/MCP/profile compatibility surface while maintaining the 0.31-0.33 feature line. Upstream remains `rebel0789/codexpro` under the existing MIT lineage.
 
-稳定发布版是 **0.33.4**；当前 main 属于 0.33.4 发布线。0.33.4 延长了 Windows 上结构化任务与 Durable Goal 状态文件的有界重试时间，修复临时文件锁导致的持续化失败。0.33.3 修复 `codexpro doctor` 在同工作区服务已运行时误报端口阻断的问题；此时会显示警告并禁止重复启动，其他端口冲突仍然阻断。0.33.2 修复 Artifact Export 的工具名称诊断错误，并支持通过 `codexpro settings user-default --local-service-probe on` 为当前操作系统用户的未来配置启用本地服务探测；其他用户仍默认关闭。此版包含 Plans 38–46 的运行时溯源、诊断、代码上下文、只读 notebook/表格/依赖检查及默认关闭的本机 HTTP 检查，并保留 0.32.4 的 Tunnel 和 Windows 稳定性修复。
+稳定发布版是 **0.33.7**；当前 main 属于 0.33.7 发布线。0.33.7 修复了操作系统 PID 重用后 OpenAI Tunnel 旧 lease 误阻止手动启动的问题，并使用 launcher 启动身份校验 ownership；同时修复 Windows handoff 在直接子进程退出后因后代进程继续持有 stdout/stderr 而等待过久的问题。生成的 handoff 计划不再要求实现代理写入 runner-owned 的 `.ai-bridge/execution-log.jsonl`，发布门禁也会在隔离 consumer 项目中安装打包后的 tarball，并验证三个 CLI 入口的版本。兼容依赖已在现有 semver 范围内更新，high-severity audit 为 0。此版继续包含 Plans 38–46、Tunnel recovery、运行时溯源、诊断、代码上下文、只读 notebook/表格/依赖检查和默认关闭的本机 HTTP 检查。
 
 CodexPro Full uses the independent distribution package **`codexpro-full`** while the installed CLI remains **`codexpro`**. GitHub Releases are the canonical public release channel. The upstream npm package `codexpro@latest` is not this fork, and `codexpro-full` is not yet published to npm.
 
@@ -46,11 +46,11 @@ ChatGPT 可以读取、搜索、编辑、审查、验证、导入附件，并写
 GitHub Release:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.4/codexpro-full-0.33.4.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.7/codexpro-full-0.33.7.tgz
 codexpro --version
 ```
 
-上面的 tarball 是稳定版 0.33.4，包含 Plans 38–46 与 Tunnel heartbeat / child recovery。只有未来出现 Unreleased 更新时，才从 main 构建。
+上面的 tarball 是稳定版 0.33.7，包含 Plans 38–46、PID-reuse-safe Tunnel ownership、Tunnel heartbeat / child recovery、Windows handoff settlement 和打包安装验证。只有未来出现 Unreleased 更新时，才从 main 构建。
 
 Source build:
 
@@ -67,7 +67,7 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.4.tgz
+npm install -g ./codexpro-full-0.33.7.tgz
 codexpro --version
 ```
 
@@ -198,7 +198,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.4.tgz
+npm install -g ./codexpro-full-0.33.7.tgz
 codexpro --version
 ```
 
