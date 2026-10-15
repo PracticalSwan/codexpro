@@ -1683,6 +1683,23 @@ function onboardingPage(config: CodexProConfig): string {
     const serializeProfile = () => JSON.stringify(Array.from(profileForm?.elements || [])
       .filter((control) => control.name)
       .map((control) => [control.name, control.type === "checkbox" ? control.checked : control.value]));
+    function captureProfileDefaults() {
+      return Array.from(profileForm?.elements || []).filter((control) => control.name).map((control) => ({
+        control,
+        value: control.value,
+        checked: control.checked,
+        selected: control.tagName === "SELECT" ? Array.from(control.options).map((option) => option.selected) : null
+      }));
+    }
+    function commitProfileDefaults(captured) {
+      // Form.reset() normally restores page-load values. After a successful save,
+      // it must instead restore the exact controls submitted to the server.
+      for (const { control, value, checked, selected } of captured) {
+        if (selected) Array.from(control.options).forEach((option, index) => { option.defaultSelected = selected[index]; });
+        else if (control.type === "checkbox") control.defaultChecked = checked;
+        else if ("defaultValue" in control) control.defaultValue = value;
+      }
+    }
     let savedSnapshot = serializeProfile();
     let savingProfile = false;
     let persistedProfile = profileForm?.getAttribute("data-profile-exists") === "true";
@@ -1706,10 +1723,13 @@ function onboardingPage(config: CodexProConfig): string {
       updateTunnelHelp();
       updateProfileDirty();
       const status = document.querySelector("[data-profile-status]");
-      if (status) status.textContent = "Edits discarded. Running settings were not changed.";
+      if (status) {
+        status.setAttribute("role", "status");
+        status.textContent = "Edits discarded. Running settings were not changed.";
+      }
     });
     window.addEventListener("beforeunload", (event) => {
-      if (savingProfile || serializeProfile() === savedSnapshot) return;
+      if (!savingProfile && serializeProfile() === savedSnapshot) return;
       event.preventDefault();
       event.returnValue = "";
     });
@@ -1763,6 +1783,7 @@ function onboardingPage(config: CodexProConfig): string {
     if (profileForm) {
       profileForm.addEventListener("submit", async (event) => {
         event.preventDefault();
+        if (savingProfile) return;
         const form = event.currentTarget;
         const status = document.querySelector("[data-profile-status]");
         const data = Object.fromEntries(new FormData(form).entries());
@@ -1805,6 +1826,7 @@ function onboardingPage(config: CodexProConfig): string {
           noInstallCloudflared: Boolean(form.elements.noInstallCloudflared?.checked)
         };
         const submittedSnapshot = serializeProfile();
+        const submittedDefaults = captureProfileDefaults();
         savingProfile = true;
         updateProfileDirty();
         if (status) status.textContent = "Saving profile...";
@@ -1819,6 +1841,7 @@ function onboardingPage(config: CodexProConfig): string {
           });
           const result = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(result.error?.message || "Save failed");
+          commitProfileDefaults(submittedDefaults);
           savedSnapshot = submittedSnapshot;
           persistedProfile = true;
           if (status) {

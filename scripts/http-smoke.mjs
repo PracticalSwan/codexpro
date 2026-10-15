@@ -411,7 +411,7 @@ try {
   if (!homeText.includes('Connection profile') || !homeText.includes('data-profile-form')) {
     throw new Error('onboarding page did not include the saved profile editor');
   }
-  for (const expected of ['data-settings-advanced', 'data-tunnel-field', 'data-profile-reset', 'data-profile-dirty', 'data-profile-exists="false"', 'data-save-profile', 'aria-live="polite"', 'updateVisibleTunnelFields', 'beforeunload', 'Save changes for next start']) {
+  for (const expected of ['data-settings-advanced', 'data-tunnel-field', 'data-profile-reset', 'data-profile-dirty', 'data-profile-exists="false"', 'data-save-profile', 'aria-live="polite"', 'updateVisibleTunnelFields', 'captureProfileDefaults', 'commitProfileDefaults', 'beforeunload', 'Save changes for next start']) {
     if (!homeText.includes(expected)) throw new Error(`onboarding page omitted simplified settings behavior: ${expected}`);
   }
   if (!homeText.includes('name="tunnel"') || !homeText.includes('name="write"') || !homeText.includes('name="toolMode"')) {
