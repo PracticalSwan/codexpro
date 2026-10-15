@@ -1,6 +1,6 @@
 # CodexPro Plan Index
 
-Last reconciled: 2026-09-22
+Last reconciled: 2026-10-15
 
 This file is the authoritative roadmap/status router. Historical implementation detail stays in the linked subsystem documents and Git history; current development should start from the active items below rather than resurrecting completed umbrella batches.
 
@@ -61,6 +61,8 @@ These are baseline behavior, not pending roadmap work. New long-running features
 | 44 | P1 | Structured Dataset / Table Inspection | [design](../superpowers/specs/2026-09-22-table-inspection-design.md) · [plan](../superpowers/plans/2026-09-22-table-inspection.md) | Released |
 | 45 | P1 | Dependency Reality Engine | [design](../superpowers/specs/2026-09-22-dependency-reality-engine-design.md) · [plan](../superpowers/plans/2026-09-22-dependency-reality-engine.md) | Released |
 | 46 | P1 | Local Service Observatory | [design](../superpowers/specs/2026-09-22-local-service-observatory-design.md) · [plan](../superpowers/plans/2026-09-22-local-service-observatory.md) | Released |
+
+| 47 | P0 | Local Control Setup/Status Usability | [design](../superpowers/specs/2026-10-15-local-control-usability-design.md) ? [plan](../superpowers/plans/2026-10-15-local-control-usability.md) | Verified |
 
 ## Verified implementation sequence
 

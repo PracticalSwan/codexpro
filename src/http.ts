@@ -370,69 +370,92 @@ function profileForm(config: CodexProConfig): string {
         </div>
         <span class="pill ${profile.profilePath ? "" : "warn"}">${escapeHtml(savedLabel)}</span>
       </div>
-      <form class="profile-form" data-profile-form>
+      <form class="profile-form" data-profile-form data-profile-exists="${profile.profilePath ? "true" : "false"}">
         ${currentUrlBlock}
         <fieldset class="profile-group">
           <legend>Connection</legend>
           <p>OpenAI Secure MCP Tunnel is recommended. HTTP tunnel providers remain available as explicit fallbacks.</p>
           <div class="form-grid">
             <label><span>Tunnel</span><select name="tunnel" data-tunnel-select data-ngrok-hostname="${escapeHtml(ngrokHostname)}" data-cloudflare-hostname="${escapeHtml(cloudflareHostname)}">${selectOptions(TUNNELS, values.tunnel)}</select></label>
-            <label><span>Public hostname</span><input name="hostname" value="${escapeHtml(values.hostname)}" data-hostname-input data-autofilled="0"></label>
             <label><span>Port</span><input name="port" type="number" min="1" max="65535" value="${escapeHtml(values.port)}"></label>
+            <label data-tunnel-field="openai"><span>OpenAI tunnel ID</span><input name="openaiTunnelId" value="${escapeHtml(values.openaiTunnelId)}" placeholder="tunnel_..."></label>
+            <label data-tunnel-field="ngrok cloudflare-named tailscale"><span>Public hostname</span><input name="hostname" value="${escapeHtml(values.hostname)}" data-hostname-input data-autofilled="0"></label>
             <label><span>Mode</span><select name="mode">${selectOptions(MODES, values.mode)}</select></label>
-            <label><span>OpenAI tunnel ID</span><input name="openaiTunnelId" value="${escapeHtml(values.openaiTunnelId)}" placeholder="tunnel_..."></label>
-            <label><span>OpenAI tunnel-client</span><input name="tunnelClient" value="${escapeHtml(values.tunnelClient)}" placeholder="tunnel-client"></label>
-            <label><span>Cloudflare tunnel name</span><input name="tunnelName" value="${escapeHtml(values.tunnelName)}"></label>
-            <label><span>ngrok config file</span><input name="ngrokConfig" value="${escapeHtml(values.ngrokConfig)}"></label>
-            <label><span>Cloudflare config file</span><input name="cloudflareConfig" value="${escapeHtml(values.cloudflareConfig)}"></label>
-            <label><span>Cloudflare token file</span><input name="cloudflareTokenFile" value="${escapeHtml(values.cloudflareTokenFile)}"></label>
           </div>
           <p class="field-help" data-hostname-help>${escapeHtml(currentTunnelMessage(values.tunnel, runtimeEndpoint))}</p>
-          <label class="check-row"><input name="noInstallCloudflared" type="checkbox" value="true"${values.noInstallCloudflared ? " checked" : ""}><span>Do not auto-install cloudflared</span></label>
+          <details class="settings-advanced" data-settings-advanced>
+            <summary>Advanced connection options <small>Provider paths and client overrides</small></summary>
+            <div class="form-grid">
+              <label data-tunnel-field="openai"><span>OpenAI tunnel-client</span><input name="tunnelClient" value="${escapeHtml(values.tunnelClient)}" placeholder="tunnel-client"></label>
+              <label data-tunnel-field="cloudflare-named"><span>Cloudflare tunnel name</span><input name="tunnelName" value="${escapeHtml(values.tunnelName)}"></label>
+              <label data-tunnel-field="ngrok"><span>ngrok config file</span><input name="ngrokConfig" value="${escapeHtml(values.ngrokConfig)}"></label>
+              <label data-tunnel-field="cloudflare-named"><span>Cloudflare config file</span><input name="cloudflareConfig" value="${escapeHtml(values.cloudflareConfig)}"></label>
+              <label data-tunnel-field="cloudflare-named"><span>Cloudflare token file</span><input name="cloudflareTokenFile" value="${escapeHtml(values.cloudflareTokenFile)}"></label>
+            </div>
+            <label class="check-row" data-tunnel-field="cloudflare cloudflare-named"><input name="noInstallCloudflared" type="checkbox" value="true"${values.noInstallCloudflared ? " checked" : ""}><span>Do not auto-install cloudflared</span></label>
+          </details>
         </fieldset>
         <fieldset class="profile-group">
           <legend>Runtime policy</legend>
           <p>Save the default access level for the next launch. These settings do not mutate the process that is already running.</p>
           <div class="form-grid">
-            <label><span>Bash</span><select name="bash">${selectOptions(BASH_MODES, values.bash)}</select></label>
-            <label><span>Bash transcript</span><select name="bashTranscript">${selectOptions(BASH_TRANSCRIPTS, values.bashTranscript)}</select></label>
             <label><span>Write mode</span><select name="write">${selectOptions(WRITE_MODES, values.write)}</select></label>
             <label><span>Tool mode</span><select name="toolMode">${selectOptions(TOOL_MODES, values.toolMode)}</select></label>
+            <label><span>Bash</span><select name="bash">${selectOptions(BASH_MODES, values.bash)}</select></label>
             <label><span>Codex sessions</span><select name="codexSessions">${selectOptions(CODEX_SESSIONS, values.codexSessions)}</select></label>
-            <label><span>Codex directory</span><input name="codexDir" value="${escapeHtml(values.codexDir)}"></label>
-            <label><span>Bash session</span><input name="bashSession" value="${escapeHtml(values.bashSession)}"></label>
-            <label><span>Widget origin</span><input name="widgetDomain" value="${escapeHtml(values.widgetDomain)}"></label>
-            <label><span>Synchronous tool-call deadline (minutes)</span><input name="syncCallDeadlineMinutes" type="number" min="5" max="60" step="1" value="${escapeHtml(values.syncCallDeadlineMinutes)}"></label>
           </div>
-          <label class="check-row"><input name="syncCallDeadlineObserve" type="checkbox" value="true"${values.syncCallDeadlineMode === "observe" ? " checked" : ""}><span>Unlimited / observe mode <small>Temporary host-window discovery only</small></span></label>
-          <p class="field-help">Current runtime: ${escapeHtml(config.syncCallDeadlineMode === "observe" ? "Unlimited / observe only" : `${config.syncCallDeadlineMs / 60_000} minutes bounded`)}. Saved changes apply only on the next launch. This deadline applies separately to each blocking MCP tool call and restarts for every invocation; it is not a timer for the whole ChatGPT turn. Unlimited keeps elapsed-time diagnostics but disables CodexPro's cooperative cutoff; use it temporarily with the harmless tool-time probe, then restore a bounded value with a multi-minute margin below your observed host cutoff. For an observed cutoff near 25 minutes, 20-22 minutes is safer than 24. Deadline settings never reduce task scope, review, verification, or safety requirements.</p>
-          <label class="check-row"><input name="toolCards" type="checkbox" value="true"${values.toolCards ? " checked" : ""}><span>Enable ChatGPT tool cards</span></label>
-          <label class="check-row"><input name="requireBashSession" type="checkbox" value="true"${values.requireBashSession ? " checked" : ""}><span>Require matching bash session id</span></label>
+          <details class="settings-advanced" data-settings-advanced>
+            <summary>Advanced runtime options <small>Timeouts, sessions, and output</small></summary>
+            <div class="form-grid">
+              <label><span>Bash transcript</span><select name="bashTranscript">${selectOptions(BASH_TRANSCRIPTS, values.bashTranscript)}</select></label>
+              <label><span>Codex directory</span><input name="codexDir" value="${escapeHtml(values.codexDir)}"></label>
+              <label><span>Bash session</span><input name="bashSession" value="${escapeHtml(values.bashSession)}"></label>
+              <label><span>Widget origin</span><input name="widgetDomain" value="${escapeHtml(values.widgetDomain)}"></label>
+              <label><span>Synchronous tool-call deadline (minutes)</span><input name="syncCallDeadlineMinutes" type="number" min="5" max="60" step="1" value="${escapeHtml(values.syncCallDeadlineMinutes)}"></label>
+            </div>
+            <label class="check-row"><input name="syncCallDeadlineObserve" type="checkbox" value="true"${values.syncCallDeadlineMode === "observe" ? " checked" : ""}><span>Unlimited / observe mode <small>Temporary host-window discovery only</small></span></label>
+            <p class="field-help">Current runtime: ${escapeHtml(config.syncCallDeadlineMode === "observe" ? "Unlimited / observe only" : `${config.syncCallDeadlineMs / 60_000} minutes bounded`)}. Each deadline applies to one blocking MCP call, not an entire conversation. Unlimited disables the cooperative cutoff; use it only for temporary discovery, then restore a bounded margin below the host limit.</p>
+            <label class="check-row"><input name="toolCards" type="checkbox" value="true"${values.toolCards ? " checked" : ""}><span>Enable ChatGPT tool cards</span></label>
+            <label class="check-row"><input name="requireBashSession" type="checkbox" value="true"${values.requireBashSession ? " checked" : ""}><span>Require matching bash session id</span></label>
+          </details>
         </fieldset>
         <fieldset class="profile-group">
           <legend>Capabilities</legend>
           <p>Feature gates and optional intelligence providers for the next launch. Protected paths and authentication secrets remain outside this form.</p>
-          <div class="form-grid">
-            <label><span>CodeGraph executable</span><input name="codeGraphExecutable" value="${escapeHtml(values.codeGraphExecutable)}" placeholder="codegraph"></label>
-            <label><span>CodeGraph args</span><input name="codeGraphArgs" value="${escapeHtml(JSON.stringify(values.codeGraphArgs))}" placeholder="[]"></label>
-            <label><span>LSP executable</span><input name="lspExecutable" value="${escapeHtml(values.lspExecutable)}"></label>
-            <label><span>LSP args</span><input name="lspArgs" value="${escapeHtml(JSON.stringify(values.lspArgs))}" placeholder="[]"></label>
-          </div>
+          <details class="settings-advanced" data-settings-advanced>
+            <summary>Provider configuration <small>Custom executables and arguments</small></summary>
+            <div class="form-grid">
+              <label><span>CodeGraph executable</span><input name="codeGraphExecutable" value="${escapeHtml(values.codeGraphExecutable)}" placeholder="codegraph"></label>
+              <label><span>CodeGraph args</span><input name="codeGraphArgs" value="${escapeHtml(JSON.stringify(values.codeGraphArgs))}" placeholder="[]"></label>
+              <label><span>LSP executable</span><input name="lspExecutable" value="${escapeHtml(values.lspExecutable)}"></label>
+              <label><span>LSP args</span><input name="lspArgs" value="${escapeHtml(JSON.stringify(values.lspArgs))}" placeholder="[]"></label>
+            </div>
+          </details>
           <label class="check-row"><input name="analysisEnabled" type="checkbox" value="true"${values.analysisEnabled ? " checked" : ""}><span>Enable built-in repository analysis</span></label>
           <label class="check-row"><input name="artifactExportEnabled" type="checkbox" value="true"${values.artifactExportEnabled ? " checked" : ""}><span>Enable artifact export</span></label>
           <label class="check-row"><input name="localServiceProbeEnabled" type="checkbox" value="true"${values.localServiceProbeEnabled ? " checked" : ""}><span>Enable local service probe <small>Full mode, loopback HTTP GET/HEAD only</small></span></label>
           <label class="check-row"><input name="goalsEnabled" type="checkbox" value="true"${values.goalsEnabled ? " checked" : ""}><span>Enable Durable Goals</span></label>
           <label class="check-row"><input name="codeGraphEnabled" type="checkbox" value="true"${values.codeGraphEnabled ? " checked" : ""}><span>Enable CodeGraph</span></label>
           <label class="check-row"><input name="lspEnabled" type="checkbox" value="true"${values.lspEnabled ? " checked" : ""}><span>Enable LSP provider</span></label>
-          <label class="check-row"><input name="allowGitPush" type="checkbox" value="true"${values.allowGitPush ? " checked" : ""}><span>Allow guarded Git push</span></label>
-          <label class="check-row"><input name="inheritEnv" type="checkbox" value="true"${values.inheritEnv ? " checked" : ""}><span>Allow Bash subprocesses to inherit the full parent environment</span></label>
-          <label class="check-row"><input name="connectionTest" type="checkbox" value="true"${values.connectionTest ? " checked" : ""}><span>Enable connection-test mode</span></label>
+          <details class="settings-advanced" data-settings-advanced>
+            <summary>Elevated and testing options <small>Review before enabling</small></summary>
+            <label class="check-row"><input name="allowGitPush" type="checkbox" value="true"${values.allowGitPush ? " checked" : ""}><span>Allow guarded Git push</span></label>
+            <label class="check-row"><input name="inheritEnv" type="checkbox" value="true"${values.inheritEnv ? " checked" : ""}><span>Allow Bash subprocesses to inherit the full parent environment</span></label>
+            <label class="check-row"><input name="connectionTest" type="checkbox" value="true"${values.connectionTest ? " checked" : ""}><span>Enable connection-test mode</span></label>
+          </details>
         </fieldset>
-        <div class="actions">
-          <button type="submit" class="primary">Save profile</button>
-          <span class="mono">${escapeHtml(profilePath)}</span>
+        <div class="save-bar">
+          <div class="save-explainer">
+            <strong data-profile-dirty>No unsaved changes</strong>
+            <span>Changes take effect the next time you manually start CodexPro.</span>
+          </div>
+          <div class="actions">
+            <button type="button" class="resource-link" data-profile-reset>Discard edits</button>
+            <button type="submit" class="primary" data-save-profile>Save changes for next start</button>
+          </div>
         </div>
-        <p class="note" data-profile-status>Tokens stay hidden. Restart CodexPro for saved profile changes to apply.</p>
+        <p class="note" data-profile-status role="status" aria-live="polite" tabindex="-1">Credentials stay hidden. Nothing on this page restarts the active runtime.</p>
+        <details class="profile-path"><summary>Saved profile location</summary><code>${escapeHtml(profilePath)}</code></details>
       </form>
     </section>`;
 }
@@ -801,11 +824,16 @@ function onboardingPage(config: CodexProConfig): string {
       color: var(--color-accent-ink);
     }
     .section-tabs {
+      position: sticky;
+      top: 0;
+      z-index: 6;
       display: flex;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
       gap: var(--space-1);
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: thin;
       margin: 0 0 var(--space-5);
       padding: var(--space-1);
       border: 1px solid var(--color-rule);
@@ -825,7 +853,7 @@ function onboardingPage(config: CodexProConfig): string {
       white-space: nowrap;
       padding: 0 var(--space-4);
     }
-    .section-tabs a[aria-current="page"] {
+    .section-tabs a[aria-current="location"] {
       background: var(--color-accent);
       color: var(--color-accent-ink);
       box-shadow: var(--shadow-row);
@@ -915,6 +943,22 @@ function onboardingPage(config: CodexProConfig): string {
     .status {
       display: grid;
     }
+    #overview > .status {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: var(--space-2);
+    }
+    #overview > .status .row {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: var(--space-1);
+      min-width: 0;
+      padding: var(--space-3);
+      border: 1px solid var(--color-rule);
+      border-radius: 10px;
+      background: var(--color-row);
+    }
+    #overview > .status .row:nth-child(3) { grid-column: 1 / -1; }
     .row {
       display: grid;
       grid-template-columns: 132px minmax(0, 1fr);
@@ -1046,10 +1090,55 @@ function onboardingPage(config: CodexProConfig): string {
       padding-left: var(--space-5);
       color: var(--color-muted);
     }
+    [hidden] { display: none !important; }
+    html { scroll-behavior: smooth; }
+    section[id], details[id], article[id] { scroll-margin-top: 1rem; }
     .profile-form {
       display: grid;
       gap: var(--space-4);
     }
+    .settings-advanced,
+    .status-details,
+    .profile-path {
+      margin-top: var(--space-4);
+      border-top: 1px solid var(--color-rule);
+      padding-top: var(--space-2);
+    }
+    .settings-advanced > summary,
+    .status-details > summary,
+    .profile-path > summary {
+      font-weight: 750;
+    }
+    .settings-advanced summary small,
+    .status-details summary small {
+      color: var(--color-muted);
+      font-size: 11px;
+      font-weight: 400;
+    }
+    .settings-advanced[open] > .form-grid {
+      margin-top: var(--space-3);
+    }
+    .profile-path code {
+      display: block;
+      overflow-wrap: anywhere;
+    }
+    .save-bar {
+      position: sticky;
+      bottom: var(--space-2);
+      z-index: 4;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: var(--space-3);
+      padding: var(--space-3);
+      border: 1px solid var(--color-rule-strong);
+      border-radius: 14px;
+      background: var(--color-surface);
+      box-shadow: var(--shadow-panel);
+    }
+    .save-explainer { display: grid; gap: 2px; }
+    .save-explainer strong { font-size: 13px; }
+    .save-explainer span { color: var(--color-muted); font-size: 11px; }
     .current-url {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
@@ -1378,6 +1467,14 @@ function onboardingPage(config: CodexProConfig): string {
         align-items: stretch;
         flex-direction: column;
       }
+      .save-bar {
+        position: static;
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .save-bar .actions > button {
+        width: 100%;
+      }
       .primary {
         width: 100%;
       }
@@ -1405,18 +1502,14 @@ function onboardingPage(config: CodexProConfig): string {
       </div>
       <nav class="quick-links" aria-label="CodexPro resources">
         <a class="action-link primary-link" href="${chatgptUrl}" target="_blank" rel="noreferrer">Open ChatGPT settings</a>
-        <a class="resource-link" href="${githubUrl}" target="_blank" rel="noreferrer">Open GitHub</a>
-        <a class="resource-link" href="${releasesUrl}" target="_blank" rel="noreferrer">Releases</a>
         <a class="resource-link" href="${docsUrl}" target="_blank" rel="noreferrer">Docs</a>
       </nav>
     </header>
-    <nav class="section-tabs" aria-label="Admin sections">
-      <a href="#profile" aria-current="page">Profile</a>
-      <a href="#status">Status</a>
+    <nav class="section-tabs" aria-label="Page sections">
+      <a href="#overview">Status</a>
+      <a href="#profile">Settings</a>
+      <a href="#connect">Connect ChatGPT</a>
       <a href="#diagnostics">Diagnostics</a>
-      <a href="#connect">ChatGPT</a>
-      <a href="#access">Access</a>
-      <a href="#cli">CLI</a>
     </nav>
     <section class="panel" id="overview" aria-label="Runtime overview">
       <div class="section-head"><div><h2>Runtime overview</h2><p>Current effective state. Saved profile edits are labeled next launch and never mutate the running process.</p></div></div>
@@ -1427,8 +1520,10 @@ function onboardingPage(config: CodexProConfig): string {
         <div class="row"><span class="label">Transport</span><span class="pill">${escapeHtml(config.host)}:${escapeHtml(config.port)}</span></div>
         <div class="row"><span class="label">Tools / write / bash</span><span class="pill">${escapeHtml(config.toolMode)} / ${escapeHtml(config.writeMode)} / ${escapeHtml(config.bashMode)}</span></div>
       </div>
-      <h3>Capabilities</h3>
-      <div class="status">${capabilityRows}</div>
+      <details class="status-details">
+        <summary>Full capability status <small>Read-only tool availability and reasons</small></summary>
+        <div class="status">${capabilityRows}</div>
+      </details>
     </section>
     <section class="overview">
       ${profileForm(config)}
@@ -1442,8 +1537,8 @@ function onboardingPage(config: CodexProConfig): string {
           </div>
           <div class="guide-list">
             <div class="guide-item"><span class="num">1</span><span><strong>Review the profile</strong><p>Choose the tunnel, port, mode, bash, write, tool, Codex session, and workspace defaults for the next launch.</p></span></div>
-            <div class="guide-item"><span class="num">2</span><span><strong>Copy the Server URL</strong><p>Use the current public URL shown in the profile when available, or the one printed by the terminal after launch.</p></span></div>
-            <div class="guide-item"><span class="num">3</span><span><strong>Create a personal ChatGPT app</strong><p>Choose Server URL, paste the copied URL, and use no extra authentication. This private URL is for one user's connector, not a shared deployment.</p></span></div>
+            <div class="guide-item"><span class="num">2</span><span><strong>Copy the connection detail</strong><p>OpenAI uses a Tunnel ID; other providers use the public Server URL shown by the launcher.</p></span></div>
+            <div class="guide-item"><span class="num">3</span><span><strong>Connect ChatGPT</strong><p>Choose Tunnel for OpenAI, or Server URL for other providers. Do not share your private connection credentials.</p></span></div>
             <div class="guide-item"><span class="num">4</span><span><strong>Restart for policy changes</strong><p>Saved profile changes apply when CodexPro starts again. The live server does not mutate under an active ChatGPT session.</p></span></div>
           </div>
         </section>
@@ -1469,15 +1564,20 @@ function onboardingPage(config: CodexProConfig): string {
         <div class="section-head">
           <div>
           <h2>Connect ChatGPT</h2>
-            <p>Create an app connection that points at the public Server URL copied by the terminal.</p>
+            <p>Connect using a Tunnel ID for OpenAI, or a Server URL for HTTP tunnel providers.</p>
           </div>
         </div>
-        <ol class="steps">
+        ${profileValues(config).tunnel === "openai" ? `<ol class="steps">
           <li><span class="num">1</span><span>Open ChatGPT settings and create an app connection.</span></li>
-          <li><span class="num">2</span><span>Set Connection to <code>Server URL</code>.</span></li>
+          <li><span class="num">2</span><span>Choose <code>Tunnel</code> as the connection type.</span></li>
+          <li><span class="num">3</span><span>Use the saved OpenAI Tunnel ID shown in your connection profile or terminal.</span></li>
+          <li><span class="num">4</span><span>Save the connection. The tunnel must be started manually on your computer to become available.</span></li>
+        </ol>` : `<ol class="steps">
+          <li><span class="num">1</span><span>Open ChatGPT settings and create an app connection.</span></li>
+          <li><span class="num">2</span><span>Choose <code>Server URL</code> as the connection type.</span></li>
           <li><span class="num">3</span><span>Paste the public CodexPro URL from the terminal.</span></li>
-          <li><span class="num">4</span><span>For a personal connector, use <code>No Authentication / None</code>; the private token is already in the copied URL. Shared production access requires OAuth or an Authorization header.</span></li>
-        </ol>
+          <li><span class="num">4</span><span>For a personal URL with a private token, choose <code>No Authentication / None</code>. Shared production access requires OAuth or an Authorization header.</span></li>
+        </ol>`}
         <p class="note"><a class="action-link" href="${chatgptUrl}" target="_blank" rel="noreferrer">Open ChatGPT settings</a></p>
       </section>
       <aside class="side-stack">
@@ -1501,23 +1601,22 @@ function onboardingPage(config: CodexProConfig): string {
         </div>
         <button type="button" class="copy-mini" data-refresh-diagnostics>Refresh</button>
       </div>
-      <pre class="mono" data-diagnostics-output>Loading diagnostics...</pre>
+      <details class="settings-advanced">
+        <summary>Show diagnostic details <small>Sanitized JSON; read-only</small></summary>
+        <pre class="mono" data-diagnostics-output>Loading diagnostics...</pre>
+      </details>
     </section>
-    <section class="panel cli-panel details-panel" id="cli">
-      <div class="section-head">
-        <div>
-          <h2>CLI controls</h2>
-          <p>Copy these when you need to restart with a different runtime policy. They do not mutate the running process from the browser.</p>
-        </div>
-      </div>
+    <details class="panel cli-panel details-panel" id="cli">
+      <summary>CLI controls <small>Commands for special runtime modes</small></summary>
+      <p class="note">Copy these for manual restarts. Browser settings never restart your runtime.</p>
       <div class="controls">${controls}</div>
-    </section>
+    </details>
     <details class="panel details-panel">
       <summary>Allowed roots</summary>
       <ul class="roots">${allowedRoots}</ul>
       <p class="note">CodexPro rejects workspace access outside these roots.</p>
     </details>
-    <footer class="foot">Token-protected local control surface for this workspace. Public sharing still happens only through your chosen tunnel.</footer>
+    <footer class="foot">Token-protected local control for this workspace. Public sharing happens only through your chosen tunnel. <a href="${githubUrl}" target="_blank" rel="noreferrer"><u>GitHub</u></a> · <a href="${releasesUrl}" target="_blank" rel="noreferrer"><u>Releases</u></a></footer>
   </main>
   <script>
     const initialUrl = new URL(window.location.href);
@@ -1528,6 +1627,17 @@ function onboardingPage(config: CodexProConfig): string {
       const cleanSearch = initialUrl.searchParams.toString();
       history.replaceState(null, "", initialUrl.pathname + (cleanSearch ? "?" + cleanSearch : "") + initialUrl.hash);
     }
+    const sectionLinks = Array.from(document.querySelectorAll(".section-tabs a"));
+    function syncSectionNavigation() {
+      const selected = sectionLinks.some((link) => link.getAttribute("href") === window.location.hash)
+        ? window.location.hash : "#overview";
+      sectionLinks.forEach((link) => {
+        if (link.getAttribute("href") === selected) link.setAttribute("aria-current", "location");
+        else link.removeAttribute("aria-current");
+      });
+    }
+    window.addEventListener("hashchange", syncSectionNavigation);
+    syncSectionNavigation();
     document.querySelectorAll("[data-copy], [data-copy-kind]").forEach((button) => {
       button.addEventListener("click", async () => {
         let value = button.getAttribute("data-copy") || "";
@@ -1566,7 +1676,43 @@ function onboardingPage(config: CodexProConfig): string {
     const tunnelSelect = document.querySelector("[data-tunnel-select]");
     const hostnameInput = document.querySelector("[data-hostname-input]");
     const hostnameHelp = document.querySelector("[data-hostname-help]");
+    const saveButton = document.querySelector("[data-save-profile]");
+    const resetButton = document.querySelector("[data-profile-reset]");
+    const dirtyLabel = document.querySelector("[data-profile-dirty]");
     const tokenEnabled = ${config.authToken ? "true" : "false"};
+    const serializeProfile = () => JSON.stringify(Array.from(profileForm?.elements || [])
+      .filter((control) => control.name)
+      .map((control) => [control.name, control.type === "checkbox" ? control.checked : control.value]));
+    let savedSnapshot = serializeProfile();
+    let savingProfile = false;
+    let persistedProfile = profileForm?.getAttribute("data-profile-exists") === "true";
+    function updateProfileDirty() {
+      if (!profileForm) return;
+      const dirty = serializeProfile() !== savedSnapshot;
+      if (dirtyLabel) dirtyLabel.textContent = dirty ? "Unsaved changes" : persistedProfile ? "No unsaved changes" : "Ready to save first profile";
+      if (saveButton) saveButton.disabled = savingProfile || (!dirty && persistedProfile);
+      if (resetButton) resetButton.disabled = savingProfile || !dirty;
+    }
+    function updateVisibleTunnelFields() {
+      const current = tunnelSelect?.value || "";
+      profileForm?.querySelectorAll("[data-tunnel-field]").forEach((field) => {
+        field.hidden = !field.getAttribute("data-tunnel-field").split(" ").includes(current);
+      });
+    }
+    profileForm?.addEventListener("input", updateProfileDirty);
+    profileForm?.addEventListener("change", updateProfileDirty);
+    resetButton?.addEventListener("click", () => {
+      profileForm?.reset();
+      updateTunnelHelp();
+      updateProfileDirty();
+      const status = document.querySelector("[data-profile-status]");
+      if (status) status.textContent = "Edits discarded. Running settings were not changed.";
+    });
+    window.addEventListener("beforeunload", (event) => {
+      if (savingProfile || serializeProfile() === savedSnapshot) return;
+      event.preventDefault();
+      event.returnValue = "";
+    });
     function serverPreviewFor(hostname) {
       const clean = String(hostname || "").trim().replace(/^https?:\\/\\//, "").replace(/\\/mcp\\/?$/, "").replace(/\\/+$/, "");
       if (!clean) return "";
@@ -1603,6 +1749,8 @@ function onboardingPage(config: CodexProConfig): string {
       } else {
         hostnameHelp.textContent = "Local-only mode does not expose a public ChatGPT Server URL.";
       }
+      updateVisibleTunnelFields();
+      updateProfileDirty();
     }
     tunnelSelect?.addEventListener("change", updateTunnelHelp);
     hostnameInput?.addEventListener("input", () => {
@@ -1656,7 +1804,10 @@ function onboardingPage(config: CodexProConfig): string {
           connectionTest: Boolean(form.elements.connectionTest?.checked),
           noInstallCloudflared: Boolean(form.elements.noInstallCloudflared?.checked)
         };
-        if (status) status.textContent = "Saving...";
+        const submittedSnapshot = serializeProfile();
+        savingProfile = true;
+        updateProfileDirty();
+        if (status) status.textContent = "Saving profile...";
         try {
           const response = await fetch("/admin/profile", {
             method: "POST",
@@ -1668,9 +1819,22 @@ function onboardingPage(config: CodexProConfig): string {
           });
           const result = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(result.error?.message || "Save failed");
-          if (status) status.textContent = "Saved. Restart CodexPro for these profile settings to apply.";
+          savedSnapshot = submittedSnapshot;
+          persistedProfile = true;
+          if (status) {
+            status.removeAttribute("role");
+            status.setAttribute("role", "status");
+            status.textContent = "Profile saved. Your changes apply after you manually restart CodexPro.";
+          }
         } catch (error) {
-          if (status) status.textContent = error instanceof Error ? error.message : "Save failed";
+          if (status) {
+            status.setAttribute("role", "alert");
+            status.textContent = error instanceof Error ? error.message : "Save failed";
+            status.focus();
+          }
+        } finally {
+          savingProfile = false;
+          updateProfileDirty();
         }
       });
     }

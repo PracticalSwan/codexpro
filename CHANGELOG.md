@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.33.9 (2026-10-15)
+
+- Simplified the authenticated local setup/status page around Status, Settings, Connect ChatGPT, and Diagnostics. Core controls remain visible, provider-specific inputs and advanced options use progressive disclosure, and full profile/capability diagnostics remain accessible. Saving and discarding edits now have clear state feedback and a navigation warning, while settings still only apply on the next manual start. OpenAI instructions correctly describe Tunnel ID rather than Server URL.
+- Added responsive navigation and a compact status summary, verified with actual desktop and mobile browser interactions. No new endpoints, browser credential persistence, runtime start/stop controls, or relaxed authentication were introduced.
+- Refreshed MCP client/server, Express, Zod and Node 24 types within supported semver ranges, while retaining TypeScript 5.x.
+- Fixed an intermittent Windows hook-runner crash when a quickly exiting hook closed stdin before the runner finished sending bounded JSON. The runner now observes EPIPE/closed-stream errors without losing the hook's actual exit status, including the blocking exit code 2. Added repeated quick-exit coverage; unrelated stdin errors still return warnings and the global staged-commit safety hook remains fail-closed.
+
 ## 0.33.8 (2026-10-05)
 
 - Fixed OpenAI tunnel health scratch cleanup after an externally initiated, ownership-verified `codexpro stop`, especially on Windows where launcher-tree termination can bypass launcher exit hooks. Runtime state now records only the exact validated `codexpro-openai-tunnel-*` directory directly under the OS temp root, refreshes that path after tunnel recovery, and removes only that owned directory after the verified launcher/server tree exits. Cleanup retries transient Windows locks; corrupted or non-owned paths are rejected. The runtime-lifecycle regression failed before the fix and passes after it, including a guard that an arbitrary path from runtime state is never deleted.

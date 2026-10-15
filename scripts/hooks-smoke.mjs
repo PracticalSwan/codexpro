@@ -39,6 +39,13 @@ assert.equal(status.trusted, false, 'hook mutation should invalidate trust');
 await trustProjectHooks(root, trustDir);
 results = await runHooks('before_tool', { root, trustDir, input: { tool: 'write' } });
 assert.equal(results[0]?.status, 'blocked');
+// A hook may exit before reading the JSON stdin payload. The parent must preserve
+// its blocking exit status even when the pipe closes with EPIPE (Windows race).
+for (let attempt = 0; attempt < 12; attempt++) {
+  const fastExit = await runHooks('before_tool', { root, trustDir, input: { tool: 'write', payload: 'x'.repeat(30_000) } });
+  assert.equal(fastExit[0]?.status, 'blocked', 'early-exit hook lost its blocking status');
+  assert.equal(fastExit[0]?.exitCode, 2);
+}
 hook.hooks.before_tool = [{ command: process.execPath, args: ['-e', 'process.exit(3)'] }];
 await fs.writeFile(hookPath, JSON.stringify(hook));
 await trustProjectHooks(root, trustDir);

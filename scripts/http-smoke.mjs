@@ -75,6 +75,7 @@ async function waitForHealthJson(url, timeoutMs = 15000) {
 }
 
 async function expectHttpTokenRequired(name, overrides = {}, options = {}) {
+  console.log(`[http smoke] token gate: ${name}`);
   const root = await fs.mkdtemp(path.join(os.tmpdir(), `codexpro-http-no-token-${name}-`));
   const port = await getFreePort();
   const env = {
@@ -409,6 +410,12 @@ try {
   }
   if (!homeText.includes('Connection profile') || !homeText.includes('data-profile-form')) {
     throw new Error('onboarding page did not include the saved profile editor');
+  }
+  for (const expected of ['data-settings-advanced', 'data-tunnel-field', 'data-profile-reset', 'data-profile-dirty', 'data-profile-exists="false"', 'data-save-profile', 'aria-live="polite"', 'updateVisibleTunnelFields', 'beforeunload', 'Save changes for next start']) {
+    if (!homeText.includes(expected)) throw new Error(`onboarding page omitted simplified settings behavior: ${expected}`);
+  }
+  if (!homeText.includes('name="tunnel"') || !homeText.includes('name="write"') || !homeText.includes('name="toolMode"')) {
+    throw new Error('simplified onboarding lost an essential policy control');
   }
   if (!homeText.includes('history.replaceState') || !homeText.includes('initialUrl.searchParams.delete("codexpro_token")')) {
     throw new Error('onboarding page did not remove query credentials from browser history');

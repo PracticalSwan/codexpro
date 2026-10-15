@@ -66,6 +66,13 @@ async function runOne(event: HookEvent, root: string, command: HookCommand, requ
     };
     child.stdout?.on("data", (chunk: Buffer) => collect("stdout", chunk));
     child.stderr?.on("data", (chunk: Buffer) => collect("stderr", chunk));
+    // Short-lived hooks can close stdin before the parent finishes writing JSON.
+    // Preserve the actual child exit status (especially blocking exit code 2)
+    // rather than crashing the server on an unhandled broken pipe.
+    child.stdin?.on("error", (error: NodeJS.ErrnoException) => {
+      if (error.code === "EPIPE" || error.code === "ERR_STREAM_DESTROYED") return;
+      finish(null, redactSensitiveText(error.message).slice(0, 500));
+    });
     child.once("error", (error) => finish(null, redactSensitiveText(error.message).slice(0, 500)));
     child.once("exit", (code) => finish(code, outputLimited ? `Hook output exceeded ${maxOutputBytes} bytes.` : undefined));
     const timer = setTimeout(() => {
