@@ -62,7 +62,7 @@ These are baseline behavior, not pending roadmap work. New long-running features
 | 45 | P1 | Dependency Reality Engine | [design](../superpowers/specs/2026-09-22-dependency-reality-engine-design.md) · [plan](../superpowers/plans/2026-09-22-dependency-reality-engine.md) | Released |
 | 46 | P1 | Local Service Observatory | [design](../superpowers/specs/2026-09-22-local-service-observatory-design.md) · [plan](../superpowers/plans/2026-09-22-local-service-observatory.md) | Released |
 
-| 47 | P0 | Local Control Setup/Status Usability | [design](../superpowers/specs/2026-10-15-local-control-usability-design.md) ? [plan](../superpowers/plans/2026-10-15-local-control-usability.md) | Verified |
+| 47 | P0 | Local Control Setup/Status Usability | [design](../superpowers/specs/2026-10-15-local-control-usability-design.md) ? [plan](../superpowers/plans/2026-10-15-local-control-usability.md) | Locally verified; hosted release pending |
 
 ## Verified implementation sequence
 
