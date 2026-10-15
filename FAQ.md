@@ -36,7 +36,7 @@ The main differences are:
 - The normal workflow emphasizes diffs, `show_changes`, smoke tests, and handoff status files.
 - CodexPro keeps a strict boundary: no model proxying, account pooling, third-party Pro site scraping, quota bypassing, or OS sandbox claims.
 
-## What changed in the 0.33.9 maintenance release?
+## What changed in the unreleased 0.33.9 maintenance candidate?
 
 The authenticated local /setup page now prioritizes runtime status and next-start settings, shows only relevant tunnel-provider fields, collapses advanced options, and provides Save/Discard, unsaved-change protection, and clear status feedback. OpenAI connections use Tunnel ID instructions. Existing authorization, redaction and manual-start semantics are unchanged. Compatible dependencies have been refreshed while keeping TypeScript on 5.x.
 
@@ -119,10 +119,10 @@ For the full first-time setup, OpenAI tunnel/key steps, and multi-project exampl
 Install the latest tagged/stable artifact directly from GitHub Releases:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.9/codexpro-full-0.33.9.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.8/codexpro-full-0.33.8.tgz
 ```
 
-Stable **0.33.9 includes Plans 38–47**, ownership-safe OpenAI tunnel health scratch cleanup after external stop, long-lived OpenAI tunnel recovery, PID-reuse-safe tunnel ownership, bounded Windows handoff settlement, runner-owned execution logging, packed-artifact installation verification, refreshed compatible dependencies, and current continuity/isolation hardening. Build main from source only for future **Unreleased** fixes:
+Stable **0.33.8 includes Plans 38–46**, ownership-safe OpenAI tunnel health-scratch cleanup, long-lived OpenAI tunnel recovery, PID-reuse-safe ownership, bounded Windows handoff settlement, runner-owned execution logging, and packed-artifact installation verification. The **unreleased 0.33.9 main candidate** adds Plan 47, a simpler local setup/status page, compatible dependency refreshes, and hook-runner EPIPE hardening. Build main only if these verified but unpublished changes are needed:
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git

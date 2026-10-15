@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.33.9 (2026-10-15)
+### Candidate 0.33.9 (2026-10-15; unreleased pending hosted CI)
 
 - Simplified the authenticated local setup/status page around Status, Settings, Connect ChatGPT, and Diagnostics. Core controls remain visible, provider-specific inputs and advanced options use progressive disclosure, and full profile/capability diagnostics remain accessible. Saving and discarding edits now have clear state feedback and a navigation warning, while settings still only apply on the next manual start. OpenAI instructions correctly describe Tunnel ID rather than Server URL.
 - Added responsive navigation and a compact status summary, verified with actual desktop and mobile browser interactions. No new endpoints, browser credential persistence, runtime start/stop controls, or relaxed authentication were introduced.
