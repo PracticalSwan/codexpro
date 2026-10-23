@@ -1,6 +1,6 @@
 # Plan 48 — CodexPro 0.34: Deadline Retirement and Focused ChatGPT Tool Quality
 Date: 2026-10-24 (Asia/Bangkok)
-Status: **Planned — awaiting implementation authorization**
+Status: **Local full release gate verified; exact-commit hosted CI/Pages, public release, installation and profile migration pending**
 Canonical repository: current authorized CodexPro checkout; branch `main`.
 Source baseline observed: `49366b18f5fad4aae5b8953e42be0c43fc7554b0`; package/global CLI version `0.33.9`.
 User authorized source implementation, tests, docs, Git commit and push. Running CodexPro remains protected; public publication requires the usual hosted gates.
@@ -173,7 +173,7 @@ No `gpt-6` branching, manual model selection, model-id detection, reasoning-effo
 
 ## 10. Planning disposition
 
-One plan, no companion spec or parallel feature plans. `Plan 48` is **Planned** and is not a command to execute, stop the live runtime, delete the historical plan record, change protected profiles, or deploy. Before implementation, use the current code/runtime as source of truth and revisit any changed OpenAI/MCP contracts. Review/approve this narrowed scope rather than accepting speculative expansion.
+One focused plan governs this implementation. The operator subsequently authorized source implementation, local verification, the exact-owned runtime stop, remote CI and release work. Source changes are committed on main; release and profile migration remain separately gated on their verified preconditions. The original pre-approval constraints above are historical scope notes, not the current execution status.
 
 
 ## 11. Local implementation evidence (2026-10-24)
@@ -182,6 +182,15 @@ One plan, no companion spec or parallel feature plans. `Plan 48` is **Planned** 
 - Retired CLI flags/environment values report actionable errors. Legacy profile reads drop obsolete keys and saves omit them; a disposable profile regression preserved credential and unrelated fields without modifying the source record on read. No real profile was migrated.
 - The independent OpenAI tunnel TTL remains the previous finite 65-minute setting; public help points to released 0.33.8 until 0.34.0 becomes official.
 - TypeScript build, release guard, selected smoke tests for routing, verification, batches, diagnostics, local-service probes, MCP compatibility, analysis, context, policies, capability explanations, preferences, tables and dependencies passed.
-- Clean npm install, zero-high-vulnerability audit, archive packaging and isolated install smoke passed. Full release:check is **not** claimed: broader smoke tests start CodexPro test runtimes, prohibited by the agent runtime rule.
+- Clean npm install, zero-high-vulnerability audit, archive packaging and isolated install smoke passed. Full `release:check` was later authorized and passed with isolated, test-owned runtimes; these fixtures were cleaned up, and no operator runtime was started.
 - Conditional P1 metadata changes omitted because no controlled real-host GPT-6 tool selection baseline or demonstrated selection defect exists.
-- Live operator CodexPro was left untouched. Global installation waits for separate exact-owner stop approval and required release gates. No public tag/release without exact-commit hosted Windows/Ubuntu CI and Pages.
+- The operator's runtime was subsequently stopped through its exact-owned process tree with explicit approval. Global installation still requires released-artifact checks and profile integrity verification. No public tag/release without exact-commit hosted Windows/Ubuntu CI and Pages.
+
+## 12. Release and CI compute consolidation (2026-10-24)
+
+- After explicit operator approval, stopped the exact owned CodexPro runtime process tree; no manual runtime was restarted.
+- GitHub Actions began accepting workflow dispatch again. A previous candidate run exposed the release-help artifact link inconsistency and was cancelled once superseded to save compute.
+- Retained mandatory Windows/Node 24 and Ubuntu/Node 20 CI smoke, full tag-triggered release verification, package integrity and security gates. Ignore documentation-only Markdown pushes/PRs; `workflow_dispatch` remains. Streamlined `npm run stress` to dedicated stress coverage (build and Goal smoke suites already run elsewhere in `release:check`).
+- Corrected candidate CLI help to distinguish published stable downloads from unreleased candidate downloads, plus the build-identity regression and strict HTTP admin legacy-input tests.
+- Full `npm ci` and `npm run release:check` passed on Windows Node 22.19.0 with controlled test fixtures and zero audit vulnerabilities. No test-owned CodexPro processes or port 8787 listeners remained.
+- Exact-commit hosted CI and Pages, public tag/Release, protected profile migration and global installation are separate gates. Do not claim their success until verified.

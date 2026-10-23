@@ -1,9 +1,17 @@
 name: CI
 
 on:
+  # Documentation-only edits do not change the application or shipped executable.
+  # Operator can still request cross-OS coverage with workflow_dispatch.
   pull_request:
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
   workflow_dispatch:
 
 permissions:

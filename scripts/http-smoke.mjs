@@ -586,10 +586,18 @@ try {
     allowedRoots: [realAlternateRoot]
   }, null, 2), 'utf8');
 
-  const localProfile = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
+  const legacyDeadlineProfile = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ tunnel: 'none', syncCallDeadlineMode: 'observe', syncCallDeadlineMinutes: 12 })
+  });
+  if (legacyDeadlineProfile.status !== 400) {
+    throw new Error(`retired deadline inputs must be rejected by strict admin profile validation, received ${legacyDeadlineProfile.status}`);
+  }
+  const localProfile = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ tunnel: 'none' })
   });
   const localProfileJson = await localProfile.json();
   const localSavedProfile = JSON.parse(await fs.readFile(localProfileJson.profile_path, 'utf8'));

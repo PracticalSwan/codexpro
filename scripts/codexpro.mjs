@@ -59,9 +59,13 @@ function usage() {
   const publishedVersion = buildIdentity().channel === "release" ? version : "0.33.8";
   console.log(`CodexPro Full launcher
 
-Install latest published GitHub Release (local main builds may be newer):
+Install previously verified public stable release:
   npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v${publishedVersion}/codexpro-full-${publishedVersion}.tgz
-  https://github.com/PracticalSwan/codexpro/releases
+
+When CodexPro Full v${version} has passed hosted CI and is publicly released:
+  npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v${version}/codexpro-full-${version}.tgz
+
+Available releases: https://github.com/PracticalSwan/codexpro/releases
 
 Usage:
   codexpro setup

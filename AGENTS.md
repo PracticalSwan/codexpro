@@ -28,6 +28,7 @@ Scope: this repository and all descendants.
 - Before globally reinstalling, inspect every saved CodexPro workspace profile and exact owned OS processes. `codexpro status --root <current-project>` is workspace-scoped; a stopped result does not mean the global installation is idle. Also check runtime ownership before tunnel/runtime replacement or process termination.
 - If running, **do not stop it without explicit user approval for that specific stop**. Explain why a stop is required.
 - Agents must **never start or restart CodexPro**, including after an approved stop, reinstall, commit, or release.
+- Isolated test-owned runtimes launched and cleaned up by explicitly authorized smoke/stress fixture suites are bounded test subprocesses, not a restart of the operator's saved runtime. They must use disposable state and preserve all user profiles, tunnel and selected workspace settings; no persistent service may remain after testing.
 - If stopping is approved, terminate only the exact CodexPro-owned process tree required, verify ownership, leave it stopped, and do not touch unrelated Node processes/tunnels/services.
 - If reinstall is blocked by a running runtime and stop approval is absent, defer reinstall while completing safe source/commit/push work.
 

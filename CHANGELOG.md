@@ -9,6 +9,8 @@
 - Retained the independent OpenAI tunnel connection TTL at the previous 65-minute value. Simplified settings and diagnostics, replacing deadline-focused tests with contract and operational-safety regressions.
 - Deferred all tool-metadata changes not backed by real-host model selection evidence; no new tools, routing layer, plugin publication infrastructure or dependency upgrades.
 - GitHub Actions hosted release validation and any reinstall must respect platform and runtime-lifecycle constraints.
+- Reduced CI compute by skipping documentation-only push/PR builds; preserved Windows/Node 24 and Ubuntu/Node 20 compatibility checks and the full tag-triggered release gate. Removed a redundant stress-stage build and three repeated Goal smoke runs already covered by the main smoke suite.
+- Fixed hosted build-identity help regression by distinguishing the published stable archive from the candidate download (available only after release). HTTP regression now asserts obsolete deadline inputs are rejected and normal profile saves work.
 
 
 ### Candidate 0.33.9 (2026-10-15; unreleased pending hosted CI)
