@@ -1,7 +1,6 @@
 import type { CodexProConfig } from "./config.js";
 import type { TelemetrySnapshot } from "./telemetry.js";
 import { containsPrivateMetadataText } from "./redact.js";
-import { DEFAULT_SYNC_CALL_DEADLINE_MS, MIN_SYNC_CALL_DEADLINE_MS, MAX_SYNC_CALL_DEADLINE_MS } from "./deadline.js";
 import { buildIdentity } from "./buildIdentity.js";
 import { explainCapabilities, type CapabilityExplanation } from "./capabilityExplain.js";
 
@@ -19,7 +18,6 @@ export interface ConnectionDiagnostics {
   last_event_at?: string;
 }
 
-const RUNTIME_DEADLINE_MODES = new Set(["bounded", "observe"]);
 const RUNTIME_TRANSPORT_STATES = new Set(["ready", "unavailable", "unknown"]);
 
 function safeDiagnosticEnum(value: unknown, allowed: Set<string>, fallback: string): string {
@@ -86,10 +84,9 @@ export interface ToolSurfaceDiagnostics {
   missing_tools: string[];
   unexpected_tools: string[];
   matches_expected: boolean;
-  deadline: Record<string, unknown>;
   capabilities: Record<string, "available" | "unavailable">;
   capability_explanations: CapabilityExplanation[];
-  resilience: { deadline_yields: number; deadline_limited_children: number; async_routes: number; job_started: number; job_completed: number; job_interrupted: number; batch_continued: number };
+  resilience: { async_routes: number; job_started: number; job_completed: number; job_interrupted: number; batch_continued: number };
   timeout_risks: Array<{ tool: string; recommended_primitive: string; reason: string }>;
 }
 
@@ -125,10 +122,9 @@ export function toolSurfaceDiagnostics(
     missing_tools: missing,
     unexpected_tools: unexpected,
     matches_expected: missing.length === 0 && unexpected.length === 0,
-    deadline: { sync_call_deadline_mode: config.syncCallDeadlineMode, sync_call_deadline_ms: config.syncCallDeadlineMs, sync_call_deadline_minutes: config.syncCallDeadlineMs / 60_000, sync_call_deadline_default_ms: DEFAULT_SYNC_CALL_DEADLINE_MS, sync_call_deadline_min_ms: MIN_SYNC_CALL_DEADLINE_MS, sync_call_deadline_max_ms: MAX_SYNC_CALL_DEADLINE_MS },
     capabilities: { managed_processes: has("start_workspace_process") ? "available" : "unavailable", structured_jobs: has("job_status") && (has("start_checks") || has("start_verification")) ? "available" : "unavailable", resumable_batches: has("gather_context") && has("inspect_workspace") ? "available" : "unavailable", durable_goals: has("propose_goal") ? "available" : "unavailable" },
     capability_explanations: explainCapabilities({ config, registeredTools: registered, takesEffect: "current" }),
-    resilience: { deadline_yields: eventCount("deadline_yield"), deadline_limited_children: eventCount("deadline_limited_child"), async_routes: eventCount("async_routed"), job_started: eventCount("job_started"), job_completed: eventCount("job_completed"), job_interrupted: eventCount("job_interrupted"), batch_continued: eventCount("batch_continued") },
+    resilience: { async_routes: eventCount("async_routed"), job_started: eventCount("job_started"), job_completed: eventCount("job_completed"), job_interrupted: eventCount("job_interrupted"), batch_continued: eventCount("batch_continued") },
     timeout_risks: timeoutRisks
   };
 }
@@ -140,22 +136,17 @@ export function diagnosticsSnapshot(
   expectedTools: string[],
   activeSessions = 0,
   operator: {
-    savedDeadlineMode?: string; savedDeadlineMs?: number; activeStructuredJobs?: number;
-    runtimeGenerationId?: string; runtimeDeadlineMode?: string; runtimeDeadlineMs?: number; runtimeTransportState?: string;
+    activeStructuredJobs?: number;
+    runtimeGenerationId?: string; runtimeTransportState?: string;
   } = {}
 ): Record<string, unknown> {
   return {
     build: buildIdentity(),
     connection: connectionDiagnostics(telemetry, activeSessions),
     operator: {
-      current_effective_deadline: { mode: config.syncCallDeadlineMode, ms: config.syncCallDeadlineMs },
-      saved_next_run_deadline: { mode: operator.savedDeadlineMode ?? config.syncCallDeadlineMode, ms: operator.savedDeadlineMs ?? config.syncCallDeadlineMs },
       active_structured_jobs: Math.max(0, Math.floor(operator.activeStructuredJobs ?? 0)),
-      recent_deadline_yield: (telemetry.counters["event:deadline_yield"] ?? 0) > 0,
       current_runtime: {
         generation_id: safeRuntimeGenerationId(operator.runtimeGenerationId),
-        deadline_mode: safeDiagnosticEnum(operator.runtimeDeadlineMode ?? config.syncCallDeadlineMode, RUNTIME_DEADLINE_MODES, config.syncCallDeadlineMode),
-        deadline_ms: operator.runtimeDeadlineMs ?? config.syncCallDeadlineMs,
         transport: safeDiagnosticEnum(operator.runtimeTransportState, RUNTIME_TRANSPORT_STATES, "unknown")
       }
     },
@@ -166,19 +157,4 @@ export function diagnosticsSnapshot(
       recent_events: telemetry.events
     }
   };
-}
-
-export async function runToolTimeProbe(config: CodexProConfig, options: { maxMinutes?: number; now?: () => number; sleep?: (ms: number) => Promise<void>; signal?: AbortSignal } = {}) {
-  if (config.syncCallDeadlineMode !== "observe") throw new Error("tool_time_probe is available only in Unlimited/observe mode.");
-  const maxMinutes = options.maxMinutes ?? 60;
-  if (!Number.isInteger(maxMinutes) || maxMinutes < 1 || maxMinutes > 120) throw new Error("tool_time_probe max_minutes must be an integer from 1 to 120.");
-  const now = options.now ?? Date.now;
-  const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
-  const started = now();
-  const targetMs = maxMinutes * 60_000;
-  while (now() - started < targetMs) {
-    if (options.signal?.aborted) return { status: "aborted" as const, elapsed_ms: Math.max(0, now() - started), saved_deadline_changed: false, guidance: "If ChatGPT closed the tool call without a server-visible abort, record the UI-observed host time manually; CodexPro does not infer or bypass the host limit." };
-    await sleep(Math.min(1_000, targetMs - (now() - started)));
-  }
-  return { status: "completed" as const, elapsed_ms: Math.max(0, now() - started), saved_deadline_changed: false, guidance: "Record the ChatGPT UI/host cutoff manually if it closed earlier. This probe does not change saved deadline settings or bypass the external host tool window." };
 }

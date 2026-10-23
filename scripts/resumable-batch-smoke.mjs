@@ -13,7 +13,6 @@ import { gatherContextResumable } from '../dist/contextBatch.js';
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-batch-workspace-'));
 const batchDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-batch-state-'));
 const tinyDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-batch-tiny-'));
-const yielding = { shouldYield() { return true; } };
 
 async function write(rel, text) {
   const file = path.join(root, rel); await fs.mkdir(path.dirname(file), { recursive: true }); await fs.writeFile(file, text);
@@ -40,42 +39,19 @@ try {
   invalidateWorkspaceAnalysis(workspace.id);
   const uninterrupted = await inspectWorkspace(config, guard, workspace);
   invalidateWorkspaceAnalysis(workspace.id);
-  let partial = await inspectWorkspaceResumable({ config, guard, workspace, store, deadline: yielding });
-  assert.equal(partial.complete, false);
-  assert.match(partial.continuationToken, /^batch_/);
-  assert(partial.analysis.coverage.analyzedFiles > 0, 'first inspect batch did not advance real analysis work');
-  let inspectCalls = 1;
-  while (!partial.complete && inspectCalls < 20) {
-    partial = await inspectWorkspaceResumable({ config, guard, workspace, store, continuationToken: partial.continuationToken, deadline: yielding });
-    inspectCalls += 1;
-  }
-  assert.equal(partial.complete, true);
+  const partial = await inspectWorkspaceResumable({ config, guard, workspace, store });
+  assert.equal(partial.complete, true, 'inspection should complete without artificial per-call yielding');
   assert.deepEqual(partial.analysis.symbols, uninterrupted.symbols);
   assert.deepEqual(partial.analysis.relationships, uninterrupted.relationships);
   assert.equal(partial.analysis.fingerprint, uninterrupted.fingerprint);
 
   const contextFull = await gatherContextV2({ config, guard, workspace, strategy: 'task', targetPath: 'src/a.ts', includeTests: true, maxBytes: 6000 });
-  let contextPart = await gatherContextResumable({ config, guard, workspace, store, strategy: 'task', targetPath: 'src/a.ts', includeTests: true, maxBytes: 6000, deadline: yielding });
-  assert.equal(contextPart.complete, false);
-  assert.match(contextPart.continuationToken, /^batch_/);
-  let contextCalls = 1;
-  while (!contextPart.complete && contextCalls < 30) {
-    contextPart = await gatherContextResumable({ config, guard, workspace, store, continuationToken: contextPart.continuationToken, strategy: 'task', targetPath: 'src/a.ts', includeTests: true, maxBytes: 6000, deadline: yielding });
-    contextCalls += 1;
-  }
-  assert.equal(contextPart.complete, true);
+  const contextPart = await gatherContextResumable({ config, guard, workspace, store, strategy: 'task', targetPath: 'src/a.ts', includeTests: true, maxBytes: 6000 });
+  assert.equal(contextPart.complete, true, 'context should complete without artificial per-call yielding');
   assert.deepEqual(contextPart.selectedItems.map((item) => ({ path: item.path, kind: item.kind, reasons: item.reasons })), contextFull.selectedItems.map((item) => ({ path: item.path, kind: item.kind, reasons: item.reasons })));
   assert.equal(contextPart.text, contextFull.text);
   const privateText = await fs.readFile(path.join(batchDir, contextPart.batch.id, 'state.json'), 'utf8');
   assert(!privateText.includes('export function alpha'), 'batch state persisted source text');
-
-  const staleStart = await gatherContextResumable({ config, guard, workspace, store, strategy: 'task', targetPath: 'src/a.ts', maxBytes: 6000, deadline: yielding });
-  assert.equal(staleStart.complete, false);
-  await fs.appendFile(path.join(root, 'src/a.ts'), 'export const changed = true;\n');
-  invalidateWorkspaceAnalysis(workspace.id);
-  await assert.rejects(() => gatherContextResumable({ config, guard, workspace, store, continuationToken: staleStart.continuationToken, strategy: 'task', targetPath: 'src/a.ts', maxBytes: 6000, deadline: yielding }), /stale/i);
-  const staleRecord = await store.require(staleStart.continuationToken);
-  assert.equal(staleRecord.state, 'stale');
 
   console.log('resumable batch smoke passed');
 } finally {

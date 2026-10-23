@@ -53,9 +53,7 @@ CodexPro exposes tools according to the active configuration and optional `.code
 | Write mode | `off`, `handoff`, `workspace` | Controls direct workspace mutation. |
 | Bash mode | `off`, `safe`, `full` | Removes Bash entirely, allows restricted verification, or permits trusted full shell use. |
 | Windows Bash runtime — **0.33.0** | `auto`, `native-bash`, `wsl` | `auto` prefers Git for Windows and never silently selects WSL; explicit WSL uses `wsl.exe --exec bash -lc`. Optional Bash/Git executable overrides keep the toolchain association explicit. |
-| Synchronous tool deadline | bounded 5-60 min / Unlimited observe-only | Tool-time awareness defaults to a 20-minute per-call transport budget. The budget restarts for every MCP tool invocation and is not a whole-turn host timer. Observe mode keeps elapsed diagnostics but removes only CodexPro's cooperative cutoff; it never changes task-quality or safety requirements. |
-| Deadline diagnostics | `connection_diagnostics`, `tool_surface_diagnostics`, `local_telemetry`, `tool_time_probe` | Shows bounded/redacted resilience events, current/default/min/max deadline state, timeout-risk alternatives, active-job operator status, and an observe-only mutation-free host-window probe. |
-| Execution routing hints | derived from finite deadline reference | `sync_preferred=min(5 min,25% D)` and `async_preferred=75% D`; explicit duration/risk metadata can recommend `proc_*`, `job_*`, or `goal_*` without auto-escalating permission or reducing scope. |
+| Long-running work | Processes, verification jobs, resumable batches and Durable Goals | Keep independent operational timeouts and cancellation without an artificial MCP-call countdown. |
 | Analysis | on/off | Enables built-in repository analysis. |
 | Codex sessions | `off`, `metadata`, `read` | Controls local Codex history discovery and bounded transcript reads. |
 | Artifact export | on/off | Controls `export_file`. |

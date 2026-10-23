@@ -51,14 +51,14 @@ assert(!surfaceText.includes(root), 'tool diagnostics leaked absolute workspace 
 const runtimeDiag = diagnosticsSnapshot(
   config, telemetry.snapshot(), ['read'], ['read'], 2,
   {
-    savedDeadlineMode: 'bounded', savedDeadlineMs: 720_000, activeStructuredJobs: 1,
-    runtimeGenerationId: 'runtime-test-generation', runtimeDeadlineMode: 'bounded', runtimeDeadlineMs: 1_200_000,
+    activeStructuredJobs: 1,
+    runtimeGenerationId: 'runtime-test-generation',
     runtimeTransportState: 'ready'
   }
 );
 assert(runtimeDiag.operator?.current_runtime?.generation_id === 'runtime-test-generation', 'diagnostics omitted current runtime generation');
-assert(runtimeDiag.operator?.current_runtime?.deadline_ms === 1_200_000 && runtimeDiag.operator?.current_runtime?.transport === 'ready', 'diagnostics omitted current runtime deadline/transport');
-assert(runtimeDiag.operator?.saved_next_run_deadline?.ms === 720_000, 'diagnostics did not separately label saved-next-run deadline');
 assert(runtimeDiag.operator?.active_structured_jobs === 1, 'diagnostics omitted active structured job count');
+assert(runtimeDiag.operator?.current_runtime?.transport === 'ready');
+assert(!('deadline' in surface));
 
 console.log('✓ diagnostics smoke test passed');

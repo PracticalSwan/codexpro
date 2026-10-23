@@ -89,7 +89,6 @@ export async function executeVerificationJob(context: StructuredJobWorkerContext
   return {
     ok: results.every((result) => result.ok),
     complete: true,
-    deadlineYielded: false,
     remainingCheckIds: [],
     selectedChecks: payload.selectedChecks,
     results,

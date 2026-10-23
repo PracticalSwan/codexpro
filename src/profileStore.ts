@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import type { BashMode, BashRuntimePreference, BashTranscriptMode, CodexSessionsMode, ToolMode, WriteMode } from "./config.js";
 import { expandHome } from "./config.js";
-import type { SyncCallDeadlineMode } from "./deadline.js";
 
 export type TunnelMode = "openai" | "none" | "cloudflare" | "cloudflare-named" | "ngrok" | "tailscale";
 export type ConnectorMode = "agent" | "handoff" | "pro";
@@ -40,8 +39,6 @@ export interface WorkspaceProfile {
   write?: WriteMode | string;
   toolMode?: ToolMode | string;
   toolCards?: boolean;
-  syncCallDeadlineMode?: SyncCallDeadlineMode;
-  syncCallDeadlineMs?: number;
   widgetDomain?: string;
   analysisEnabled?: boolean;
   artifactExportEnabled?: boolean;
@@ -81,8 +78,6 @@ export interface RuntimeConnection {
   write?: WriteMode | string;
   toolMode?: ToolMode | string;
   toolCards?: boolean;
-  syncCallDeadlineMode?: SyncCallDeadlineMode;
-  syncCallDeadlineMs?: number;
   runtimeGenerationId?: string;
   transportState?: "ready" | "unavailable" | "unknown";
   analysisEnabled?: boolean;
@@ -159,14 +154,15 @@ export function readWorkspaceProfile(root: string): WorkspaceProfile {
   if (!profile || typeof profile !== "object" || Array.isArray(profile)) return inherited;
   const typed = profile as WorkspaceProfile;
   if (typed.root && canonicalRootForIdentity(typed.root) !== canonicalRootForIdentity(root)) return inherited;
-  return { ...inherited, ...typed, profilePath };
+  const { syncCallDeadlineMode: _oldMode, syncCallDeadlineMs: _oldMs, ...active } = typed as WorkspaceProfile & { syncCallDeadlineMode?: unknown; syncCallDeadlineMs?: unknown };
+  return { ...inherited, ...active, profilePath };
 }
 
 export function saveWorkspaceProfile(root: string, profile: WorkspaceProfile): string {
   const canonicalRoot = canonicalRootForIdentity(root);
   const dir = profileDir();
   const filePath = profilePathForRoot(canonicalRoot);
-  const { profilePath: _profilePath, ...rest } = profile;
+  const { profilePath: _profilePath, syncCallDeadlineMode: _oldMode, syncCallDeadlineMs: _oldMs, ...rest } = profile as WorkspaceProfile & { syncCallDeadlineMode?: unknown; syncCallDeadlineMs?: unknown };
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const payload: WorkspaceProfile = {
     version: 1,

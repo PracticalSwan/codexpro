@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DEFAULT_ANALYSIS_LIMITS, type AnalysisLimits } from "./analysis/types.js";
-import { DEFAULT_SYNC_CALL_DEADLINE_MS, normalizeSyncCallDeadlineConfig, type SyncCallDeadlineMode } from "./deadline.js";
 export type BashMode = "off" | "safe" | "full";
 export type BashTranscriptMode = "compact" | "full";
 export type BashRuntimePreference = "auto" | "native-bash" | "wsl";
@@ -94,8 +93,6 @@ export interface CodexProConfig {
   maxGoalWorkers: number;
   analysisEnabled: boolean;
   analysisLimits: AnalysisLimits;
-  syncCallDeadlineMode: SyncCallDeadlineMode;
-  syncCallDeadlineMs: number;
 }
 
 const DEFAULT_BLOCKED_GLOBS = [
@@ -160,6 +157,7 @@ function parseArgs(argv: string[]): Record<string, string | string[] | boolean> 
       }
     }
 
+    if (key.startsWith("sync-call-deadline")) throw new Error("Synchronous tool-call deadlines were removed in 0.34.0; remove the obsolete argument.");
     if (key === "allow-root") {
       const prev = out[key];
       if (Array.isArray(prev)) prev.push(String(value));
@@ -379,6 +377,9 @@ function optionalCommand(value: string | undefined, label: string): string | und
 
 export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
   const args = parseArgs(argv);
+  if (process.env.CODEXPRO_SYNC_CALL_DEADLINE_MODE !== undefined || process.env.CODEXPRO_SYNC_CALL_DEADLINE_MS !== undefined) {
+    throw new Error("CODEXPRO_SYNC_CALL_DEADLINE_* was removed in 0.34.0; unset those variables. Per-operation safety timeouts remain available.");
+  }
 
   const rootFromArgs = typeof args.root === "string" ? args.root : undefined;
   const root = rootFromArgs ?? process.env.CODEXPRO_ROOT ?? process.env.CODEBASE_BRIDGE_REPO_ROOT ?? process.cwd();
@@ -455,14 +456,6 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
     maxOutputBytes + 1,
     numberFrom(process.env.CODEXPRO_MAX_BASH_OBSERVED_OUTPUT_BYTES, 16_000_000, 64_000, 500_000_000)
   );
-  const deadlineModeInput = typeof args["sync-call-deadline-mode"] === "string" ? args["sync-call-deadline-mode"] : process.env.CODEXPRO_SYNC_CALL_DEADLINE_MODE;
-  const deadlineMsInput = typeof args["sync-call-deadline-ms"] === "string" ? args["sync-call-deadline-ms"] : process.env.CODEXPRO_SYNC_CALL_DEADLINE_MS;
-  const normalizedDeadlineMode = deadlineModeInput === "unlimited" ? "observe" : (deadlineModeInput ?? "bounded");
-  if (normalizedDeadlineMode !== "bounded" && normalizedDeadlineMode !== "observe") throw new Error("CODEXPRO_SYNC_CALL_DEADLINE_MODE must be bounded or observe.");
-  const syncDeadline = normalizeSyncCallDeadlineConfig({
-    mode: normalizedDeadlineMode,
-    deadlineMs: deadlineMsInput === undefined || deadlineMsInput === "" ? DEFAULT_SYNC_CALL_DEADLINE_MS : Number(deadlineMsInput)
-  });
   return {
     defaultRoot,
     allowedRoots,
@@ -553,7 +546,5 @@ export function loadConfig(argv = process.argv.slice(2)): CodexProConfig {
       maxSymbols: numberFrom(process.env.CODEXPRO_ANALYSIS_MAX_SYMBOLS, DEFAULT_ANALYSIS_LIMITS.maxSymbols, 100, 1_000_000),
       maxRelationships: numberFrom(process.env.CODEXPRO_ANALYSIS_MAX_RELATIONSHIPS, DEFAULT_ANALYSIS_LIMITS.maxRelationships, 100, 2_000_000)
     },
-    syncCallDeadlineMode: syncDeadline.mode,
-    syncCallDeadlineMs: syncDeadline.deadlineMs
   };
 }

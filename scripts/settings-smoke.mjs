@@ -290,8 +290,6 @@ const saved = run([
   'https://widgets.codexpro.test',
   '--tool-cards',
   'on',
-  '--sync-call-deadline-minutes',
-  '12',
   '--analysis',
   'on',
   '--artifact-export',
@@ -316,7 +314,7 @@ if (!saved.includes('Saved workspace settings')) {
 }
 
 const shown = run(['settings', 'show', '--root', root], env);
-for (const expected of ['Tunnel', 'ngrok', 'codexpro-test.ngrok-free.app', '19087', 'Tool cards', 'on', 'Analysis', 'on', 'Artifact export', 'on', 'Durable Goals', 'on', 'CodeGraph', 'on', 'LSP', 'off', 'Git push', 'off', 'Environment inheritance', 'off', 'Bash transcript', 'full', 'Sync call deadline', '12 min', 'Projects', realReuseRoot, '<saved>']) {
+for (const expected of ['Tunnel', 'ngrok', 'codexpro-test.ngrok-free.app', '19087', 'Tool cards', 'on', 'Analysis', 'on', 'Artifact export', 'on', 'Durable Goals', 'on', 'CodeGraph', 'on', 'LSP', 'off', 'Git push', 'off', 'Environment inheritance', 'off', 'Bash transcript', 'full', 'Projects', realReuseRoot, '<saved>']) {
   if (!shown.includes(expected)) {
     throw new Error(`settings show missing ${expected}\n${shown}`);
   }
@@ -337,16 +335,9 @@ if (
   || profile.lspEnabled !== false
   || profile.allowGitPush !== false
   || profile.inheritEnv !== false
-  || profile.syncCallDeadlineMode !== 'bounded'
-  || profile.syncCallDeadlineMs !== 720_000
   || JSON.stringify(profile.allowedRoots) !== JSON.stringify([realReuseRoot])
 ) {
   throw new Error(`settings profile did not persist tool/widget options: ${JSON.stringify(profile)}`);
-}
-run(['settings', 'set', '--root', root, '--sync-call-deadline-minutes', 'unlimited'], env);
-const observeProfile = await readProfile(root, home);
-if (observeProfile.syncCallDeadlineMode !== 'observe' || observeProfile.syncCallDeadlineMs !== 720_000) {
-  throw new Error(`settings unlimited did not preserve the finite reference: ${JSON.stringify(observeProfile)}`);
 }
 run([
   'settings',
@@ -530,10 +521,7 @@ runFail([
   '--port',
   'abc'
 ], env, /Invalid port: abc/i);
-
-for (const value of ['4', '61', '12.5', 'banana']) {
-  runFail(['settings', 'set', '--root', policyRoot, '--tunnel', 'none', '--sync-call-deadline-minutes', value], env, /sync-call-deadline-minutes/i);
-}
+runFail(['settings', 'show', '--root', root, '--sync-call-deadline-minutes', '12'], env, /removed/i);
 
 const runtimePort = await getFreePort();
 const runtimePath = await runtimeStatusPath(runtimeRoot, home);
@@ -547,18 +535,16 @@ run([
   '--port',
   String(runtimePort),
   '--tool-cards',
-  'on',
-  '--sync-call-deadline-minutes',
-  '12'
+  'on'
 ], env);
 let firstRuntimeGeneration;
 await withStartedCodexPro([
   '--root',
   runtimeRoot
 ], env, async (child) => {
-  const runtime = await waitForJson(runtimePath, (data) => data.toolCards === true && data.syncCallDeadlineMode === 'bounded' && data.syncCallDeadlineMs === 720_000 && data.transportState === 'ready' && typeof data.runtimeGenerationId === 'string' && data.runtimeGenerationId.length >= 32 && data.pid === child.pid, 'tool-cards runtime status');
-  if (runtime.toolCards !== true || runtime.syncCallDeadlineMode !== 'bounded' || runtime.syncCallDeadlineMs !== 720_000 || runtime.transportState !== 'ready' || !/^[a-f0-9]{32,64}$/.test(runtime.runtimeGenerationId) || runtime.pid !== child.pid) {
-    throw new Error(`runtime status did not persist current generation/deadline/transport truth: ${JSON.stringify(runtime)}`);
+  const runtime = await waitForJson(runtimePath, (data) => data.toolCards === true && data.transportState === 'ready' && typeof data.runtimeGenerationId === 'string' && data.runtimeGenerationId.length >= 32 && data.pid === child.pid, 'tool-cards runtime status');
+  if (runtime.toolCards !== true || runtime.transportState !== 'ready' || !/^[a-f0-9]{32,64}$/.test(runtime.runtimeGenerationId) || runtime.pid !== child.pid) {
+    throw new Error(`runtime status did not persist current generation/transport truth: ${JSON.stringify(runtime)}`);
   }
   firstRuntimeGeneration = runtime.runtimeGenerationId;
 }, { forceKill: true });
@@ -587,9 +573,6 @@ await withStartedCodexPro([
   const restartedRuntime = await waitForJson(runtimePath, (data) => data.pid === child.pid && data.transportState === 'ready' && typeof data.runtimeGenerationId === 'string', 'restarted runtime generation');
   if (restartedRuntime.runtimeGenerationId === firstRuntimeGeneration) {
     throw new Error(`runtime restart reused generation id: ${restartedRuntime.runtimeGenerationId}`);
-  }
-  if (restartedRuntime.syncCallDeadlineMs !== 720_000) {
-    throw new Error(`runtime restart lost current configured deadline: ${JSON.stringify(restartedRuntime)}`);
   }
 }, { forceKill: true });
 
@@ -923,7 +906,7 @@ if (!reused.includes('Saved workspace settings from')) {
 }
 
 const reusedShown = run(['settings', 'show', '--root', reuseRoot], env);
-for (const expected of ['ngrok', 'codexpro-test.ngrok-free.app', '<saved>', 'Sync call deadline', 'Unlimited (observe only)']) {
+for (const expected of ['ngrok', 'codexpro-test.ngrok-free.app', '<saved>']) {
   if (!reusedShown.includes(expected)) {
     throw new Error(`reused settings show missing ${expected}\n${reusedShown}`);
   }

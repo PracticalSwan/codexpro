@@ -14,8 +14,7 @@ import { z } from "zod";
 import type { CodexProConfig } from "./config.js";
 import { CODEXPRO_PACKAGE_NAME, CODEXPRO_VERSION } from "./packageIdentity.js";
 import { buildIdentity } from "./buildIdentity.js";
-import { withSyncCallDeadline } from "./deadline.js";
-import { classifyExecutionHint, executionHintPublic, executionThresholds } from "./executionGuidance.js";
+import { classifyExecutionHint, executionHintPublic } from "./executionGuidance.js";
 import { WorkspaceManager, PathGuard, CodexProError, type Workspace, type WorkspaceRegistry } from "./guard.js";
 import { repoTree, readTextFile, writeTextFile, editTextFile, ensureAiBridge, withFileWriteLocks } from "./fsOps.js";
 import { viewWorkspaceImage } from "./imageOps.js";
@@ -39,7 +38,7 @@ import { TelemetryRegistry } from "./telemetry.js";
 import { ActivityStore } from "./activity/store.js";
 import { ActivityRegistry } from "./activity/registry.js";
 import type { ActivityKind, ActivityStatus } from "./activity/types.js";
-import { connectionDiagnostics, toolSurfaceDiagnostics, runToolTimeProbe } from "./diagnosticsOps.js";
+import { connectionDiagnostics, toolSurfaceDiagnostics } from "./diagnosticsOps.js";
 import { WorkspaceProcessManager } from "./processOps.js";
 import { discoverTrustedChecks, runChecks, verifyChanges } from "./checksOps.js";
 import { readMany, searchMany, gatherContextV2, prepareSubtaskContext } from "./contextOps.js";
@@ -339,8 +338,6 @@ function recordResilienceTelemetry(server: McpServer, name: string, args: any, r
   if (!telemetry) return;
   const structured = result?.structuredContent;
   if (!structured || typeof structured !== "object" || Array.isArray(structured)) return;
-  if (structured.deadlineYielded === true) telemetry.record({ stage: "resilience", status: "degraded", event: "deadline_yield", tool: name, reason: "shared synchronous deadline yielded before all required work completed" });
-  if (structured.deadlineLimitedChild === true) telemetry.record({ stage: "resilience", status: "degraded", event: "deadline_limited_child", tool: name, reason: "owned child timeout was limited by the remaining synchronous deadline" });
   if (structured.execution_hint?.class === "async_preferred" || structured.routing?.recommendedExecution === "async") telemetry.record({ stage: "resilience", status: "ok", event: "async_routed", tool: name, reason: "deterministic execution guidance prefers a durable async primitive" });
   const batch = structured.batch;
   if (typeof args?.continuation_token === "string" && batch && typeof batch === "object") telemetry.record({ stage: "resilience", status: "ok", event: "batch_continued", tool: name, entityId: String(batch.id ?? args.continuation_token), reason: "foreground batch continuation advanced" });
@@ -372,9 +369,7 @@ function registerWrappedToolCompat(
     telemetry?.record({ stage: "request_arrival", status: "ok", tool: name, backend: "mcp_tool" });
     telemetry?.record({ stage: "dispatch", status: "ok", tool: name, backend: "mcp_tool" });
     try {
-      const result = await withSyncCallDeadline(config.syncCallDeadlineMode, config.syncCallDeadlineMs, async () =>
-        tagToolResult(await handler(args ?? {}), name, options)
-      );
+      const result = tagToolResult(await handler(args ?? {}), name, options);
       const status = result?.isError ? "error" : "ok";
       telemetry?.record({
         stage: "completion",
@@ -407,7 +402,6 @@ const MINIMAL_TOOL_NAMES = [
   "effective_policy",
   "connection_diagnostics",
   "tool_surface_diagnostics",
-  "tool_time_probe",
   "local_telemetry",
   "activity_log",
   "operation_status",
@@ -477,7 +471,6 @@ const FULL_TOOL_NAMES = [
   "effective_policy",
   "connection_diagnostics",
   "tool_surface_diagnostics",
-  "tool_time_probe",
   "local_telemetry",
   "activity_log",
   "operation_status",
@@ -746,13 +739,7 @@ export function serverInstructions(config: CodexProConfig): string {
       : config.bashMode === "full"
         ? "5. Full Bash access is enabled for this explicitly trusted local workspace. CodexPro's safe-Bash allowlist and command-shape restrictions do not apply. Use shell commands needed for the user's request, including project scripts, Git operations, and local developer CLIs, while respecting user, project, and platform safety/authorization boundaries. Prefer dedicated CodexPro tools when they provide the same operation more precisely."
         : "5. Bash is in safe mode. Use it only for meaningful allowlisted verification commands such as npm test, npm run build, lint, typecheck, or an existing project script.";
-  const routingThresholds = executionThresholds(config.syncCallDeadlineMs);
-  const referenceMinutes = Number((config.syncCallDeadlineMs / 60_000).toFixed(2));
-  const deadlineInstruction = config.syncCallDeadlineMode === "observe"
-    ? `Deadline routing: Tool-time awareness is Unlimited/observe for host-window discovery. Keep elapsed-time awareness and conservative long-work routing from the ${referenceMinutes} minute finite reference; observe mode is discovery-only, not permission to keep ordinary mutating calls open indefinitely.`
-    : `Deadline routing: Tool-time awareness is bounded at ${referenceMinutes} minutes (${config.syncCallDeadlineMs} ms). This is a transport boundary for one blocking tool call, never a task-quality target.`;
-  const deadlineScopeInstruction = "Deadline scope: the configured synchronous deadline is per MCP tool call and restarts for each tool invocation. It does not measure the whole ChatGPT turn or host tool-access window, so do not wait for this per-call timer to checkpoint or wrap up.";
-  const routingInstruction = `Execution routing: Never rush, omit required work, reduce scope/review/tests/safety, or claim completion to fit one call. Routing cutoffs are sync-preferred <= ${Number((routingThresholds.syncPreferredMs / 60_000).toFixed(2))} minutes and async-preferred >= ${Number((routingThresholds.asyncPreferredMs / 60_000).toFixed(2))} minutes. Use start_workspace_process for long shell commands, start_checks/start_verification for long verification, and Durable Goals for substantial multi-stage work with dependency, isolation, review, or projection needs.`;
+  const routingInstruction = "Execution routing: Use managed workspace processes for high-variance shell commands, structured verification jobs for substantial checks, and durable Goals for multi-stage review work. Do not assume the host grants unlimited synchronous execution.";
   const progressInstruction = "Long-work discipline: When work spans calls, preserve the full goal, complete one coherent phase, persist material progress/evidence through the appropriate task snapshot, process, job, batch, Goal, or Git state, then continue. Poll status only when a condition may have changed; use condition-based purposeful polling rather than rapid busy-wait loops.";
   const inspectionInstruction =
     config.bashMode === "full"
@@ -768,8 +755,6 @@ export function serverInstructions(config: CodexProConfig): string {
     inspectionInstruction,
     editInstruction,
     bashInstruction,
-    deadlineInstruction,
-    deadlineScopeInstruction,
     routingInstruction,
     progressInstruction,
     "6. Keep tool calls minimal. Prefer one targeted search plus show_changes instead of repeated broad inspection calls.",
@@ -1487,8 +1472,6 @@ export function createCodexProServer(
     const verificationStatus = structured?.repair?.status;
     const summary = status === "error"
       ? "tool call failed"
-      : kind === "check" && structured?.deadlineYielded === true
-        ? "verification incomplete; required checks remain pending"
         : kind === "check" && verificationStatus === "not_run"
           ? "verification not run"
           : kind === "check" && structured?.complete === false
@@ -1685,9 +1668,6 @@ export function createCodexProServer(
         toolMode: config.toolMode,
         toolCards: config.toolCards,
         connectionTest: config.connectionTest,
-        syncCallDeadlineMode: config.syncCallDeadlineMode,
-        syncCallDeadlineMs: config.syncCallDeadlineMs,
-        executionRouting: executionThresholds(config.syncCallDeadlineMs),
         allowGitPush: config.allowGitPush,
         codeGraphEnabled: config.codeGraphEnabled,
         codeGraphConfigured: Boolean(config.codeGraphExecutable || resolveCommand("codegraph")),
@@ -1951,7 +1931,7 @@ export function createCodexProServer(
     async (args) => {
       const workspace = workspaces.getWorkspace(args.workspace_id);
       const workspaceConfig = configForWorkspace(workspace);
-      const executionHint = executionHintPublic(classifyExecutionHint({ deadlineMs: workspaceConfig.syncCallDeadlineMs, category: "shell", highVariance: true }));
+      const executionHint = executionHintPublic(classifyExecutionHint({ category: "shell", highVariance: true }));
       const processRecord = await processManagerFor(workspace).start({
         command: String(args.command ?? ""),
         cwd: args.cwd,
@@ -2181,7 +2161,7 @@ export function createCodexProServer(
       const snapshot = telemetry.snapshot();
       const result = connectionDiagnostics(snapshot, options.activeSessionCount?.() ?? 0);
       const resilience = toolSurfaceDiagnostics(config, registeredToolNames(server), toolNamesForMode(config), snapshot);
-      const combined = { ...result, deadline: resilience.deadline, capabilities: resilience.capabilities, resilience: resilience.resilience };
+      const combined = { ...result, capabilities: resilience.capabilities, resilience: resilience.resilience };
       return textResult(`# Connection Diagnostics\n\n${JSON.stringify(combined, null, 2)}`, combined);
     }
   );
@@ -2201,22 +2181,6 @@ export function createCodexProServer(
       const effective = configForWorkspace(workspace);
       const result = toolSurfaceDiagnostics(effective, registeredToolNames(server), toolNamesForMode(effective), telemetry.snapshot());
       return textResult(`# Tool Surface Diagnostics\n\n${JSON.stringify(result, null, 2)}`, { ...result });
-    }
-  );
-
-  registerCodexTool(
-    config,
-    server,
-    "tool_time_probe",
-    {
-      title: "Tool Time Probe",
-      description: "Harmless observe-mode-only host-window discovery probe. It waits and measures only; it does not read or mutate workspace, Git, process, browser, or network state and never changes saved deadline settings.",
-      inputSchema: { max_minutes: z.number().int().min(1).max(120).optional().describe("Diagnostic wait ceiling in minutes. Use only in a disposable chat while runtime deadline mode is Unlimited/observe.") },
-      annotations: READ_ONLY_ANNOTATIONS
-    },
-    async (args) => {
-      const result = await runToolTimeProbe(config, { maxMinutes: args.max_minutes });
-      return textResult(`# Tool Time Probe\n\nStatus: ${result.status}\nElapsed: ${result.elapsed_ms} ms\n\n${result.guidance}`, result);
     }
   );
 
@@ -3623,7 +3587,7 @@ export function createCodexProServer(
         tasks: args.tasks.map((task: any) => ({ id: task.id, title: task.title, kind: task.kind, command: task.command, checkId: task.check_id, dependsOn: task.depends_on ?? [] }))
       }, { maxTasks: workspaceConfig.maxGoalTasks, maxWorkers: workspaceConfig.maxGoalWorkers });
       const result = publicGoalRecord(record);
-      const executionHint = executionHintPublic(classifyExecutionHint({ deadlineMs: workspaceConfig.syncCallDeadlineMs, category: "multi_stage", hasDependencyGraph: record.tasks.length > 1 || record.tasks.some((task) => task.dependsOn.length > 0), requiresReviewProjection: true }));
+      const executionHint = executionHintPublic(classifyExecutionHint({ category: "multi_stage", hasDependencyGraph: record.tasks.length > 1 || record.tasks.some((task) => task.dependsOn.length > 0), requiresReviewProjection: true }));
       return textResult(`# Goal Proposed\n\nID: ${record.id}\nFingerprint: ${record.fingerprint}\nTasks: ${record.tasks.length}\n\nApprove this exact fingerprint before execution.`, { ...result, execution_hint: executionHint });
     }
   );

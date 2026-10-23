@@ -1,7 +1,6 @@
 import http from "node:http";
 import dns from "node:dns/promises";
 import net from "node:net";
-import { currentSyncCallDeadline } from "./deadline.js";
 import { redactSensitiveText } from "./redact.js";
 
 export interface JsonShape { kind: string; keys?: string[]; length?: number; items?: JsonShape[]; value?: string; }
@@ -68,10 +67,6 @@ export async function probeLocalService(options: { url: string; method?: "GET" |
   const method = options.method ?? "GET";
   const timeoutMs = Math.max(250, Math.min(options.timeoutMs ?? 3000, 10_000));
   const maxBodyBytes = Math.max(1000, Math.min(options.maxBodyBytes ?? 32_000, 256_000));
-  const deadline = currentSyncCallDeadline();
-  const remainingMs = deadline?.remainingMs() ?? Number.POSITIVE_INFINITY;
-  if (remainingMs <= 0) throw new Error("local service probe exceeded the current synchronous call deadline.");
-  const effectiveTimeoutMs = Math.max(1, Math.min(timeoutMs, Number.isFinite(remainingMs) ? Math.floor(remainingMs) : timeoutMs));
   const started = Date.now();
   const response = await new Promise<{ status: number; statusText: string; headers: http.IncomingHttpHeaders; body: Buffer; truncated: boolean }>((resolve, reject) => {
     let settled = false;
@@ -110,8 +105,8 @@ export async function probeLocalService(options: { url: string; method?: "GET" |
        res.on("end", () => finish(() => resolve({ status: res.statusCode ?? 0, statusText: res.statusMessage ?? "", headers: res.headers, body: Buffer.concat(chunks), truncated })));
        res.on("close", () => { if (truncated || method === "GET") finish(() => resolve({ status: res.statusCode ?? 0, statusText: res.statusMessage ?? "", headers: res.headers, body: Buffer.concat(chunks), truncated })); });
      });
-     request.setTimeout(effectiveTimeoutMs, () => { request.destroy(new Error("local service probe timed out")); });
-     totalTimer = setTimeout(() => { request.destroy(new Error("local service probe exceeded its total deadline")); }, effectiveTimeoutMs);
+     request.setTimeout(timeoutMs, () => { request.destroy(new Error("local service probe timed out")); });
+     totalTimer = setTimeout(() => { request.destroy(new Error("local service probe exceeded its total deadline")); }, timeoutMs);
      request.on("error", (error) => finish(() => reject(error)));
      request.end();
   });

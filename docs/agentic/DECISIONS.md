@@ -113,3 +113,10 @@
 ## D-039 — Local Service Probe user preferences never change the packaged default
 **Decision:** Keep the probe package-default-off. Users may explicitly store a per-OS-account opt-in under their own CodexPro home so future workspace profiles inherit it; explicit workspace off and launch overrides remain possible. Existing profiles of other accounts are not migrated. This preference does not change the Full-mode, loopback, GET/HEAD, no-credentials, and no-redirect restrictions.
 **Why:** A user's preferred development workflow should persist without silently enabling HTTP observation for every installation or exposing unrelated accounts.
+
+
+## D-020 ? Remove per-call deadlines, retain operational safety bounds (Plan 48)
+**Decision:** Remove operator-configurable MCP synchronous-call deadline modes, budgets, probes and duration-threshold routing. Retain per-operation process/network/cleanup timeouts, cancellation, policy checks and existing durable primitives.
+**Why:** The old budget coupled an unverified host timing assumption to verification, batches, operator profiles and model tool selection.
+**Compatibility:** Legacy deadline options and environment variables give actionable retirement errors. Legacy saved profile deadline fields do not affect runtime and are omitted on subsequent saves; archives remain historical evidence.
+**Revisit only if:** A new interoperable negotiated host timing contract exists and is independently verified.

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### 0.34.0 candidate (2026-10-24; NOT publicly released)
+
+- Retired the configurable synchronous MCP-call deadline and observe mode, deadline-derived routing/yielding, and `tool_time_probe`. Independent per-command/network timeout safeguards and existing processes, verification jobs, resumable batches and Goals remain.
+- Deprecated deadline CLI/environment options now fail with migration guidance. Legacy profile deadline fields are ignored on read and omitted from newly saved profiles; the active running profile is not rewritten.
+- Retained the independent OpenAI tunnel connection TTL at the previous 65-minute value. Simplified settings and diagnostics, replacing deadline-focused tests with contract and operational-safety regressions.
+- Deferred all tool-metadata changes not backed by real-host model selection evidence; no new tools, routing layer, plugin publication infrastructure or dependency upgrades.
+- GitHub Actions hosted release validation and any reinstall must respect platform and runtime-lifecycle constraints.
+
+
 ### Candidate 0.33.9 (2026-10-15; unreleased pending hosted CI)
 
 - Simplified the authenticated local setup/status page around Status, Settings, Connect ChatGPT, and Diagnostics. Core controls remain visible, provider-specific inputs and advanced options use progressive disclosure, and full profile/capability diagnostics remain accessible. Saving and discarding edits now have clear state feedback and a navigation warning, while settings still only apply on the next manual start. OpenAI instructions correctly describe Tunnel ID rather than Server URL.

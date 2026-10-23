@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import type { CodexProConfig } from "./config.js";
-import { currentSyncCallDeadline, type DeadlineBudget } from "./deadline.js";
 import type { PathGuard, Workspace } from "./guard.js";
 import { readTextFile } from "./fsOps.js";
 import { gitRecentCommits, gitStatus } from "./gitOps.js";
@@ -86,7 +85,7 @@ async function rebuildSections(input: {
 
 export async function gatherContextResumable(input: {
   config: CodexProConfig; guard: PathGuard; workspace: Workspace; store: BatchStore;
-  continuationToken?: string; deadline?: DeadlineBudget; strategy?: ContextStrategy; targetPath?: string;
+  continuationToken?: string; strategy?: ContextStrategy; targetPath?: string;
   targetSymbol?: string; changedPaths?: string[]; includeTests?: boolean; includeRecentChanges?: boolean;
   maxBytes?: number; targetTokens?: number;
   cache?: ContextCache<GatheredContextV2>;
@@ -138,17 +137,12 @@ export async function gatherContextResumable(input: {
     state = { phase: "instructions", candidateCursor: 0, remainingBytes: maxBytes, omittedCandidates: 0, units: [] };
     await input.store.savePrivate(batch.id, state);
   }
-  const deadline = input.deadline ?? currentSyncCallDeadline();
-  let processedThisCall = 0;
-  const shouldYield = () => processedThisCall > 0 && Boolean(deadline?.shouldYield(25));
   const checkpoint = async () => {
     await input.store.savePrivate(batch.id, state);
     batch = await input.store.update(batch.id, (record) => { record.cursor = state.candidateCursor; record.completedUnits += 1; return record; });
-    processedThisCall += 1;
   };
 
   while (state.phase !== "done") {
-    if (shouldYield()) break;
     if (state.phase === "instructions") {
       const instructions = await instructionsForPath(input.config, input.guard, input.workspace, targetPath);
       const item = { path: instructions.sources[0] ?? "AGENTS.md", kind: "instructions" as const, score: 1000, reasons: ["applicable project instructions"], bytes: 0 };

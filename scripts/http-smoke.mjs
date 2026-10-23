@@ -354,10 +354,7 @@ try {
     throw new Error(`admin diagnostics omitted auth-failure telemetry: ${JSON.stringify(initialDiagnosticsJson.telemetry)}`);
   }
 
-  if (initialDiagnosticsJson.operator?.current_effective_deadline?.ms !== 1_200_000 || initialDiagnosticsJson.operator?.current_effective_deadline?.mode !== 'bounded') throw new Error('admin diagnostics omitted current effective deadline');
-  if (!Number.isFinite(initialDiagnosticsJson.operator?.saved_next_run_deadline?.ms)) throw new Error('admin diagnostics omitted saved next-run deadline');
   if (!Number.isInteger(initialDiagnosticsJson.operator?.active_structured_jobs) || initialDiagnosticsJson.operator.active_structured_jobs < 0) throw new Error('admin diagnostics omitted active structured job count');
-  if (initialDiagnosticsJson.operator?.recent_deadline_yield !== false) throw new Error('fresh diagnostics incorrectly reported a recent deadline yield');
   const badAdminJson = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -423,14 +420,12 @@ try {
   if (!homeText.includes('Authorization: "Bearer " + connectorToken') || homeText.includes('fetch("/admin/profile" + window.location.search')) {
     throw new Error('onboarding profile save did not reuse the captured token as a Bearer credential');
   }
-  for (const fieldName of ['tunnelName', 'ngrokConfig', 'cloudflareConfig', 'cloudflareTokenFile', 'toolCards', 'syncCallDeadlineObserve', 'syncCallDeadlineMinutes', 'bashTranscript', 'widgetDomain', 'analysisEnabled', 'artifactExportEnabled', 'goalsEnabled', 'codeGraphEnabled', 'codeGraphExecutable', 'codeGraphArgs', 'lspEnabled', 'lspExecutable', 'lspArgs', 'allowGitPush', 'inheritEnv', 'connectionTest', 'noInstallCloudflared']) {
+  for (const fieldName of ['tunnelName', 'ngrokConfig', 'cloudflareConfig', 'cloudflareTokenFile', 'toolCards', 'bashTranscript', 'widgetDomain', 'analysisEnabled', 'artifactExportEnabled', 'goalsEnabled', 'codeGraphEnabled', 'codeGraphExecutable', 'codeGraphArgs', 'lspEnabled', 'lspExecutable', 'lspArgs', 'allowGitPush', 'inheritEnv', 'connectionTest', 'noInstallCloudflared']) {
     if (!homeText.includes(`name="${fieldName}"`)) {
       throw new Error(`onboarding page did not include profile field ${fieldName}`);
     }
   }
-  if (!homeText.includes('Synchronous tool-call deadline (minutes)') || !homeText.includes('type="number" min="5" max="60" step="1"') || homeText.includes('<select name="syncCallDeadlineMode"')) {
-    throw new Error('synchronous tool-call deadline must be a typed numeric field, not a predefined deadline selector');
-  }
+  if (homeText.includes("syncCallDeadline") || homeText.includes("Synchronous tool-call deadline")) throw new Error("retired deadline controls are still present");
   if (homeText.includes(token)) {
     throw new Error('onboarding page leaked the raw auth token');
   }
@@ -442,9 +437,6 @@ try {
   const profileBeforeJson = await profileBefore.json();
   if (profileBefore.status !== 200 || profileBeforeJson.exists !== false) {
     throw new Error(`expected empty admin profile response, got ${profileBefore.status} ${JSON.stringify(profileBeforeJson)}`);
-  }
-  if (profileBeforeJson.runtime?.syncCallDeadlineMode !== 'bounded' || profileBeforeJson.runtime?.syncCallDeadlineMs !== 1_200_000 || profileBeforeJson.effective?.syncCallDeadlineMode !== 'bounded' || profileBeforeJson.effective?.syncCallDeadlineMinutes !== 20) {
-    throw new Error(`admin profile GET did not expose saved/effective vs running deadline state: ${JSON.stringify(profileBeforeJson)}`);
   }
   if (JSON.stringify(profileBeforeJson).includes(token)) {
     throw new Error('admin profile GET leaked the raw auth token');
@@ -501,12 +493,6 @@ try {
   if (invalidProfile.status !== 400) {
     throw new Error(`expected invalid guarded profile to return 400, got ${invalidProfile.status}`);
   }
-  for (const value of [4, 61, 12.5]) {
-    const invalidDeadline = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tunnel: 'none', syncCallDeadlineMode: 'bounded', syncCallDeadlineMinutes: value })
-    });
-    if (invalidDeadline.status !== 400) throw new Error(`expected invalid deadline ${value} to return 400, got ${invalidDeadline.status}`);
-  }
   await fs.mkdir(path.join(profileHome, 'profiles'), { recursive: true });
   await fs.writeFile(path.join(profileHome, 'profiles', `${runtimeId}.json`), JSON.stringify({
     version: 1,
@@ -537,8 +523,6 @@ try {
       write: 'workspace',
       toolMode: 'full',
       toolCards: true,
-      syncCallDeadlineMode: 'bounded',
-      syncCallDeadlineMinutes: 12,
       widgetDomain: 'https://widgets.codexpro.test',
       analysisEnabled: true,
       artifactExportEnabled: true,
@@ -565,6 +549,7 @@ try {
     throw new Error('admin profile save response leaked the raw auth token');
   }
   const savedProfile = JSON.parse(await fs.readFile(profileSaveJson.profile_path, 'utf8'));
+  if ('syncCallDeadlineMode' in savedProfile || 'syncCallDeadlineMs' in savedProfile) throw new Error('obsolete deadline keys saved in profile');
   if (
     savedProfile.tunnel !== 'ngrok' ||
     savedProfile.hostname !== 'codexpro-http-smoke.ngrok-free.app' ||
@@ -576,8 +561,6 @@ try {
     savedProfile.bashSession !== 'http-main' ||
     savedProfile.requireBashSession !== true ||
     savedProfile.toolCards !== true ||
-    savedProfile.syncCallDeadlineMode !== 'bounded' ||
-    savedProfile.syncCallDeadlineMs !== 720_000 ||
     savedProfile.analysisEnabled !== true ||
     savedProfile.artifactExportEnabled !== true ||
     savedProfile.goalsEnabled !== true ||
@@ -606,7 +589,7 @@ try {
   const localProfile = await fetch(`${baseUrl}/admin/profile?codexpro_token=${encodeURIComponent(token)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ tunnel: 'none', syncCallDeadlineMode: 'observe' })
+    body: JSON.stringify({ tunnel: 'none', syncCallDeadlineMode: 'observe', syncCallDeadlineMinutes: 12 })
   });
   const localProfileJson = await localProfile.json();
   const localSavedProfile = JSON.parse(await fs.readFile(localProfileJson.profile_path, 'utf8'));
@@ -618,12 +601,6 @@ try {
     localSavedProfile.cloudflareConfig ||
     localSavedProfile.cloudflareToken ||
     localSavedProfile.cloudflareTokenFile ||
-    localSavedProfile.syncCallDeadlineMode !== 'observe' ||
-    localSavedProfile.syncCallDeadlineMs !== 720_000 ||
-    localProfileJson.effective?.syncCallDeadlineMode !== 'observe' ||
-    localProfileJson.effective?.syncCallDeadlineMinutes !== 12 ||
-    localProfileJson.runtime?.syncCallDeadlineMode !== 'bounded' ||
-    localProfileJson.runtime?.syncCallDeadlineMs !== 1_200_000 ||
     JSON.stringify(localSavedProfile.allowedRoots) !== JSON.stringify([realAlternateRoot]) ||
     localProfileJson.profile?.hostname ||
     localProfileJson.profile?.ngrokConfig ||
@@ -665,11 +642,12 @@ try {
   const mcpUrl = `${baseUrl}/mcp?codexpro_token=${encodeURIComponent(token)}`;
   await withClient(mcpUrl, async (diagnosticClient) => {
     const connection = await callTool(diagnosticClient, 'connection_diagnostics');
-    if (connection.structuredContent.deadline?.sync_call_deadline_ms !== 1_200_000 || connection.structuredContent.capabilities?.structured_jobs !== 'available') throw new Error(`connection_diagnostics omitted deadline/capabilities: ${JSON.stringify(connection.structuredContent)}`);
+    if (connection.structuredContent.capabilities?.structured_jobs !== 'available') throw new Error(`connection_diagnostics omitted capabilities: ${JSON.stringify(connection.structuredContent)}`);
     if (!['healthy', 'degraded'].includes(connection.structuredContent.state)) {
       throw new Error(`connection_diagnostics did not observe live MCP traffic: ${JSON.stringify(connection.structuredContent)}`);
     }
     const surface = await callTool(diagnosticClient, 'tool_surface_diagnostics');
+    if ('deadline' in connection.structuredContent || 'deadline' in surface.structuredContent) throw new Error('obsolete deadline exposed by diagnostics');
     if (surface.structuredContent.matches_expected !== true) {
       throw new Error(`tool_surface_diagnostics mismatch: ${JSON.stringify(surface.structuredContent)}`);
     }

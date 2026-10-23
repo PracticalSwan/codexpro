@@ -64,6 +64,14 @@ These are baseline behavior, not pending roadmap work. New long-running features
 
 | 47 | P0 | Local Control Setup/Status Usability | [design](../superpowers/specs/2026-10-15-local-control-usability-design.md) ? [plan](../superpowers/plans/2026-10-15-local-control-usability.md) | Locally verified; hosted release pending |
 
+## Active planned maintenance ? post-0.33.9
+
+Plan 48 supersedes the deadline-specific runtime behavior in historical Plans 22/23/26/28. Durable jobs and batches from Plans 24/25/27 remain active. Historical plans are retained for traceability.
+
+| ID | Priority | Subsystem | Authoritative design / plan | Status |
+|---|---|---|---|---|
+| 48 | P0 (+ conditional P1) | Deadline feature retirement and focused ChatGPT tool quality | [plan](../superpowers/plans/2026-10-24-codexpro-deadline-retirement-tool-quality.md) | Locally implemented; full/hosted validation pending |
+
 ## Verified implementation sequence
 
 `38 → 39 → 40 → 41 → 42 → 43 → 44 → 45 → 46`

@@ -64,7 +64,6 @@ const BASH_TRANSCRIPTS = ["compact", "full"] as const;
 const CODEX_SESSIONS = ["off", "metadata", "read"] as const;
 const WRITE_MODES = ["workspace", "handoff", "off"] as const;
 const TOOL_MODES = ["standard", "minimal", "full"] as const;
-const DEADLINE_MODES = ["bounded", "observe"] as const;
 
 const textField = (max: number) =>
   z.preprocess((value) => (typeof value === "string" ? value.trim() : value), z.string().max(max).optional());
@@ -99,8 +98,6 @@ const AdminProfilePatch = z.object({
   write: z.enum(WRITE_MODES).optional(),
   toolMode: z.enum(TOOL_MODES).optional(),
   toolCards: z.boolean().optional(),
-  syncCallDeadlineMode: z.enum(DEADLINE_MODES).optional(),
-  syncCallDeadlineMinutes: z.coerce.number().int().min(5).max(60).optional(),
   widgetDomain: textField(2048),
   analysisEnabled: z.boolean().optional(),
   artifactExportEnabled: z.boolean().optional(),
@@ -146,8 +143,6 @@ interface ProfileFormValues {
   write: "off" | "handoff" | "workspace";
   toolMode: "minimal" | "standard" | "full";
   toolCards: boolean;
-  syncCallDeadlineMode: "bounded" | "observe";
-  syncCallDeadlineMinutes: number;
   widgetDomain: string;
   analysisEnabled: boolean;
   artifactExportEnabled: boolean;
@@ -240,8 +235,6 @@ function profileValues(config: CodexProConfig, profile = readWorkspaceProfile(co
     write,
     toolMode: oneOf(profile.toolMode ?? config.toolMode, TOOL_MODES, config.toolMode),
     toolCards: Boolean(profile.toolCards ?? config.toolCards),
-    syncCallDeadlineMode: oneOf(profile.syncCallDeadlineMode ?? config.syncCallDeadlineMode, DEADLINE_MODES, config.syncCallDeadlineMode),
-    syncCallDeadlineMinutes: Math.round((profile.syncCallDeadlineMs ?? config.syncCallDeadlineMs) / 60_000),
     widgetDomain: String(profile.widgetDomain ?? config.widgetDomain),
     analysisEnabled: Boolean(profile.analysisEnabled ?? config.analysisEnabled),
     artifactExportEnabled: Boolean(profile.artifactExportEnabled ?? config.artifactExportEnabled),
@@ -405,16 +398,13 @@ function profileForm(config: CodexProConfig): string {
             <label><span>Codex sessions</span><select name="codexSessions">${selectOptions(CODEX_SESSIONS, values.codexSessions)}</select></label>
           </div>
           <details class="settings-advanced" data-settings-advanced>
-            <summary>Advanced runtime options <small>Timeouts, sessions, and output</small></summary>
+            <summary>Advanced runtime options <small>Sessions and output</small></summary>
             <div class="form-grid">
               <label><span>Bash transcript</span><select name="bashTranscript">${selectOptions(BASH_TRANSCRIPTS, values.bashTranscript)}</select></label>
               <label><span>Codex directory</span><input name="codexDir" value="${escapeHtml(values.codexDir)}"></label>
               <label><span>Bash session</span><input name="bashSession" value="${escapeHtml(values.bashSession)}"></label>
               <label><span>Widget origin</span><input name="widgetDomain" value="${escapeHtml(values.widgetDomain)}"></label>
-              <label><span>Synchronous tool-call deadline (minutes)</span><input name="syncCallDeadlineMinutes" type="number" min="5" max="60" step="1" value="${escapeHtml(values.syncCallDeadlineMinutes)}"></label>
             </div>
-            <label class="check-row"><input name="syncCallDeadlineObserve" type="checkbox" value="true"${values.syncCallDeadlineMode === "observe" ? " checked" : ""}><span>Unlimited / observe mode <small>Temporary host-window discovery only</small></span></label>
-            <p class="field-help">Current runtime: ${escapeHtml(config.syncCallDeadlineMode === "observe" ? "Unlimited / observe only" : `${config.syncCallDeadlineMs / 60_000} minutes bounded`)}. Each deadline applies to one blocking MCP call, not an entire conversation. Unlimited disables the cooperative cutoff; use it only for temporary discovery, then restore a bounded margin below the host limit.</p>
             <label class="check-row"><input name="toolCards" type="checkbox" value="true"${values.toolCards ? " checked" : ""}><span>Enable ChatGPT tool cards</span></label>
             <label class="check-row"><input name="requireBashSession" type="checkbox" value="true"${values.requireBashSession ? " checked" : ""}><span>Require matching bash session id</span></label>
           </details>
@@ -524,8 +514,6 @@ function buildProfilePayload(config: CodexProConfig, existing: WorkspaceProfile,
     write,
     toolMode: next.toolMode,
     toolCards: next.toolCards,
-    syncCallDeadlineMode: next.syncCallDeadlineMode,
-    syncCallDeadlineMs: next.syncCallDeadlineMinutes * 60_000,
     ...(next.widgetDomain ? { widgetDomain: next.widgetDomain } : {}),
     analysisEnabled: next.analysisEnabled,
     artifactExportEnabled: next.artifactExportEnabled,
@@ -561,16 +549,12 @@ function profileResponse(config: CodexProConfig): Record<string, unknown> {
       localServiceProbeEnabled: config.localServiceProbeEnabled,
       writeMode: config.writeMode,
       bashMode: config.bashMode,
-      syncCallDeadlineMode: config.syncCallDeadlineMode,
-      syncCallDeadlineMs: config.syncCallDeadlineMs
     },
     saved_next_launch: {
       toolMode: effective.toolMode,
       writeMode: effective.write,
       bashMode: effective.bash,
       localServiceProbeEnabled: effective.localServiceProbeEnabled,
-      syncCallDeadlineMode: effective.syncCallDeadlineMode,
-      syncCallDeadlineMs: effective.syncCallDeadlineMinutes * 60_000
     },
     capability_explanations: currentCapabilities,
     runtime_connection: runtime,
@@ -586,8 +570,6 @@ function profileResponse(config: CodexProConfig): Record<string, unknown> {
       writeMode: config.writeMode,
       toolMode: config.toolMode,
       toolCards: config.toolCards,
-      syncCallDeadlineMode: config.syncCallDeadlineMode,
-      syncCallDeadlineMs: config.syncCallDeadlineMs,
       widgetDomain: config.widgetDomain,
       analysisEnabled: config.analysisEnabled,
       artifactExportEnabled: config.artifactExportEnabled,
@@ -1803,8 +1785,6 @@ function onboardingPage(config: CodexProConfig): string {
           write: data.write,
           toolMode: data.toolMode,
           toolCards: Boolean(form.elements.toolCards?.checked),
-          syncCallDeadlineMode: form.elements.syncCallDeadlineObserve?.checked ? "observe" : "bounded",
-          syncCallDeadlineMinutes: Number(data.syncCallDeadlineMinutes),
           codexSessions: data.codexSessions,
           codexDir: data.codexDir,
           bashSession: data.bashSession,
@@ -2150,17 +2130,13 @@ async function main(): Promise<void> {
   });
 
   app.get("/admin/diagnostics", async (_req, res) => {
-    const saved = profileValues(config, readWorkspaceProfile(config.defaultRoot));
     const jobs = await new JobStore({ baseDir: config.jobDir, maxJobs: config.maxOperationReceipts, maxOutputBytes: config.maxOperationBytes, maxReadBytes: config.maxProcessReadBytes }).list();
     const activeStructuredJobs = jobs.filter((job) => ["queued", "running", "paused"].includes(job.state)).length;
     const currentRuntime = readRuntimeConnection(config.defaultRoot);
     const snapshot = diagnosticsSnapshot(
       config, telemetry.snapshot(), latestRegisteredTools, toolNamesForMode(config), transports.size,
       {
-        savedDeadlineMode: saved.syncCallDeadlineMode, savedDeadlineMs: saved.syncCallDeadlineMinutes * 60_000, activeStructuredJobs,
         runtimeGenerationId: typeof currentRuntime.runtimeGenerationId === "string" ? currentRuntime.runtimeGenerationId : undefined,
-        runtimeDeadlineMode: String(currentRuntime.syncCallDeadlineMode ?? config.syncCallDeadlineMode),
-        runtimeDeadlineMs: Number(currentRuntime.syncCallDeadlineMs ?? config.syncCallDeadlineMs),
         runtimeTransportState: String(currentRuntime.transportState ?? "unknown")
       }
     );

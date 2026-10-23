@@ -6,7 +6,6 @@ import { loadConfig } from '../dist/config.js';
 import { PathGuard, WorkspaceManager } from '../dist/guard.js';
 import { discoverTrustedChecks, runChecks, verificationRoutingHint, verifyChanges } from '../dist/checksOps.js';
 import { parseTestOutput } from '../dist/testResultOps.js';
-import { DeadlineBudget, DEFAULT_SYNC_CALL_DEADLINE_MS } from '../dist/deadline.js';
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codexpro-checks-smoke-'));
 const envKeys = ['CODEXPRO_ROOT','CODEXPRO_ALLOWED_ROOTS','CODEXPRO_BASH_MODE','CODEXPRO_ALLOW_NO_HTTP_TOKEN'];
@@ -53,54 +52,26 @@ try {
   assert(buildCheck, 'build check not found');
   const shortHint = verificationRoutingHint(config, [testCheck], 30_000, 'start_checks');
   assert.equal(shortHint.recommendedExecution, 'sync');
-  assert.equal(shortHint.executionHint.class, 'sync_preferred');
+  assert.equal(shortHint.executionHint.class, 'sync_allowed');
   assert.equal(shortHint.executionHint.recommended_primitive, 'synchronous_tool');
-  const customRoutingConfig = { ...config, syncCallDeadlineMs: 300_000 };
-  const aggregateHint = verificationRoutingHint(customRoutingConfig, [testCheck, buildCheck], 120_000, 'start_checks');
-  assert.equal(aggregateHint.asyncCutoffMs, 225_000);
+  const aggregateHint = verificationRoutingHint(config, [testCheck, buildCheck], 120_000, 'start_checks');
   assert.equal(aggregateHint.aggregateRequestedTimeoutMs, 240_000);
-  assert.equal(aggregateHint.recommendedExecution, 'async');
-  assert.equal(aggregateHint.asyncToolName, 'start_checks');
-  assert.equal(aggregateHint.executionHint.class, 'async_preferred');
-  assert.equal(aggregateHint.executionHint.recommended_primitive, 'start_checks_or_verification');
+  assert.equal(aggregateHint.recommendedExecution, 'sync');
+  assert.equal(aggregateHint.executionHint.class, 'sync_allowed');
   const integrationHint = verificationRoutingHint(config, [{ ...testCheck, command: 'npm run integration' }], 30_000, 'start_verification');
   assert.equal(integrationHint.recommendedExecution, 'async');
   assert.equal(integrationHint.asyncToolName, 'start_verification');
   assert.equal(integrationHint.executionHint.class, 'async_preferred');
-  let defaultNowCalls = 0;
-  const defaultBudget = new DeadlineBudget('bounded', DEFAULT_SYNC_CALL_DEADLINE_MS, { now: () => [0, 0, 1_141_000][Math.min(defaultNowCalls++, 2)] });
-  const defaultPartial = await runChecks({ config, guard, workspace, checkIds: [testCheck.id, buildCheck.id], deadline: defaultBudget });
-  assert.equal(defaultPartial.complete, false);
-  assert.equal(defaultPartial.deadlineYielded, true);
-  assert.deepEqual(defaultPartial.remainingCheckIds, [buildCheck.id]);
-  assert.equal(defaultPartial.results.length, 1);
-
-  let customNowCalls = 0;
-  const customBudget = new DeadlineBudget('bounded', 300_000, { now: () => [0, 0, 286_000][Math.min(customNowCalls++, 2)] });
-  const customPartial = await runChecks({ config, guard, workspace, checkIds: [testCheck.id, buildCheck.id], deadline: customBudget });
-  assert.equal(customPartial.complete, false);
-  assert.equal(customPartial.deadlineYielded, true);
-  assert.deepEqual(customPartial.remainingCheckIds, [buildCheck.id]);
-
+  const completeChecks = await runChecks({ config, guard, workspace, checkIds: [testCheck.id, buildCheck.id] });
+  assert.equal(completeChecks.complete, true);
+  assert.equal(completeChecks.results.length, 2);
+  assert.deepEqual(completeChecks.remainingCheckIds, []);
   const slowCheck = discovered.find((check) => check.command === 'npm run test:unit');
   assert(slowCheck, 'slow check not found');
-  const interrupted = await runChecks({ config, guard, workspace, checkIds: [slowCheck.id, buildCheck.id], timeoutMs: 5_000, deadline: { childTimeoutMs() { return 1_000; } } });
-  assert.equal(interrupted.complete, false);
-  assert.equal(interrupted.deadlineYielded, true);
-  assert.deepEqual(interrupted.remainingCheckIds, [slowCheck.id, buildCheck.id]);
-  assert.equal(interrupted.results.length, 0);
-  assert.equal(interrupted.deadlineLimitedChild, true);
-  // Under a busy Windows runner, the deadline can kill npm before its child
-  // starts and writes slow.pid. In that case no fixture child was created.
-  let slowPid;
-  try { slowPid = Number(await fs.readFile(path.join(root, 'slow.pid'), 'utf8')); }
-  catch (error) { if (error?.code !== 'ENOENT') throw error; }
-  if (slowPid !== undefined) {
-    assert(Number.isInteger(slowPid) && slowPid > 0, 'invalid slow fixture PID');
-    let slowAlive = true;
-    try { process.kill(slowPid, 0); } catch { slowAlive = false; }
-    assert.equal(slowAlive, false, 'deadline-limited child still alive after runChecks returned');
-  }
+  const timed = await runChecks({ config, guard, workspace, checkIds: [slowCheck.id], timeoutMs: 1_000 });
+  assert.equal(timed.complete, true);
+  assert.equal(timed.results.length, 1);
+  assert.equal(timed.results[0].terminationReason, 'timeout');
   const parsed = parseTestOutput(
     'generic',
     '',
@@ -125,18 +96,7 @@ try {
   assert.equal(verification.repair.status, 'not_run');
   assert.equal(verification.repair.retryRecommended, false);
   assert.equal(verification.complete, false);
-  assert.equal(verification.deadlineYielded, false);
   assert.deepEqual(verification.remainingCheckIds, verification.selectedChecks.map((check) => check.id));
-
-  const yieldedVerification = await verifyChanges({
-    config, guard, workspace, changedPaths: ['src.ts'], run: true,
-    deadline: { childTimeoutMs() { return 0; } }
-  });
-  assert.equal(yieldedVerification.complete, false);
-  assert.equal(yieldedVerification.deadlineYielded, true);
-  assert.equal(yieldedVerification.ok, null);
-  assert.deepEqual(yieldedVerification.remainingCheckIds, yieldedVerification.selectedChecks.map((check) => check.id));
-  assert.equal(yieldedVerification.repair.status, 'not_run');
 
   console.log('checks smoke passed');
 } finally {

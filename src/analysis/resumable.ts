@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import type { CodexProConfig } from "../config.js";
-import { currentSyncCallDeadline, type DeadlineBudget } from "../deadline.js";
 import type { PathGuard, Workspace } from "../guard.js";
 import { BatchStore } from "../batches/store.js";
 import type { BatchRecord } from "../batches/types.js";
@@ -64,7 +63,6 @@ export async function inspectWorkspaceResumable(input: {
   store: BatchStore;
   continuationToken?: string;
   requestFingerprint?: string;
-  deadline?: DeadlineBudget;
 }): Promise<ResumableInspectResult> {
   const inventory = await inventoryWorkspace(input.config, input.guard, input.workspace);
   const fingerprint = requestFingerprint(input.config, input.requestFingerprint);
@@ -87,8 +85,6 @@ export async function inspectWorkspaceResumable(input: {
   if (batch.kind !== "inspect_workspace") throw new Error("Batch kind does not match inspect_workspace.");
   const candidates = inventory.files.filter(isAnalyzableInventoryFile);
   if (batch.state === "completed") return { analysis: finalize(input.workspace, input.config, inventory, state, true), complete: true, batch };
-  const deadline = input.deadline ?? currentSyncCallDeadline();
-  let processedThisCall = 0;
   while (state.cursor < candidates.length) {
     if (state.extracted.length >= input.config.analysisLimits.maxAnalyzedFiles || state.scannedBytes + candidates[state.cursor].bytes > input.config.analysisLimits.maxScannedBytes) {
       state.truncated = true;
@@ -96,7 +92,6 @@ export async function inspectWorkspaceResumable(input: {
       state.cursor = candidates.length;
       break;
     }
-    if (processedThisCall > 0 && deadline?.shouldYield(25)) break;
     const candidate = candidates[state.cursor];
     const remainingSymbols = Math.max(0, input.config.analysisLimits.maxSymbols - state.extracted.reduce((sum, file) => sum + file.symbols.length, 0));
     const unitConfig = { ...input.config, analysisLimits: { ...input.config.analysisLimits, maxAnalyzedFiles: 1, maxScannedBytes: Math.max(1, input.config.analysisLimits.maxScannedBytes - state.scannedBytes), maxSymbols: remainingSymbols } };
@@ -109,7 +104,6 @@ export async function inspectWorkspaceResumable(input: {
     state.warnings.push(...unit.warnings);
     state.truncated ||= unit.truncated;
     state.cursor += 1;
-    processedThisCall += 1;
     await input.store.savePrivate(batch.id, state);
     batch = await input.store.update(batch.id, (record) => { record.cursor = state.cursor; record.completedUnits = state.cursor; return record; });
   }
