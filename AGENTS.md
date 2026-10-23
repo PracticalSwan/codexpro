@@ -5,7 +5,7 @@ Scope: this repository and all descendants.
 ## Start here
 1. Read `docs/agentic/PROJECT_MEMORY.md` for durable current-state facts.
 2. Read `docs/agentic/DEVELOPMENT_WORKFLOW.md` before planning or implementation.
-3. Use `docs/agentic/PLAN_INDEX.md` as the roadmap/status source of truth. For implementation, read the selected plan and its linked spec in full. Plans 38–46 are released and verified; Plan 47 is implemented and locally verified in unreleased main, with hosted CI/release blocked externally. Preserve their boundaries during release and future maintenance.
+3. Use `docs/agentic/PLAN_INDEX.md` as the roadmap/status source of truth. For implementation, read the selected plan/spec in full. Plans 38?48 are released and verified in v0.34.0; optional Plan 48 metadata changes were omitted without measured real-host evidence. Preserve their security and runtime boundaries during maintenance.
 4. Recover Git status/branch/remotes/upstream, touched paths/tests, relevant external state, and whether a CodexPro runtime is already running before mutation.
 
 ## Development rules

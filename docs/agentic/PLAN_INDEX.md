@@ -62,15 +62,15 @@ These are baseline behavior, not pending roadmap work. New long-running features
 | 45 | P1 | Dependency Reality Engine | [design](../superpowers/specs/2026-09-22-dependency-reality-engine-design.md) · [plan](../superpowers/plans/2026-09-22-dependency-reality-engine.md) | Released |
 | 46 | P1 | Local Service Observatory | [design](../superpowers/specs/2026-09-22-local-service-observatory-design.md) · [plan](../superpowers/plans/2026-09-22-local-service-observatory.md) | Released |
 
-| 47 | P0 | Local Control Setup/Status Usability | [design](../superpowers/specs/2026-10-15-local-control-usability-design.md) ? [plan](../superpowers/plans/2026-10-15-local-control-usability.md) | Locally verified; hosted release pending |
+| 47 | P0 | Local Control Setup/Status Usability | [design](../superpowers/specs/2026-10-15-local-control-usability-design.md) ? [plan](../superpowers/plans/2026-10-15-local-control-usability.md) | Released in v0.34.0 |
 
-## Active planned maintenance ? post-0.33.9
+## Post-0.33.9 maintenance ? v0.34.0 released
 
 Plan 48 supersedes the deadline-specific runtime behavior in historical Plans 22/23/26/28. Durable jobs and batches from Plans 24/25/27 remain active. Historical plans are retained for traceability.
 
 | ID | Priority | Subsystem | Authoritative design / plan | Status |
 |---|---|---|---|---|
-| 48 | P0 (+ conditional P1) | Deadline feature retirement and focused ChatGPT tool quality | [plan](../superpowers/plans/2026-10-24-codexpro-deadline-retirement-tool-quality.md) | Local full release gate verified; hosted CI/Pages and publication pending |
+| 48 | P0 (+ conditional P1) | Deadline feature retirement and focused ChatGPT tool quality | [plan](../superpowers/plans/2026-10-24-codexpro-deadline-retirement-tool-quality.md) | Released in v0.34.0; optional metadata evaluation omitted without evidence |
 
 ## Verified implementation sequence
 

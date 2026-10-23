@@ -1,6 +1,6 @@
 # Plan 48 — CodexPro 0.34: Deadline Retirement and Focused ChatGPT Tool Quality
 Date: 2026-10-24 (Asia/Bangkok)
-Status: **Local full release gate verified; exact-commit hosted CI/Pages, public release, installation and profile migration pending**
+Status: **Released in v0.34.0 (2026-10-24); optional metadata changes omitted without real-host evidence**
 Canonical repository: current authorized CodexPro checkout; branch `main`.
 Source baseline observed: `49366b18f5fad4aae5b8953e42be0c43fc7554b0`; package/global CLI version `0.33.9`.
 User authorized source implementation, tests, docs, Git commit and push. Running CodexPro remains protected; public publication requires the usual hosted gates.
@@ -194,3 +194,12 @@ One focused plan governs this implementation. The operator subsequently authoriz
 - Corrected candidate CLI help to distinguish published stable downloads from unreleased candidate downloads, plus the build-identity regression and strict HTTP admin legacy-input tests.
 - Full `npm ci` and `npm run release:check` passed on Windows Node 22.19.0 with controlled test fixtures and zero audit vulnerabilities. No test-owned CodexPro processes or port 8787 listeners remained.
 - Exact-commit hosted CI and Pages, public tag/Release, protected profile migration and global installation are separate gates. Do not claim their success until verified.
+
+## 13. Final v0.34.0 release evidence
+
+- Tag `v0.34.0` peels to verified source `7d4054ee2da7a72a76852ab53c5f69fe615f8f84`. Hosted Ubuntu 24.04 / Node 20, Windows / Node 24, Pages, and the full tag-triggered Release workflow all passed at this SHA.
+- Official GitHub archive `codexpro-full-0.34.0.tgz` and checksum sidecar are public. SHA-256 `701a7bdcfe04af3652cb6982eae80d7d5a3534bd5b6fdf45967f72a71ac88041`; 304 packaged files, `release` channel, exact tagged revision.
+- Installed the downloaded release in a disposable consumer, validating all three CLI entrypoints. Installed the same verified public tarball globally in Windows NVM, verifying version 0.34.0 and release metadata.
+- The global install preserved all 17 protected user files by hash. Removed only the two retired deadline keys from each of 11 saved profiles and retained exact pre-migration backup bytes in the user's protected local runtime archive. All 11 profiles pass `codexpro doctor` and report `stopped`. No CodexPro service was restarted and no port 8787 listener remains.
+- GitHub Release is the canonical distribution. npm registry publication was not attempted because authentication was not configured; no credentials were requested or stored.
+- Public documentation synchronization and the postrelease developer CLI stable-link correction are separate follow-up changes in `main`, not alterations to the immutable release archive.

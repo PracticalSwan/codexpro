@@ -2,23 +2,18 @@
 
 ## Unreleased
 
-### 0.34.0 candidate (2026-10-24; NOT publicly released)
+- Postrelease `main` maintenance: updated CLI help to advertise v0.34.0 as the current stable archive rather than the previous v0.33.8 download.
+- Synchronized README, FAQ, feature overview, installation instructions, and Pages with the verified v0.34.0 public release.
 
-- Retired the configurable synchronous MCP-call deadline and observe mode, deadline-derived routing/yielding, and `tool_time_probe`. Independent per-command/network timeout safeguards and existing processes, verification jobs, resumable batches and Goals remain.
-- Deprecated deadline CLI/environment options now fail with migration guidance. Legacy profile deadline fields are ignored on read and omitted from newly saved profiles; the active running profile is not rewritten.
-- Retained the independent OpenAI tunnel connection TTL at the previous 65-minute value. Simplified settings and diagnostics, replacing deadline-focused tests with contract and operational-safety regressions.
-- Deferred all tool-metadata changes not backed by real-host model selection evidence; no new tools, routing layer, plugin publication infrastructure or dependency upgrades.
-- GitHub Actions hosted release validation and any reinstall must respect platform and runtime-lifecycle constraints.
-- Reduced CI compute by skipping documentation-only push/PR builds; preserved Windows/Node 24 and Ubuntu/Node 20 compatibility checks and the full tag-triggered release gate. Removed a redundant stress-stage build and three repeated Goal smoke runs already covered by the main smoke suite.
-- Fixed hosted build-identity help regression by distinguishing the published stable archive from the candidate download (available only after release). HTTP regression now asserts obsolete deadline inputs are rejected and normal profile saves work.
+## 0.34.0 (2026-10-24)
 
-
-### Candidate 0.33.9 (2026-10-15; unreleased pending hosted CI)
-
-- Simplified the authenticated local setup/status page around Status, Settings, Connect ChatGPT, and Diagnostics. Core controls remain visible, provider-specific inputs and advanced options use progressive disclosure, and full profile/capability diagnostics remain accessible. Saving and discarding edits now have clear state feedback and a navigation warning, while settings still only apply on the next manual start. OpenAI instructions correctly describe Tunnel ID rather than Server URL.
-- Added responsive navigation and a compact status summary, verified with actual desktop and mobile browser interactions. Corrected Save → Discard behavior so form resets restore the most recently saved values rather than the original page-load values, including select and checkbox controls. Rejected saves keep the previous baseline; edits made during an in-flight save remain marked unsaved, and duplicate submissions are prevented. No new endpoints, browser credential persistence, runtime start/stop controls, or relaxed authentication were introduced.
-- Refreshed MCP client/server, Express, Zod and Node 24 types within supported semver ranges, while retaining TypeScript 5.x.
-- Fixed an intermittent Windows hook-runner crash when a quickly exiting hook closed stdin before the runner finished sending bounded JSON. The runner now observes EPIPE/closed-stream errors without losing the hook's actual exit status, including the blocking exit code 2. Added repeated quick-exit coverage; unrelated stdin errors still return warnings and the global staged-commit safety hook remains fail-closed.
+- Removed configurable synchronous MCP call deadlines, observe/probe modes, `tool_time_probe`, time-budget routing/yielding and corresponding settings/diagnostics. Independent command/network limits, authorization checks, processes, verification jobs, resumable batches and Durable Goals remain.
+- Retired deadline CLI/environment inputs now fail with migration guidance; old profile deadline fields are ignored on read and omitted on subsequent saves. All 11 real saved profiles were later migrated with local byte-identical originals archived; every workspace doctor/status check passed.
+- Preserved independent finite OpenAI tunnel forwarding, manual startup, workspace policy, process ownership, authenticated admin operations and protected user state.
+- Included the previously unreleased v0.33.9 maintenance: responsive local setup/status, OpenAI Tunnel ID guidance, robust Save/Discard, hook EPIPE hardening and compatible dependency updates.
+- Reduced CI waste by skipping docs-only workflow triggers and eliminating a redundant build and three duplicate Goal smoke runs from stress while preserving Windows Node 24 and Ubuntu Node 20 smoke, full tag-triggered release gate, security audit, tarball and isolated install checks.
+- Fixed real hosted CI regressions in CLI release-help text, build-identity assertions and strict HTTP admin legacy-profile tests. Full local release gate, hosted Windows/Ubuntu checks, Pages, tagged Release workflow, public tarball checksum and disposable released-archive install succeeded.
+- Conditional GPT-6 tool metadata edits omitted because no real-client tool selection failure was demonstrated; no speculative tools, model routers or dependencies were added.
 
 ## 0.33.8 (2026-10-05)
 

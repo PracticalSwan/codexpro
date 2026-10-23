@@ -11,13 +11,13 @@ CodexPro Full is the `PracticalSwan/codexpro` fork. The installed command is sti
 Use the GitHub Release artifact when you want the latest tagged/stable build:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.33.8/codexpro-full-0.33.8.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.34.0/codexpro-full-0.34.0.tgz
 codexpro --version
 ```
 
 ### Latest `main`
 
-The unreleased **0.33.9 main candidate** simplifies local /setup status and settings, with OpenAI Tunnel ID guidance, conditional provider fields, collapsed advanced options and Save/Discard feedback, refreshes compatible dependencies, and retains ownership-safe cleanup of the OpenAI tunnel health scratch directory after external stop and includes all completed Plans 38–47, the post-0.32.4 Windows Bash and handoff maintenance, the PID-reuse tunnel correction, bounded Windows handoff settlement, runner-owned execution logging, clean packed-artifact installation verification, and refreshed compatible dependencies. Build current main only when future verified **Unreleased** changes are required:
+Release **0.34.0** is available as the tagged GitHub artifact above. It includes Plan 47's simpler setup/status and Plan 48's complete retirement of obsolete per-tool-call deadlines. Build main only for future unreleased work; independent timeouts and manual startup remain.
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -27,11 +27,11 @@ git pull --ff-only origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.9.tgz
+npm install -g ./codexpro-full-0.34.0.tgz
 codexpro --version
 ```
 
-Unreleased candidate 0.33.9 simplifies authenticated local setup/status and retains manual-only startup. Release 0.33.8 fixes the externally stopped OpenAI tunnel health-scratch leak by recording only the exact validated temp directory and removing it after verified process teardown, while rejecting non-owned paths. Release 0.33.7 additionally fixes stale tunnel ownership after PID reuse, settles local handoffs after the direct child exits when descendants retain output handles, keeps execution logging runner-owned, adds a clean packed-package install gate, and refreshes compatible dependencies to a zero-vulnerability high-severity audit. Release 0.33.6 fixes an owner-verified Windows shutdown race by waiting boundedly for the MCP server child after its launcher exits without signaling unverified PIDs. Release 0.33.5 additionally fixes Git-ignore-aware workspace inspection, canonical GitHub Release install guidance, bounded stress fixture cleanup, and pinned Ubuntu 24.04 CI/release runners. As of 0.33.4, structured Job and Durable Goal persistence tolerate longer temporary Windows file locks with bounded retries. The runtime must still be stopped by the operator before replacing an active global installation.
+Release 0.34.0 includes the previously unreleased 0.33.9 UI and dependency improvements, the ownership-safe tunnel and Windows process fixes, and deadline-feature retirement. The operator must start CodexPro manually after installation.
 
 When an existing runtime uses the configured port, `codexpro doctor` reports the identity-verified running instance from that workspace as a warning rather than an unrelated conflict. Do not launch a second instance; use `codexpro status --root <workspace>` to check the current runtime.
 
@@ -111,7 +111,7 @@ When `open_workspace` returns a `workspace_id`, keep using that ID explicitly af
 
 ## 6. Recommended: multiple ChatGPT sessions, multiple projects
 
-For most users, run **one CodexPro runtime** and allow every project you want that runtime to serve. Unreleased main 0.33.9 includes simplified local setup and the current multi-session/isolation fixes and maintenance hardening, including ownership-safe tunnel scratch cleanup. If later changes are listed under **Unreleased** in `CHANGELOG.md`, use current `main` only when you specifically need those newer changes.
+For most users, run **one CodexPro runtime** and allow every project you want that runtime to serve. Release 0.34.0 includes simplified local setup and the current multi-session/isolation fixes and maintenance hardening, including ownership-safe tunnel scratch cleanup. If later changes are listed under **Unreleased** in `CHANGELOG.md`, use current `main` only when you specifically need those newer changes.
 
 Example:
 
@@ -229,7 +229,7 @@ git pull --ff-only origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.33.9.tgz
+npm install -g ./codexpro-full-0.34.0.tgz
 codexpro --version
 codexpro doctor
 ```

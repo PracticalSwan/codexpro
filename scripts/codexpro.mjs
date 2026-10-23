@@ -56,7 +56,7 @@ function isLoopbackHost(host) {
 
 function usage() {
   const version = packageVersion();
-  const publishedVersion = buildIdentity().channel === "release" ? version : "0.33.8";
+  const publishedVersion = buildIdentity().channel === "release" ? version : "0.34.0";
   console.log(`CodexPro Full launcher
 
 Install previously verified public stable release:
