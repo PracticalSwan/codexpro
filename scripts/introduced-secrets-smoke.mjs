@@ -19,6 +19,7 @@ assert.equal(introduced[0].category, 'token');
 assert(!JSON.stringify(introduced).includes('abcdefghijklmnopqrstuvwxyz'));
 assert.equal(introducedSecretFindings('', old).length, 1);
 import fs from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -27,7 +28,8 @@ import { PathGuard } from '../dist/guard.js';
 import { editTextFile, writeTextFile } from '../dist/fsOps.js';
 import { preflightChanges } from '../dist/preflightOps.js';
 
-const root=await fs.mkdtemp(path.join(os.tmpdir(),'codexpro-secret-baseline-'));
+const tempRoot=await fs.mkdtemp(path.join(os.tmpdir(),'codexpro-secret-baseline-'));
+const root=realpathSync.native(tempRoot); // Match WorkspaceManager's canonical root identity.
 try {
   const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8'});
   git('init','-q');git('config','user.name','Fixture');git('config','user.email','fixture@example.invalid');
@@ -62,7 +64,7 @@ try {
   assert(nestedResult.notices.some(n=>n.kind==='secret'&&n.baseline==='HEAD'));
 
 } finally {
-  await fs.rm(root,{recursive:true,force:true});
+  await fs.rm(tempRoot,{recursive:true,force:true});
 }
 
 console.log('introduced secret regression passed');
