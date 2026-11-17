@@ -66,7 +66,9 @@ try {
     if (saved[key] === undefined) delete process.env[key];
     else process.env[key] = saved[key];
   }
-  await fs.rm(rootRaw, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  // Windows hosted runners may hold the test-owned directory briefly after child teardown.
+  // Keep cleanup mandatory, with bounded retries instead of a timing-based sleep.
+  await fs.rm(rootRaw, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   console.log('[process smoke] test fixture teardown complete');
 }
 console.log('process smoke passed');
