@@ -19,7 +19,7 @@ This is the execution contract for future CodexPro development. It keeps work sp
 Planning work may create or refine `docs/agentic/**`, `docs/superpowers/specs/**`, and `docs/superpowers/plans/**`. It must not modify runtime source, dependencies, generated build output, profiles, tunnels, or external services.
 
 ## Implementation gate
-Implementation begins only when the user authorizes the exact plan scope. Read its selected plan/spec in full. `PLAN_INDEX.md` is authoritative: Plans 38?48 are verified and released in v0.34.0 (conditional Plan 48 metadata edits omitted without evidence). Future feature work needs a fresh approved plan. Historical completed execution plans are not active instructions. If multiple current plans are explicitly authorized together, keep each subsystem's acceptance criteria, focused tests, review, and milestone evidence distinct even when one integration branch/worktree is used.
+Implementation begins only when the user authorizes the exact plan scope. Read its selected plan/spec in full. `PLAN_INDEX.md` is authoritative: Plans 38-49 are verified and released through v0.34.1 (conditional Plan 48 metadata edits omitted without evidence). Future feature work needs a fresh approved plan. Historical completed execution plans are not active instructions. If multiple current plans are explicitly authorized together, keep each subsystem's acceptance criteria, focused tests, review, and milestone evidence distinct even when one integration branch/worktree is used.
 
 ## Codex CLI prohibition
 - Do not use Codex CLI for CodexPro implementation, debugging, testing, review, delegation, or repository mutation. This includes `codex`, `codex exec`, `codex review`, `codex apply`, and all other Codex CLI subcommands.

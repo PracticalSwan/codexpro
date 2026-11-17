@@ -1,6 +1,6 @@
 # CodexPro Full 0.34.1 ? Reliability, Evidence and Public Documentation
 
-Status: **Locally verified (build, full smoke, stress, audit and installed-package test); hosted release verification pending**. Target release **v0.34.1** per user instruction.
+Status: **Released and verified in v0.34.1 (2026-11-18 Bangkok).** Global installation deferred while the operator's v0.34.0 runtime is active; an exact-owner stop requires fresh approval.
 
 ## Source and observed defects
 TDS Macro v0.2.3?v0.2.4 usage feedback reported opaque secret-scanning false positives, image-delivery friction, expensive Codex transcript reconstruction, recovery ambiguity after reconnect, and unbound verification evidence. Source inspection shows whole-file scanning in `fsOps.ts` and `preflightOps.ts`; `view_image` already returns native MCP image content; transcript cursors, operation receipts and job state already exist. Do not create a new tool family/agent runner.
@@ -22,3 +22,11 @@ TDS Macro v0.2.3?v0.2.4 usage feedback reported opaque secret-scanning false pos
 - Verification source identity is included and marked stale across source mutation.
 - README reasonably short, links valid, no current-tree private keys/credentials; any history findings disclosed, never history rewritten.
 - Source and release remain separate evidence states; do not claim runtime installed when active runtime prevents it.
+
+## Release verification (final)
+
+- Exact release source: `3a8652b531817c04abf110610347050f1ea3e10f`; annotated tag `v0.34.1` peels to this SHA. `main` is clean and pushed.
+- Hosted CI: run 44144120850, Ubuntu/Node 20 and Windows/Node 24 both passed. Windows process-fixture startup/cleanup corrections were independently exercised on the exact Node 24.22.2 binary.
+- Pages built the release SHA. Tag-triggered Release workflow 44145117697 passed the full release gate and published the official tarball plus checksum sidecar.
+- Official release archive SHA-256: `6550b118d587f17ad7a90ad12a28702a5fbdb96d2762508761648ce19b607d24`. The downloaded tarball's digest and sidecar matched; version 0.34.1, release channel and exact source SHA matched embedded build metadata. All 309 tar entries passed safe-path checks. A disposable install verified three public CLI entrypoints.
+- The globally installed v0.34.0 process tree remains active and was not interrupted. User approval for stopping the exact owner tree is required before installation; agents never restart it automatically. No npm-registry publication was attempted without authenticated publisher access.

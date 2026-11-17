@@ -71,7 +71,7 @@ Plan 48 supersedes the deadline-specific runtime behavior in historical Plans 22
 | ID | Priority | Subsystem | Authoritative design / plan | Status |
 |---|---|---|---|---|
 | 48 | P0 (+ conditional P1) | Deadline feature retirement and focused ChatGPT tool quality | [plan](../superpowers/plans/2026-10-24-codexpro-deadline-retirement-tool-quality.md) | Released in v0.34.0; optional metadata evaluation omitted without evidence |
-| 49 | P0/P1 | Evidence-backed editing, image delivery, recovery, verification and public documentation | [plan](../superpowers/plans/2026-11-17-codexpro-full-reliability-and-evidence.md) | In progress ? v0.34.1 candidate |
+| 49 | P0/P1 | Evidence-backed editing, image delivery, recovery, verification and public documentation | [plan](../superpowers/plans/2026-11-17-codexpro-full-reliability-and-evidence.md) | Released in v0.34.1; global upgrade deferred until approved owner stop |
 
 ## Verified implementation sequence
 
