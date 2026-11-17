@@ -17,8 +17,9 @@ const releaseUrl = `https://github.com/PracticalSwan/codexpro/releases/download/
 assert(help.stdout.includes(`npm install -g ${releaseUrl}`), 'CLI help must name the canonical CodexPro Full GitHub Release artifact');
 assert.doesNotMatch(help.stdout, /^  npm install -g codexpro(?:@[^\s]+)?\s*$/m, 'CLI help must not direct users to the upstream codexpro npm package');
 if (identity.channel !== 'release') {
-  assert.match(help.stdout, /When CodexPro Full v.*has passed hosted CI and is publicly released/i);
-  assert(help.stdout.includes('Install previously verified public stable release:'));
-  assert(!help.stdout.includes('/download/v0.33.8/'), 'main-channel help must not advertise an obsolete stable release');
+  assert(help.stdout.includes('Install this candidate only after its matching GitHub Release is published:'));
+} else {
+  assert(help.stdout.includes('Install this verified public release:'));
 }
+assert(help.stdout.includes('https://github.com/PracticalSwan/codexpro/releases/latest'));
 console.log('build identity smoke passed');

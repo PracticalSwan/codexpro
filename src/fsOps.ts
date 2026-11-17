@@ -6,7 +6,7 @@ import { minimatch } from "minimatch";
 import type { CodexProConfig } from "./config.js";
 import type { Workspace } from "./guard.js";
 import { CodexProError, displayPath, normalizeRelPath, PathGuard } from "./guard.js";
-import { hasSecretValue, redactSensitiveText } from "./redact.js";
+import { introducedSecretFindings, redactSensitiveText } from "./redact.js";
 import { withResourceLease } from "./operations/locks.js";
 
 export interface TreeOptions {
@@ -330,10 +330,6 @@ export async function writeTextFile(
   if (contentBytes > config.maxWriteBytes) {
     throw new CodexProError(`Write content is too large (${contentBytes} bytes). Limit: ${config.maxWriteBytes} bytes.`);
   }
-  if (hasSecretValue(content)) {
-    throw new CodexProError("Secret-looking content is blocked from write. Use placeholders such as [REDACTED_SECRET] in handoff files.");
-  }
-
   return withFileWriteLocks([resolved.absPath], async () => {
     let oldText = "";
     let existed = false;
@@ -353,6 +349,8 @@ export async function writeTextFile(
       throw new CodexProError(`File does not exist, so expected_sha256 cannot be verified: ${resolved.relPath}`);
     }
     if (existed) assertExpectedSha(options.expectedSha256, oldText, resolved.relPath);
+    const newSecret = introducedSecretFindings(oldText, content)[0];
+    if (newSecret) throw new CodexProError(`Secret-looking content is blocked: ${newSecret.category} introduced at ${resolved.relPath}:${newSecret.line}; write blocked. No secret value is exposed.`);
     if (options.createDirs) {
       await fsp.mkdir(path.dirname(resolved.absPath), { recursive: true });
     }
@@ -404,9 +402,8 @@ export async function editTextFile(
     if (afterBytes > config.maxWriteBytes) {
       throw new CodexProError(`Edited file would be too large (${afterBytes} bytes). Limit: ${config.maxWriteBytes} bytes.`);
     }
-    if (hasSecretValue(after)) {
-      throw new CodexProError("Secret-looking content is blocked from edit. Use placeholders such as [REDACTED_SECRET] in handoff files.");
-    }
+    const newSecret = introducedSecretFindings(before, after)[0];
+    if (newSecret) throw new CodexProError(`Secret-looking content is blocked: ${newSecret.category} introduced at ${resolved.relPath}:${newSecret.line}; edit blocked. No secret value is exposed.`);
 
     const diff = makeUnifiedDiff(before, after, resolved.relPath);
     await writeText(resolved.absPath, after, before, resolved.relPath);

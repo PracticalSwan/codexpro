@@ -1066,7 +1066,10 @@ try {
       throw new Error(`unexpected connection-test config: ${JSON.stringify(config.structuredContent)}`);
     }
   });
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  const logDeadline = Date.now() + 3000;
+  while (!connectionTestStderr.includes('[CodexPro] POST /mcp received') && Date.now() < logDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
   if (!connectionTestStderr.includes('[CodexPro] POST /mcp received')) {
     throw new Error(`connection-test did not print request-arrival logs\n${connectionTestStderr}`);
   }

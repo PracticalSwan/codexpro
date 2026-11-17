@@ -589,12 +589,18 @@ if (!selfTest.structuredContent.bash_runtime?.runtime || !selfTest.structuredCon
 const snapshotAlias = await client.request('tools/call', {
   name: 'workspace_snapshot',
   arguments: {
+    include_recovery: true,
     workspace_id: current.structuredContent.workspace_id,
     max_depth: 1,
     max_files: 20,
     include_skills: false
   }
 });
+if (!Array.isArray(snapshotAlias.structuredContent.recovery?.recent_operations) ||
+    !Array.isArray(snapshotAlias.structuredContent.recovery?.recent_jobs) ||
+    !Array.isArray(snapshotAlias.structuredContent.recovery?.needs_reconciliation)) {
+  throw new Error('workspace_snapshot omitted bounded, read-only recovery summary');
+}
 if (!snapshotAlias.structuredContent.tree) {
   throw new Error('workspace_snapshot did not accept max_files alias or return a tree');
 }

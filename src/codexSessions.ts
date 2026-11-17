@@ -47,6 +47,7 @@ export interface CodexSessionReadResult {
   has_more: boolean;
   source_size_bytes: number;
   text: string;
+  observation?: { page_message_count: number; user_steering_count: number; assistant_message_count: number; tool_message_count: number; resume_cursor: number; evidence_status: "transcript_only" };
 }
 
 interface JsonlLine {
@@ -584,6 +585,14 @@ export async function readCodexSession(
     excludeToolOutputs: options.excludeToolOutputs === true,
     maxToolOutputBytes
   });
+  const observation = {
+    page_message_count: messages.length,
+    user_steering_count: messages.filter((message) => message.role === "user").length,
+    assistant_message_count: messages.filter((message) => message.role === "assistant").length,
+    tool_message_count: messages.filter((message) => /tool|function/i.test(message.role)).length,
+    resume_cursor: resumeCursor,
+    evidence_status: "transcript_only" as const
+  };
   const transcript = messages.map((message) => {
     const when = message.ts ? ` ${new Date(message.ts).toISOString()}` : "";
     return `### ${message.role}${when}\n\n${message.content}`;
@@ -616,7 +625,8 @@ export async function readCodexSession(
     ...(nextCursor !== undefined ? { next_cursor: nextCursor } : {}),
     has_more: hasMore,
     source_size_bytes: sourceSizeBytes,
-    text
+    text,
+    observation
   };
 }
 

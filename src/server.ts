@@ -1,3 +1,4 @@
+import { captureSourceIdentity, evaluateVerificationFreshness, type VerificationSourceEvidence } from "./sourceEvidence.js";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -27,7 +28,7 @@ import { buildProContext, exportProContext } from "./proContext.js";
 import { codexproInventory, loadSkill } from "./capabilitiesOps.js";
 import { listCodexSessions, readCodexSession, searchCodexSession, readCodexSessionAround } from "./codexSessions.js";
 import { TOOL_CARD_LEGACY_URIS, TOOL_CARD_MIME_TYPE, TOOL_CARD_URI, toolCardWidgetHtml } from "./toolCardWidget.js";
-import { hasSecretValue, redactSensitiveText, redactStructured } from "./redact.js";
+import { introducedSecretFindings, redactSensitiveText, redactStructured } from "./redact.js";
 import { inspectWorkspace, inspectWorkspaceResumable, invalidateWorkspaceAnalysis, reviewWorkspaceChanges } from "./analysis/index.js";
 import { WorkspacePolicyRegistry, toolRulesForPolicy } from "./policyOps.js";
 import { evaluatePolicyRules, policyResourcesForTool } from "./policyRules.js";
@@ -1008,9 +1009,9 @@ async function applyWorkspacePatch(
   if (Buffer.byteLength(patch, "utf8") > config.maxWriteBytes) {
     throw new CodexProError(`Patch is too large. Limit: ${config.maxWriteBytes} bytes.`);
   }
-  if (hasSecretValue(patch)) {
-    throw new CodexProError("Secret-looking content is blocked from apply_patch. Use placeholders such as [REDACTED_SECRET].");
-  }
+  const addedLines = patch.split(/\r?\n/).filter((line) => line.startsWith("+") && !line.startsWith("+++")).map((line) => line.slice(1));
+  const patchSecret = introducedSecretFindings("", addedLines.join("\n"))[0];
+  if (patchSecret) throw new CodexProError(`Secret-looking content is blocked: ${patchSecret.category} found in added patch lines; apply_patch blocked without revealing values.`);
   if (patchHasSymlinkMode(patch)) {
     throw new CodexProError("Symlink patches are blocked from apply_patch.");
   }
@@ -1777,7 +1778,9 @@ export function createCodexProServer(
     await jobStore.requireForWorkspace(args.job_id, workspace);
     const record = await reconcileJob(jobStore, args.job_id);
     const job = publicJobRecord(record);
-    return textResult(`# Job Status\n\n${JSON.stringify(job, null, 2)}`, { workspace_id: workspace.id, job_id: record.id, job });
+    const evidence = record.result?.source_evidence as VerificationSourceEvidence | undefined;
+    const sourceCurrent = evidence ? evaluateVerificationFreshness(evidence, captureSourceIdentity(workspace.root)) : null;
+    return textResult(`# Job Status\n\n${JSON.stringify(job, null, 2)}`, { workspace_id: workspace.id, job_id: record.id, job, verification_source_current: sourceCurrent });
   });
 
   registerCodexTool(config, server, "list_jobs", {
@@ -2842,6 +2845,7 @@ export function createCodexProServer(
         workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use the workspace selected for this MCP session."),
         max_depth: z.number().int().min(1).max(8).optional().describe("Tree depth. Default: 3."),
         max_files: z.number().int().min(1).max(3000).optional().describe("Alias for maximum tree entries. Default: 500."),
+        include_recovery: z.boolean().optional().describe("Include bounded read-only recent operation/job outcomes and ambiguous receipts. Default: false."),
         include_skills: z.boolean().optional().describe("Discover repo-local skills. Default: false for speed."),
         include_global_skills: z.boolean().optional().describe("Also scan home-level skill folders when include_skills=true. Default: false.")
       },
@@ -2875,6 +2879,15 @@ export function createCodexProServer(
       const batches = await batchStore.list(workspace.id).catch(() => []);
       const goals = workspaceConfig.goalsEnabled ? await goalStoreFor(workspace).list(workspace.id).catch(() => []) : [];
       const processes = processManagerFor(workspace).list();
+      const recentOperations = args.include_recovery === true
+        ? await new OperationStore({ baseDir: workspaceConfig.operationDir, maxReceipts: workspaceConfig.maxOperationReceipts }).list(workspace.id).catch(() => [])
+        : [];
+      const recovery = args.include_recovery === true ? {
+        recent_operations: recentOperations.slice(0, 12).map((op) => ({ id: op.id, kind: op.kind, state: op.state, updated_at: op.updatedAt })),
+        recent_jobs: jobs.slice(0, 12).map((job) => ({ id: job.id, state: job.state, updated_at: job.updatedAt })),
+        needs_reconciliation: recentOperations.filter((op) => op.state === "started").slice(0, 12).map((op) => op.id),
+        warning: "Started receipts have an unknown outcome after reconnection. Inspect Git and files before retrying. Nothing was replayed."
+      } : undefined;
       const activeStates = new Set(["queued", "running", "paused", "waiting", "active", "approved", "awaiting_review", "awaiting_projection"]);
       const activeWork = {
         processes: processes.filter((process) => process.state === "running").length,
@@ -2915,7 +2928,8 @@ export function createCodexProServer(
         bash_mode: workspaceConfig.bashMode,
         write_mode: workspaceConfig.writeMode,
         tool_mode: workspaceConfig.toolMode,
-        briefing
+        briefing,
+        ...(recovery ? { recovery } : {})
       });
     }
   );
@@ -3140,7 +3154,7 @@ export function createCodexProServer(
       inputSchema: {
         workspace_id: z.string().optional().describe("Workspace id from open_workspace. Omit to use the workspace selected for this MCP session."),
         path: z.string().describe("Image path relative to workspace root."),
-        max_bytes: z.number().int().min(4096).max(2000000).optional().describe("Maximum image bytes. Default: at least 1 MB, capped at 2 MB.")
+        max_bytes: z.number().int().min(4096).max(6000000).optional().describe("Maximum image bytes. Default: at least 1 MB, optionally up to 6 MB for screenshots.")
       },
       annotations: READ_ONLY_ANNOTATIONS
     },
@@ -3973,7 +3987,7 @@ export function createCodexProServer(
 
   registerCodexTool(config, server, "preflight_changes", {
     title:"Pre-commit Safety Scan",description:"Scan only explicitly listed guarded files for blocked paths, secret-like additions, conflict markers, binary content, and size limits.",inputSchema:{workspace_id:z.string().optional(),paths:z.array(z.string()).min(1).max(config.maxOperationFiles),max_file_bytes:z.number().int().min(1024).optional()},annotations:READ_ONLY_ANNOTATIONS
-  }, async(args)=>{const workspace=workspaces.getWorkspace(args.workspace_id);const result=await preflightChanges(configForWorkspace(workspace),guard,workspace,{paths:args.paths,maxFileBytes:args.max_file_bytes});return textResult(`# Preflight Changes\n\n${result.ok?"PASS":"ISSUES FOUND"}\n${result.issues.map(i=>`${i.path}: ${i.kind} - ${i.detail}`).join("\n")}`,{workspace_id:workspace.id,...result});});
+  }, async(args)=>{const workspace=workspaces.getWorkspace(args.workspace_id);const result=await preflightChanges(configForWorkspace(workspace),guard,workspace,{paths:args.paths,maxFileBytes:args.max_file_bytes});return textResult(`# Preflight Changes\n\n${result.ok?"PASS":"ISSUES FOUND"}\n${[...result.issues, ...result.notices].map(i => `${i.path}${i.line ? ":" + i.line : ""}: ${i.kind}${i.category ? "/" + i.category : ""} - ${i.detail}${i.baseline ? " [" + i.baseline + "]" : ""}`).join("\n")}`,{workspace_id:workspace.id,...result});});
 
   registerCodexTool(config, server, "git_stage", {
     title:"Git Stage",description:"Stage only explicit guarded workspace paths when the current HEAD matches the caller's expected HEAD.",inputSchema:{workspace_id:z.string().optional(),paths:z.array(z.string()).min(1).max(config.maxOperationFiles),expected_head:z.string().regex(/^[a-f0-9]{40,64}$/i),idempotency_key:z.string().min(1).max(256).optional()},annotations:LOCAL_WRITE_ANNOTATIONS
@@ -4645,6 +4659,7 @@ export function createCodexProServer(
             next_cursor: result.next_cursor ?? null,
             has_more: result.has_more,
             source_size_bytes: result.source_size_bytes,
+            observation: result.observation,
             codex_sessions_mode: config.codexSessions
           });
         }

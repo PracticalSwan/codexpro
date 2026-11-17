@@ -11,13 +11,13 @@ CodexPro Full is the `PracticalSwan/codexpro` fork. The installed command is sti
 Use the GitHub Release artifact when you want the latest tagged/stable build:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.34.0/codexpro-full-0.34.0.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.34.1/codexpro-full-0.34.1.tgz
 codexpro --version
 ```
 
 ### Latest `main`
 
-Release **0.34.0** is available as the tagged GitHub artifact above. It includes Plan 47's simpler setup/status and Plan 48's complete retirement of obsolete per-tool-call deadlines. Build main only for future unreleased work; independent timeouts and manual startup remain.
+Release **0.34.1** is published as the tagged GitHub artifact above after hosted verification. It includes Plan 47's simpler setup/status and Plan 48's complete retirement of obsolete per-tool-call deadlines. Build main only for future unreleased work; independent timeouts and manual startup remain.
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -27,11 +27,11 @@ git pull --ff-only origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.34.0.tgz
+npm install -g ./codexpro-full-0.34.1.tgz
 codexpro --version
 ```
 
-Release 0.34.0 includes the previously unreleased 0.33.9 UI and dependency improvements, the ownership-safe tunnel and Windows process fixes, and deadline-feature retirement. The operator must start CodexPro manually after installation.
+Release 0.34.1 includes the earlier 0.33.9 UI improvements and targeted security dependency updates, the ownership-safe tunnel and Windows process fixes, and deadline-feature retirement. The operator must start CodexPro manually after installation.
 
 When an existing runtime uses the configured port, `codexpro doctor` reports the identity-verified running instance from that workspace as a warning rather than an unrelated conflict. Do not launch a second instance; use `codexpro status --root <workspace>` to check the current runtime.
 
@@ -111,7 +111,7 @@ When `open_workspace` returns a `workspace_id`, keep using that ID explicitly af
 
 ## 6. Recommended: multiple ChatGPT sessions, multiple projects
 
-For most users, run **one CodexPro runtime** and allow every project you want that runtime to serve. Release 0.34.0 includes simplified local setup and the current multi-session/isolation fixes and maintenance hardening, including ownership-safe tunnel scratch cleanup. If later changes are listed under **Unreleased** in `CHANGELOG.md`, use current `main` only when you specifically need those newer changes.
+For most users, run **one CodexPro runtime** and allow every project you want that runtime to serve. Release 0.34.1 includes simplified local setup and the current multi-session/isolation fixes and maintenance hardening, including ownership-safe tunnel scratch cleanup. If later changes are listed under **Unreleased** in `CHANGELOG.md`, use current `main` only when you specifically need those newer changes.
 
 Example:
 
@@ -229,7 +229,7 @@ git pull --ff-only origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.34.0.tgz
+npm install -g ./codexpro-full-0.34.1.tgz
 codexpro --version
 codexpro doctor
 ```

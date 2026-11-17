@@ -5,7 +5,7 @@ Scope: this repository and all descendants.
 ## Start here
 1. Read `docs/agentic/PROJECT_MEMORY.md` for durable current-state facts.
 2. Read `docs/agentic/DEVELOPMENT_WORKFLOW.md` before planning or implementation.
-3. Use `docs/agentic/PLAN_INDEX.md` as the roadmap/status source of truth. For implementation, read the selected plan/spec in full. Plans 38?48 are released and verified in v0.34.0; optional Plan 48 metadata changes were omitted without measured real-host evidence. Preserve their security and runtime boundaries during maintenance.
+3. Use `docs/agentic/PLAN_INDEX.md` as the roadmap/status source of truth. For implementation, read the selected plan/spec in full. Plans 38?48 are released and verified in v0.34.0; optional Plan 48 metadata changes were omitted without measured real-host evidence. Plan 49 is the currently authorized v0.34.1 reliability/public-documentation work; keep all scope and release gates. Preserve their security and runtime boundaries during maintenance.
 4. Recover Git status/branch/remotes/upstream, touched paths/tests, relevant external state, and whether a CodexPro runtime is already running before mutation.
 
 ## Development rules
@@ -15,6 +15,7 @@ Scope: this repository and all descendants.
 - Planning work may update planning/documentation only; plans are not evidence that runtime behavior exists.
 - **Codex CLI is prohibited.** Do not invoke or delegate to any Codex CLI subcommand for implementation, debugging, tests, review, or mutation.
 - Implementation begins only from user-authorized scope. For a single authorized implementation/defect, successful verification is standing authorization to update relevant docs, commit intended changes, push `origin/main`, and reinstall `codexpro-full` only when the runtime-lifecycle rule permits it. Multi-plan work keeps each plan independently reviewable and verified.
+- For public repositories, keep root README.md concise, user-oriented and link-led. Put command inventories, historical notes and implementation details in named docs, not the README; do not expose local machine paths or private state.
 - Do not create new top-level MCP tools when an existing tool can be deepened safely. Do not add another workflow scheduler, model router, context database, generic browser automation layer, debugger platform, or autonomous repair loop without a new explicitly approved architecture decision.
 - CodexPro has no configurable per-MCP-call deadline. Preserve per-command, network, cancellation, cleanup and output bounds. Use existing processes, verification jobs, batches or Goals when task characteristics justify them, without reducing safety or correctness to fit a guessed host window.
 - Optional Docker support is frozen at the verified Windows Stage A scope for Bash/workspace processes. Goals remain host-only; do not reopen Linux/Goal Docker expansion without a concrete approved need.

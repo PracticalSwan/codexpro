@@ -1,0 +1,297 @@
+# CodexPro Full ? Advanced Workflows
+
+For first-time setup, start with the [Getting Started guide](../GETTING_STARTED.md). This document retains deeper operator workflows outside the public README.
+
+## Daily workflow
+
+A strong default ChatGPT workflow is:
+
+```text
+1. server_config
+2. open_current_workspace
+3. instructions_for_path / gather_context
+prepare_subtask_context as needed
+4. read/search/inspect
+5. write/edit/apply_patch
+6. run_checks or verify_changes
+7. show_changes
+8. git_stage/git_commit only when explicitly requested
+```
+
+`show_changes` uses MCP-session-local review checkpoints. It can include bounded, redacted synthetic diffs for safe untracked text files; another MCP session intentionally does not inherit the previous session's review checkpoint.
+
+For long-running commands, use `start_workspace_process` and keep the returned `proc_*` handle for later status/output/stop calls.
+
+For change monitoring, take a `workspace_events` baseline and keep the returned `evt_*` cursor.
+
+For multi-step durable execution, use the Goal lifecycle:
+
+```text
+propose_goal
+-> approve_goal
+-> start_goal
+-> review_goal
+-> project_goal
+```
+
+Goal execution never automatically commits, pushes, merges, deploys, publishes, or uploads.
+
+## Core CLI
+
+```bash
+codexpro setup
+codexpro start
+codexpro doctor
+codexpro connection-test
+codexpro settings
+codexpro inspect
+codexpro review
+```
+
+Useful modes:
+
+```bash
+codexpro start --no-bash
+codexpro start --tool-mode minimal
+codexpro start --tool-mode standard
+codexpro start --tool-mode full
+codexpro start --mode handoff
+codexpro start --mode pro
+codexpro start --headless
+```
+
+Optional cards:
+
+```bash
+CODEXPRO_TOOL_CARDS=1 codexpro start
+```
+
+## Multiple projects
+
+For most multi-chat workflows, use **one CodexPro runtime** with multiple explicitly allowed projects. One-off:
+
+```bash
+codexpro start --project ~/code/web --project ~/code/api
+```
+
+Or save the additional roots:
+
+```bash
+codexpro settings set --project ~/code/web --project ~/code/api
+codexpro settings show
+codexpro start
+```
+
+Use `open_workspace` for another allowed root and keep the returned `workspace_id` for cross-session calls.
+
+Open separate ChatGPT conversations and call `open_workspace` for the intended allowed root in each one. Keep each returned `workspace_id` and pass it explicitly after MCP/session turnover.
+
+Separate local MCP processes/ports can isolate local clients, but a different local port alone does **not** create a second ChatGPT connector when both processes reuse the same OpenAI tunnel identity. CodexPro therefore rejects a second live launcher that tries to reuse an active OpenAI tunnel ID. Use one runtime with additional allowed roots, or configure a distinct OpenAI tunnel ID for each simultaneous runtime. See **[GETTING_STARTED.md](../GETTING_STARTED.md)** for complete two-chat/two-project and hard-isolation examples.
+
+## Connection options
+
+The primary ChatGPT path is OpenAI Secure MCP Tunnel:
+
+```bash
+# after one-time Platform tunnel/key setup
+codexpro openai-key save   # one-time masked prompt; stores a protected per-user secret file
+codexpro settings set --tunnel openai --openai-tunnel-id tunnel_0123456789abcdef0123456789abcdef
+codexpro start
+```
+
+Do not paste the runtime API key into chat, commit it, or save it in a workspace profile. `codexpro openai-key save` stores it only in a protected per-user secret file; `CONTROL_PLANE_API_KEY` remains the session-only override. `CONTROL_PLANE_TUNNEL_ID` and `TUNNEL_CLIENT_BIN` are optional environment alternatives for the non-secret tunnel ID/client path. The launcher uses an independent finite tunnel transport TTL and automatically recovers persistent tunnel-client readiness/process failures by replacing only the tunnel child; the local MCP server and workspace runtime stay in place.
+
+HTTP fallbacks remain available:
+
+```bash
+codexpro ngrok --hostname your.ngrok-free.dev
+codexpro start --tunnel cloudflare
+codexpro stable --hostname codexpro.example.com --tunnel-name codexpro
+codexpro tailscale --hostname your-device.your-tailnet.ts.net
+codexpro start --tunnel none
+```
+
+When an existing saved ngrok profile is migrated to OpenAI mode, CodexPro retains its ngrok hostname/config as fallback metadata so `codexpro ngrok` can reuse it. Public/non-loopback HTTP endpoints should keep CodexPro authentication enabled. Prefer `Authorization: Bearer <token>` when the MCP client supports headers. Query-string tokens are a personal compatibility fallback and must not be shared.
+
+## Workspace policy
+
+A workspace may add `.codexpro-policy.json` to tighten the active profile. It can reduce modes, disable optional capabilities, add blocked globs, and lower resource ceilings. It cannot widen global authority.
+
+See [docs/workspace-policy.md](workspace-policy.md).
+
+## Trusted project hooks
+
+Trusted repositories may define `.codexpro-hooks.json` lifecycle hooks. Hook files never execute merely because they exist: trust is stored outside the repository and binds the canonical workspace plus exact hook-file SHA-256. Inspect or trust the current fingerprint locally with `codexpro trust status` / `codexpro trust hooks`; MCP exposes read-only `project_trust_status`. See [docs/hooks.md](hooks.md).
+
+## Durable checkpoints
+
+CodexPro file mutations (`write`, `edit`, `apply_patch`, and `apply_change_set`) now return a bounded `chk_*` checkpoint. `restore_checkpoint` restores only those touched files and refuses to overwrite later edits. Checkpoint preimages live outside the workspace. See [docs/checkpoints.md](checkpoints.md).
+
+## Durable operations
+
+State-changing tools can use idempotency keys and return durable `op_*` receipts. Query them with `operation_status`.
+
+Full workspace-write mode also supports:
+
+```text
+prepare_change_set
+apply_change_set
+revert_operation
+```
+
+These provide SHA-guarded multi-file transactions and supported safe reverts.
+
+## Processes and verification
+
+Use:
+
+```text
+start_workspace_process
+workspace_process_status
+read_workspace_process_output
+stop_workspace_process
+run_checks
+verify_changes
+start_checks
+start_verification
+```
+
+`verify_changes` also returns bounded deterministic repair metadata (category, likely paths, related tests, and next actions); CodexPro does not run an autonomous repair loop. `run_checks` and `verify_changes` additionally return advisory execution-routing metadata. For long/high-variance verification, use `start_checks` or `start_verification` to create a durable `job_*` without reducing check coverage.
+
+Registered structured long operations use persistent `job_*` state outside the workspace. Inspect/control them with `job_status`, `list_jobs`, `read_job_output`, `cancel_job`, and `resume_job`. Output reads are bounded/cursor-based, worker cancellation verifies PID + OS start identity + nonce attestation, and there is deliberately no generic `job_start(command)` interface.
+
+Process handles and event cursors survive separate ChatGPT HTTP/MCP calls while the same CodexPro runtime remains alive; structured `job_*` records additionally survive MCP/runtime turnover.
+
+For optional Docker-backed Bash/process execution, set `CODEXPRO_EXECUTION_BACKEND=docker` and `CODEXPRO_DOCKER_IMAGE` to an image that already exists locally. CodexPro does not install Docker, pull/build images, log in to registries, expose the Docker socket, or fall back to host execution when Docker was explicitly selected. Containers mount only the selected workspace, use no network, and run with bounded resources. Durable Goals currently stay on the host backend; Windows Stage A is verified, while Linux live validation remains pending.
+
+## Code intelligence
+
+Built-in search/analysis always remains available.
+
+Optional providers:
+
+- **CodeGraph**: CodexPro 0.32.4 supports the CodeGraph 1.6.x CLI contract and explicit `codegraph_sync`.
+- **LSP**: only when separately configured/enabled.
+
+Use `code_intelligence_status` before relying on an optional provider. Do not sync CodeGraph unnecessarily when the index is already current.
+
+## Git safety
+
+Full mode includes bounded history/show/blame, package graph, change impact, preflight, explicit staging, and guarded commit.
+
+A guarded commit can require the expected:
+
+```text
+branch
+HEAD
+staged path set
+```
+
+`git_push` only exists when explicitly enabled. No force-push interface exists.
+
+For one user-wide extra commit guard, enable the built-in staged-commit safety hook:
+
+```bash
+codexpro hooks staged-commit enable
+codexpro hooks status
+```
+
+It applies to every current and future CodexPro workspace for that OS user, runs only before `git_commit`, and does not auto-trust any other project hook. See [docs/hooks.md](hooks.md).
+
+## Archive, document, and export tools
+
+CodexPro Full can:
+
+- inspect safe ZIP archives without extracting
+- reject traversal/absolute archive entries
+- extract transactionally into contained destinations
+- read bounded PDF and OOXML text/metadata without executing Office
+- export a workspace file through an opaque `codexpro-export://...` resource identity
+
+## Durable Goals
+
+Durable Goals are opt-in and documented in [docs/goals.md](goals.md).
+
+They provide:
+
+- persisted Goal/task state
+- dependency-aware DAG scheduling
+- detached Git-worktree execution
+- pause/resume/cancel
+- exact approval and review fingerprints
+- explicit source projection authorization
+- cross-call durability and recovery
+
+Projection is deliberately separate from execution and review.
+
+## Codex session navigation
+
+With `codexSessions=read`, ChatGPT can use bounded local history tools:
+
+```text
+codex_sessions
+read_codex_session
+search_codex_session
+read_codex_session_around
+```
+
+These do not attach to or control a live Codex app conversation.
+
+## Handoff workflows
+
+When ChatGPT should plan but not directly edit source, use handoff mode. CodexPro stores bounded planning/status artifacts under `.ai-bridge`.
+
+Local terminal-only helpers include:
+
+```bash
+codexpro execute-handoff
+codexpro watch-handoff
+codexpro loop-handoff
+```
+
+They are not unrestricted remote MCP executors. On current `main`, local handoff executors block standard Git/GitHub remote mutations by default, remove inherited GitHub tokens from the guarded child environment, and require the explicit `--allow-remote-mutations` flag when a remote side effect is authorized. Interrupted or stale in-flight handoffs are reported as `interrupted` / `orphaned` with reconciliation required before retrying material side effects.
+
+## Diagnostics
+
+Use:
+
+```text
+connection_diagnostics
+tool_surface_diagnostics
+local_telemetry
+codexpro_self_test
+effective_policy
+```
+
+Diagnostics are designed to expose bounded health/configuration metadata without prompts, source-file contents, raw command transcripts, authentication tokens, or absolute diagnostic paths by default. Current `main` also correlates HTTP requests with bounded `X-CodexPro-Request-Id` values and counts authentication failures in the existing bounded telemetry. Set `CODEXPRO_EXPOSE_ABSOLUTE_PATHS=1` only for trusted local debugging. `server_config` reports the installed package name/version plus the current HTTP session limit/TTL. `connection_diagnostics.active_sessions` is the retained server-side MCP transport count, so recently closed clients can remain counted until explicit session deletion or idle-TTL pruning. Historical failure counters remain visible even after current connection health recovers.
+
+`activity_log` provides a bounded, sanitized per-workspace chronological ledger outside the workspace; it never stores prompts or raw tool output. The authenticated local control page can save non-secret next-run profile settings. Authentication tokens remain hidden.
+
+## Runtime and structured evidence helpers
+
+The local CLI exposes read-only runtime/build evidence without adding restart authority:
+
+```bash
+codexpro --version --verbose
+codexpro status --json
+codexpro profiles list --json
+codexpro profiles show --current --json
+```
+
+`codexpro stop` is an exact-owner, PID/start-identity guarded local operation; it never starts or restarts CodexPro. The MCP surface adds `read_notebook`, `inspect_table`, and `inspect_dependency` in Standard/Full modes, plus `workspace_snapshot.briefing` and `verify_changes.failure_context`. The dependency reader is the only narrow `node_modules` exception and requires a directly declared, workspace-contained package; generic file/search/context tools remain blocked there.
+
+`probe_local_service` is Full-mode only and disabled by default. When explicitly enabled, it performs one bounded HTTP GET or HEAD request to an explicit loopback port, never follows redirects, sends no credentials or custom headers, and reports target ownership as unknown. A GET can still have application-defined side effects, so enable this capability only for trusted local development services.
+
+## Safety defaults
+
+- public/non-loopback HTTP requires authentication unless explicitly overridden
+- writes are contained to allowed workspace roots
+- `.env*`, `.git`, private keys, dependency/build/cache areas, symlink escapes, and configured blocked paths are protected
+- workspace policy can only tighten authority
+- safe Bash is available for reduced shell risk; `--no-bash` removes shell tools
+- Goal workers receive reduced authority and stop at review/projection boundaries
+- Git push is separately gated
+- environment inheritance is separately gated
+- telemetry is bounded and sanitized
+
+Read [SECURITY.md](../SECURITY.md) before exposing any public HTTP fallback tunnel or supplying tunnel credentials.

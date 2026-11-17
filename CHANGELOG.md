@@ -2,8 +2,19 @@
 
 ## Unreleased
 
+## 0.34.1 (2026-11-17)
+
+- Made secret scanning baseline-aware for guarded edits, writes, change sets, and safety preflight; added non-secret file/line/category diagnostics and safer staged patch review. New/duplicated secret values remain blocked, preexisting content is never printed, and HEAD-only matches are flagged for separate review.
+- Expanded explicitly requested screenshot delivery to 6 MB while retaining the default limit, MIME/dimension/hash metadata, workspace authorization and native MCP image content.
+- Added transcript-page observation counters, opt-in bounded workspace recovery snapshots and source-identity evidence for synchronous/structured verification. Unknown/changed/untracked source states are not represented as verified.
+- Shortened the public README to a readable quick start and moved advanced material into `docs/usage-workflows.md`. Sanitized active project memory and added public-repository and contribution guidance.
+- Added focused regressions for secret detection, real guarded edits, source evidence staleness, Codex transcript deltas, and image size bounds. No new execution engine, model router, OCR module, agent loop, database or unrestricted desktop API.
+
+
 - Postrelease `main` maintenance: updated CLI help to advertise v0.34.0 as the current stable archive rather than the previous v0.33.8 download.
 - Synchronized README, FAQ, feature overview, installation instructions, and Pages with the verified v0.34.0 public release.
+- Resolved the November 2026 npm advisories with targeted fixes to the MCP Node adapter, minimatch and compatible body-parser, Hono, and qs versions. Clean npm audit reports zero known vulnerabilities; both MCP SDK compatibility modes remain tested.
+- Simplified CLI help to show one version-matched install command and the current public release index, with a clear warning for unreleased main builds. This prevents stale hard-coded stable version links.
 
 ## 0.34.0 (2026-10-24)
 

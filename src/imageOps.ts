@@ -73,9 +73,9 @@ export async function viewWorkspaceImage(
   const resolved = guard.resolve(workspace, filePath);
   const stat = await fsp.stat(resolved.absPath);
   if (!stat.isFile()) throw new CodexProError(`Not a file: ${resolved.relPath}`);
-  const limit = Math.min(2_000_000, maxBytes ?? Math.max(config.maxReadBytes, 1_000_000));
+  const limit = Math.min(maxBytes === undefined ? 2_000_000 : 6_000_000, Math.max(4_096, maxBytes ?? Math.max(config.maxReadBytes, 1_000_000)));
   if (stat.size > limit) {
-    throw new CodexProError(`Image is too large (${stat.size} bytes). Limit: ${limit} bytes.`);
+    throw new CodexProError(`Image is too large (${stat.size} bytes). Limit: ${limit} bytes; for screenshots, request max_bytes up to 6000000 or crop outside CodexPro.`);
   }
   const buffer = await fsp.readFile(resolved.absPath);
   const identified = identifyImage(buffer);

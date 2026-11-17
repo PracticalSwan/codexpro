@@ -1,3 +1,4 @@
+import { captureSourceIdentity, compareSourceIdentity } from "../sourceEvidence.js";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { CodexProConfig } from "../config.js";
@@ -59,6 +60,8 @@ export async function executeVerificationJob(context: StructuredJobWorkerContext
   const workspace = workspaceFor(context);
   const guard = new PathGuard(context.config);
   const results = previousResults(context.record);
+  const resumedEarlier = results.length > 0;
+  const sourceBefore = captureSourceIdentity(workspace.root);
   const completedIds = new Set(results.map((result) => result.check.id));
   await context.setProgress({ phase: "discover", completed: results.length, total: payload.selectedChecks.length });
 
@@ -82,9 +85,11 @@ export async function executeVerificationJob(context: StructuredJobWorkerContext
   }
 
   if (await context.cancelRequested()) return { mode: payload.mode, selectedChecks: payload.selectedChecks, results, complete: false };
+  const rawSourceEvidence = compareSourceIdentity(sourceBefore, captureSourceIdentity(workspace.root));
+  const source_evidence = resumedEarlier ? { ...rawSourceEvidence, changed_during_run: null, current_matches: null, warning: "Resumed check results may belong to earlier source state; verify again." } : rawSourceEvidence;
   await context.setProgress({ phase: "summarize", completed: results.length, total: payload.selectedChecks.length });
   if (payload.mode === "verify") {
-    return { ...finalizeVerificationResult(payload.analysis!, payload.selectedChecks, results, { complete: true }, verificationRoutingHint(context.config, payload.selectedChecks, payload.timeoutMs, "start_verification")) };
+    return { ...finalizeVerificationResult(payload.analysis!, payload.selectedChecks, results, { complete: true }, verificationRoutingHint(context.config, payload.selectedChecks, payload.timeoutMs, "start_verification"), source_evidence) };
   }
   return {
     ok: results.every((result) => result.ok),
@@ -92,6 +97,7 @@ export async function executeVerificationJob(context: StructuredJobWorkerContext
     remainingCheckIds: [],
     selectedChecks: payload.selectedChecks,
     results,
+    source_evidence,
     routing: verificationRoutingHint(context.config, payload.selectedChecks, payload.timeoutMs, "start_checks"),
     execution_hint: verificationRoutingHint(context.config, payload.selectedChecks, payload.timeoutMs, "start_checks").executionHint
   };

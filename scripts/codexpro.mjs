@@ -56,16 +56,13 @@ function isLoopbackHost(host) {
 
 function usage() {
   const version = packageVersion();
-  const publishedVersion = buildIdentity().channel === "release" ? version : "0.34.0";
+  const isRelease = buildIdentity().channel === "release";
   console.log(`CodexPro Full launcher
 
-Install previously verified public stable release:
-  npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v${publishedVersion}/codexpro-full-${publishedVersion}.tgz
-
-When CodexPro Full v${version} has passed hosted CI and is publicly released:
+${isRelease ? "Install this verified public release:" : "Install this candidate only after its matching GitHub Release is published:"}
   npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v${version}/codexpro-full-${version}.tgz
 
-Available releases: https://github.com/PracticalSwan/codexpro/releases
+Current stable releases: https://github.com/PracticalSwan/codexpro/releases/latest
 
 Usage:
   codexpro setup

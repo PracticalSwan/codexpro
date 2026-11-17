@@ -55,3 +55,5 @@ npm run connect -- --root /path/to/test/repo --bash safe --write handoff
 - Name the exact command, mode, flag, and failure case.
 - Make risk boundaries clear.
 - Prefer examples that use `/path/to/repo` and `codexpro.example.com`, not local machine paths.
+
+A repository README is a concise reader-facing overview, not an archive of all internals or maintenance notes. Keep deep explanations in linked guides, tests, docs, and the changelog; do not publish local machine paths, credentials, private runtime state or secret-bearing logs.

@@ -9,6 +9,7 @@ import type { ChangeAnalysis } from "./analysis/types.js";
 import { parseTestOutput, type StructuredTestResult, type TestFramework } from "./testResultOps.js";
 import { buildVerificationRepairContract, type VerificationRepairContract } from "./verificationEvidence.js";
 import { composeVerificationFailureContext, type VerificationFailureContext } from "./verificationFailureContext.js";
+import { captureSourceIdentity, compareSourceIdentity, type VerificationSourceEvidence } from "./sourceEvidence.js";
 
 export interface TrustedCheck {
   id: string;
@@ -46,6 +47,7 @@ export function verificationRoutingHint(config: CodexProConfig, selectedChecks: 
 }
 
 export interface CheckRunResult {
+  source_evidence: VerificationSourceEvidence;
   ok: boolean;
   complete: boolean;
   remainingCheckIds: string[];
@@ -129,6 +131,7 @@ export async function runChecks(request: {
   const discovered = await discoverTrustedChecks(request.config, request.guard, request.workspace);
   const selectedChecks = selectTrustedChecks(discovered, request.checkIds);
   const results: CheckExecutionResult[] = [];
+  const sourceBefore = captureSourceIdentity(request.workspace.root);
   const requestedTimeoutMs = Math.max(1_000, Math.min(request.timeoutMs ?? 30_000, request.config.maxBashTimeoutMs));
   for (const check of selectedChecks) {
     const result = await runBash(request.config, request.guard, request.workspace, check.command, { timeoutMs: requestedTimeoutMs, sessionId: request.sessionId });
@@ -139,7 +142,7 @@ export async function runChecks(request: {
     });
   }
   const routing = verificationRoutingHint(request.config, selectedChecks, request.timeoutMs, "start_checks");
-  return { ok: results.every((result) => result.ok), complete: true, remainingCheckIds: [], selectedChecks, results, routing, execution_hint: routing.executionHint };
+  return { ok: results.every((result) => result.ok), complete: true, remainingCheckIds: [], selectedChecks, results, routing, execution_hint: routing.executionHint, source_evidence: compareSourceIdentity(sourceBefore, captureSourceIdentity(request.workspace.root)) };
 }
 export function selectVerificationChecks(analysis: ChangeAnalysis, discovered: TrustedCheck[]): TrustedCheck[] {
   const byCommand = new Map(discovered.map((check) => [check.command, check]));
@@ -167,6 +170,7 @@ export async function prepareVerification(request: { config: CodexProConfig; gua
 }
 
 export interface VerificationPlanResult {
+  source_evidence?: VerificationSourceEvidence;
   analysis: ChangeAnalysis;
   selectedChecks: TrustedCheck[];
   results: CheckExecutionResult[];
@@ -179,10 +183,10 @@ export interface VerificationPlanResult {
   failure_context?: VerificationFailureContext[];
 }
 
-export function finalizeVerificationResult(analysis: ChangeAnalysis, selectedChecks: TrustedCheck[], results: CheckExecutionResult[], state: { complete: boolean; remainingCheckIds?: string[] }, routing: VerificationRoutingHint): VerificationPlanResult {
+export function finalizeVerificationResult(analysis: ChangeAnalysis, selectedChecks: TrustedCheck[], results: CheckExecutionResult[], state: { complete: boolean; remainingCheckIds?: string[] }, routing: VerificationRoutingHint, sourceEvidence?: VerificationSourceEvidence): VerificationPlanResult {
   const repair = buildVerificationRepairContract(analysis, results);
   const effectiveRepair = !state.complete && repair.status === "passed" ? buildVerificationRepairContract(analysis, []) : repair;
-  return { analysis, selectedChecks, results, ok: state.complete ? results.every((result) => result.ok) : null, complete: state.complete, remainingCheckIds: state.remainingCheckIds ?? [], repair: effectiveRepair, routing, execution_hint: routing.executionHint, failure_context: composeVerificationFailureContext(analysis, results) };
+  return { ...(sourceEvidence ? { source_evidence: sourceEvidence } : {}), analysis, selectedChecks, results, ok: state.complete ? results.every((result) => result.ok) : null, complete: state.complete, remainingCheckIds: state.remainingCheckIds ?? [], repair: effectiveRepair, routing, execution_hint: routing.executionHint, failure_context: composeVerificationFailureContext(analysis, results) };
 }
 
 export async function verifyChanges(request: {
@@ -207,5 +211,5 @@ export async function verifyChanges(request: {
     timeoutMs: request.timeoutMs,
     sessionId: request.sessionId
   });
-  return finalizeVerificationResult(analysis, selectedChecks, executed.results, { complete: executed.complete, remainingCheckIds: executed.remainingCheckIds }, verificationRoutingHint(request.config, selectedChecks, request.timeoutMs, "start_verification"));
+  return finalizeVerificationResult(analysis, selectedChecks, executed.results, { complete: executed.complete, remainingCheckIds: executed.remainingCheckIds }, verificationRoutingHint(request.config, selectedChecks, request.timeoutMs, "start_verification"), executed.source_evidence);
 }

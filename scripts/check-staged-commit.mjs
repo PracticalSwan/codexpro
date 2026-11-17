@@ -12,10 +12,10 @@ const blockedPathPatterns = [
 ];
 
 const secretPatterns = [
-  /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/,
-  /\bAKIA[0-9A-Z]{16}\b/,
-  /\bgh[pousr]_[A-Za-z0-9]{20,}\b/,
-  /\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b/
+  { category: 'private-key', pattern: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/ },
+  { category: 'cloud-key', pattern: /\bAKIA[0-9A-Z]{16}\b/ },
+  { category: 'token', pattern: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/ },
+  { category: 'token', pattern: /\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b/ }
 ];
 
 const failures = [];
@@ -42,15 +42,19 @@ if (check.status !== 0) failures.push(`git diff --cached --check failed: ${oneLi
 
 const patch = git(['diff', '--cached', '--unified=0', '--no-color', '--diff-filter=ACMR']).stdout;
 let currentFile = '';
+let addedLine = 0;
 for (const line of patch.split(/\r?\n/)) {
-  if (line.startsWith('+++ b/')) {
-    currentFile = line.slice(6);
-    continue;
-  }
+  if (line.startsWith('+++ b/')) { currentFile = line.slice(6); continue; }
+  const hunk = /^@@ .* \+(\d+)(?:,\d+)? @@/.exec(line);
+  if (hunk) { addedLine = Number(hunk[1]); continue; }
   if (!line.startsWith('+') || line.startsWith('+++')) continue;
-  if (secretPatterns.some((pattern) => pattern.test(line.slice(1)))) {
-    failures.push(`Secret-looking staged content detected${currentFile ? ` in ${currentFile}` : ''}.`);
+  for (const rule of secretPatterns) {
+    if (rule.pattern.test(line.slice(1))) {
+      failures.push(`Secret-like ${rule.category} introduced in staged patch at ${currentFile || '[unknown file]'}:${addedLine}; value withheld.`);
+      break;
+    }
   }
+  addedLine += 1;
 }
 if (failures.length) {
   console.error('CodexPro staged-commit safety gate blocked git_commit:');

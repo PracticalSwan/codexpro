@@ -4,7 +4,7 @@ Last verified: 2026-10-24 (Asia/Bangkok)
 
 ## Canonical workspace and identity
 
-- Repository: `D:\Side Projects\codexpro`.
+- Repository: an operator-selected checkout of `PracticalSwan/codexpro`.
 - Fork/origin: `PracticalSwan/codexpro`; canonical branch `main`.
 - Upstream: `rebel0789/codexpro`.
 - Latest fetched upstream baseline observed on 2026-10-05: `113472c6ff0a1516b6f223a43cd355abdf2e61ae`. The five upstream commits since the prior `482d003` baseline were reviewed selectively against the divergent Full fork: the applicable Windows handoff settlement, runner-owned execution-log contract, and packed-package install validation were ported without wholesale merging upstream release/version history.
@@ -37,20 +37,14 @@ CodexPro Full is a local MCP bridge for explicitly allowed development workspace
 - Plans 01–17 and 20 are verified foundations: policy, operation journal/concurrency, diagnostics, processes/checks, context continuity, Git intelligence, Codex-session navigation, optional code intelligence, artifact I/O, Goals, MCP SDK compatibility seam, granular rules, trusted hooks, durable checkpoints, Context v2, activity evidence, and verification repair metadata.
 - MCP runtime uses the stable v2 split packages with Zod 4 while retaining the verified legacy 2025 protocol behavior by default. The unfinished interactive-approval extension from former Plan 18 is retired; fail-closed behavior remains.
 - Former Plan 19 MCP Tasks bridge is retired. Existing `proc_*`, `job_*`, `batch_*`, and Goal primitives remain canonical.
-- Browser/Telegram task continuation was fully removed on 2026-09-22 from runtime source, package contents, plans/contracts/tests/docs, saved continuation profile/runtime fields, managed-browser state, and Telegram secret state; deadline-aware long-work primitives remain independent.
+- Browser/Telegram task continuation was fully removed on 2026-09-22 from runtime source, package contents, plans/contracts/tests/docs, saved continuation profile/runtime fields, managed-browser state, and Telegram secret state; existing long-work primitives remain independent.
 - Optional Docker execution is frozen at the verified Windows Stage A scope for one-shot Bash/workspace processes using an already-local image and constrained mounts/network/resources. Goals remain host-only. Linux-host and Goal-Docker expansion is not active roadmap work.
 
-## Deadline and durable long-work baseline
+## Long-running work
 
-- Plans 22–28 are verified and integrated.
-- Package default synchronous MCP call budget is 20 minutes (`1,200,000` ms); finite configuration range is 5–60 minutes. Unlimited/observe exists only for harmless host-window discovery and does not relax scope, verification, or safety.
-- Deadline is per tool call, not a whole-turn timer. Composite synchronous verification shares the same remaining budget.
-- Long-work roles are intentionally distinct:
-  - `proc_*`: workspace-owned arbitrary long process under existing Bash authority;
-  - `job_*`: persistent registered structured producer work;
-  - `batch_*`: foreground-only resumable in-process analysis;
-  - Goals: multi-stage isolated engineering.
-- Execution routing is advisory/deterministic and never silently escalates permissions or reduces required work.
+- Since v0.34.0, CodexPro has **no configurable per-MCP-call deadline** or ?tool_time_probe?. Keep independent timeouts, ownership, cancellation, clean-up, and output bounds.
+- ?proc_*? handles owned long processes; ?job_*? handles registered durable verification; ?batch_*? handles resumable bounded analysis; Goals handle explicitly approved multi-step review/projection. No replacement scheduler.
+- Source and documentation are public. Keep personal machine paths, raw transcripts, credentials, profiles and runtime state outside the repository. Retain historical project information only where it adds durable architectural context.
 
 ## Completed roadmap — consolidation first
 
@@ -84,6 +78,8 @@ Implementation status: Plans 38–46 are complete in the authoritative sequence.
 Research-only/watch items: future MCP protocol/Tasks/interactive-approval capabilities. Reopen only when stable connected-client support provides a concrete benefit over existing primitives.
 
 ## Maintenance and release state
+
+- **Plan 49 / v0.34.1 candidate (2026-11-17):** Implemented baseline-aware introduced-secret detection, opt-in 6 MB image reading, transcript observation summaries, bounded read-only reconnect recovery, repository-state verification provenance and a short public README with advanced guide. Full local release gate passed on 2026-11-17 (clean npm ci, build, all smoke, stress, zero-vulnerability audit, packed and installed-package smoke). Hosted CI, tagged release and global installation remain separate verification gates. User-owned running CodexPro must not be stopped without specific approval.
 
 - **Plan 48 / official v0.34.0 milestone (2026-10-24):** Removed the per-MCP-call deadline subsystem and `tool_time_probe` while preserving operation-specific safety bounds, process ownership, access rules, jobs and Goals. A full local `npm ci` and `npm run release:check` succeeded, including smoke, stress, zero-vulnerability npm audit and package installation. GitHub Actions dispatch recovered; hosted CI (both OSes), Pages and tag-triggered Release passed for exact source SHA `7d4054e`. SHA-256 archive and sidecar, all 304 entries, source provenance and released global package passed independent checks. User-authorized scoped stop terminated only the owned CodexPro runtime; no service restart. Installation preserved 17/17 protected state hashes; 11/11 saved profiles later migrated to remove exactly two deprecated keys each, with byte-identical backups, all doctors passing and port 8787 unbound. CI cost optimization eliminates docs-only OS builds and redundant stress work. Optional GPT-6 metadata edits were skipped without real selection-failure evidence.
 - **Postrelease documentation/CLI maintenance:** Public install guides and Pages now reference v0.34.0; main-channel launcher help stable-version fallback corrected from 0.33.8 to 0.34.0. These are follow-up `main` changes; the tagged release artifact remains unchanged.

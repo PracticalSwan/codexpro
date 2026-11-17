@@ -17,6 +17,73 @@ const PRIVATE_METADATA_PATTERNS = [
   /\b\d{13,20}\b/
 ];
 
+export interface SecretFinding {
+  line: number;
+  category: "token" | "authorization" | "credential";
+}
+function canonicalSecretIdentity(rule: number, match: RegExpExecArray): string {
+  // Preserve the credential field identity to reject moving a value into another field,
+  // but ignore harmless spacing or quoting around a value already present.
+  const raw = match[0];
+  let prefix = "";
+  let value = raw;
+  if (rule === 7) {
+    const equals = raw.indexOf("=");
+    if (equals >= 0) {
+      prefix = raw.slice(0, equals + 1);
+      value = raw.slice(equals + 1);
+    }
+  } else if (rule >= 2 && match[1]) {
+    prefix = match[1];
+    value = raw.slice(prefix.length);
+  }
+  const normalizedPrefix = prefix.replace(/\s+/g, "").toLowerCase();
+  const trimmedValue = value.trim();
+  const quote = trimmedValue[0];
+  const normalizedValue = (quote === '"' || quote === "'" || quote === "`") && trimmedValue.endsWith(quote)
+    ? trimmedValue.slice(1, -1) : trimmedValue;
+  return normalizedPrefix + "\0" + normalizedValue;
+}
+
+function secretMatches(text: string): Array<SecretFinding & { value: string; rule: number }> {
+  const categories: SecretFinding["category"][] = [
+    "token", "token", "authorization", "credential", "token",
+    "credential", "credential", "credential", "credential"
+  ];
+  const findings: Array<SecretFinding & { value: string; rule: number }> = [];
+  for (let rule = 0; rule < SECRET_PATTERNS.length; rule++) {
+    const pattern = SECRET_PATTERNS[rule];
+    pattern.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(text)) !== null) {
+      if (isPlaceholderSecret(match[0])) continue;
+      findings.push({
+        line: 1 + (text.slice(0, match.index).match(/\n/g)?.length ?? 0),
+        category: categories[rule],
+        value: canonicalSecretIdentity(rule, match),
+        rule
+      });
+    }
+  }
+  return findings.sort((a, b) => a.line - b.line);
+}
+/** Baseline comparison never returns matched values. New/duplicated secrets are blocked. */
+export function introducedSecretFindings(before: string, after: string): SecretFinding[] {
+  const baseline = new Map<string, number>();
+  for (const match of secretMatches(before)) {
+    const key = `${match.rule}\0${match.value}`;
+    baseline.set(key, (baseline.get(key) ?? 0) + 1);
+  }
+  const introduced: SecretFinding[] = [];
+  for (const match of secretMatches(after)) {
+    const key = `${match.rule}\0${match.value}`;
+    const previous = baseline.get(key) ?? 0;
+    if (previous > 0) baseline.set(key, previous - 1);
+    else introduced.push({ line: match.line, category: match.category });
+  }
+  return introduced.filter((finding, index) => introduced.findIndex((other) => other.line === finding.line) === index);
+}
+
 export function containsPrivateMetadataText(text: string): boolean {
   const value = String(text ?? "");
   if (redactSensitiveText(value) !== value) return true;

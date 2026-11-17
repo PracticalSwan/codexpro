@@ -19,7 +19,7 @@ CodexPro 不解锁自定义 MCP App，不解锁模型，不绕过账号限制，
 Recommended GitHub Release install:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.34.0/codexpro-full-0.34.0.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.34.1/codexpro-full-0.34.1.tgz
 ```
 
 Or build from the PracticalSwan source checkout:
@@ -31,7 +31,7 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.34.0.tgz
+npm install -g ./codexpro-full-0.34.1.tgz
 ```
 
 0.33.9 简化本机认证的 /setup 页面：显示关键状态和下次启动的设置，按连接类型显示字段、折叠高级设置，支持保存和撤销操作，OpenAI 使用 Tunnel ID。配置仅在用户手动重新启动后生效。并更新兼容依赖。
@@ -50,7 +50,7 @@ In 0.33.3, `codexpro doctor` distinguishes an existing identity-verified runtime
 
 In 0.33.2, Artifact Export diagnostics check the real `export_file` tool. The Local Service Probe stays off by default globally; only your OS account can opt into inherited future-profile defaults using `codexpro settings user-default --local-service-probe on`.
 
-The tagged tarball is CodexPro Full 0.34.0, incorporating the 0.33.9 operator improvements and retiring configurable synchronous call deadlines. Historical 0.33.x notes describe earlier releases. Upstream codexpro@latest is not this fork.
+The tagged tarball is CodexPro Full 0.34.1, incorporating the 0.33.9 operator improvements and retiring configurable synchronous call deadlines. Historical 0.33.x notes describe earlier releases. Upstream codexpro@latest is not this fork.
 
 ## CodexPro Full update
 
@@ -62,7 +62,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.34.0.tgz
+npm install -g ./codexpro-full-0.34.1.tgz
 codexpro --version
 ```
 

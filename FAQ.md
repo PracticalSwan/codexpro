@@ -36,6 +36,10 @@ The main differences are:
 - The normal workflow emphasizes diffs, `show_changes`, smoke tests, and handoff status files.
 - CodexPro keeps a strict boundary: no model proxying, account pooling, third-party Pro site scraping, quota bypassing, or OS sandbox claims.
 
+## What changed in release 0.34.1?
+
+0.34.1 improves baseline-aware secret detection, larger opt-in screenshots, opt-in reconnect recovery, transcript observation and verification provenance. It simplifies the public README and includes the November 2026 upstream security dependency fixes. The existing workspace security and manual runtime-start boundaries remain unchanged.
+
 ## What changed in release 0.34.0?
 
 0.34.0 includes the 0.33.9 setup improvements: cleaner authenticated /setup, relevant tunnel controls, reliable Save/Discard handling, and correct OpenAI Tunnel ID guidance. It also retires configurable per-tool-call deadlines and `tool_time_probe` while retaining operation-specific timeouts, jobs, processes, and other safety controls. CI skips documentation-only edits and removes duplicate Goal test executions.
@@ -119,10 +123,10 @@ For the full first-time setup, OpenAI tunnel/key steps, and multi-project exampl
 Install the latest tagged/stable artifact directly from GitHub Releases:
 
 ```bash
-npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.34.0/codexpro-full-0.34.0.tgz
+npm install -g https://github.com/PracticalSwan/codexpro/releases/download/v0.34.1/codexpro-full-0.34.1.tgz
 ```
 
-Stable **0.34.0** includes the verified Plans 38?46 plus released Plans 47?48, 0.33.9 usability and dependency improvements, and previous Windows/tunnel fixes. The official release tarball is available on GitHub; build main only for later unreleased changes.
+Stable **0.34.1** includes the verified Plans 38?46 plus released Plans 47?48, 0.33.9 usability and dependency improvements, and previous Windows/tunnel fixes. The official release tarball is available on GitHub; build main only for later unreleased changes.
 
 ```bash
 git clone https://github.com/PracticalSwan/codexpro.git
@@ -131,7 +135,7 @@ git checkout main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.34.0.tgz
+npm install -g ./codexpro-full-0.34.1.tgz
 ```
 
 Then run setup from the repository you want ChatGPT to work on:
@@ -159,7 +163,7 @@ git pull origin main
 npm install
 npm run build
 npm pack
-npm install -g ./codexpro-full-0.34.0.tgz
+npm install -g ./codexpro-full-0.34.1.tgz
 codexpro --version
 ```
 
@@ -495,3 +499,11 @@ codexpro settings delete --yes
 ```
 
 Saved tokens are redacted when profiles are displayed.
+
+## Why does secret scanning flag only certain edits`
+
+CodexPro distinguishes unchanged secret-looking content already in an existing file from newly introduced or duplicated secret-like material. It reports files, lines, and rule categories without disclosing values. Git preflight compares against `HEAD` and warns separately about unchanged legacy matches. This is heuristic protection; review staged changes before publishing.
+
+## How do I inspect a screenshot larger than 2 MB`
+
+Call `view_image` with an explicit `max_bytes` up to 6,000,000 for supported PNG/JPEG/GIF/WebP images. The normal default remains smaller, and oversized files still fail safely. CodexPro does not resize or manipulate images.

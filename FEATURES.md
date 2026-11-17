@@ -2,12 +2,19 @@
 
 CodexPro Full is PracticalSwan's independently maintained CodexPro fork. It keeps the `codexpro` CLI and MCP compatibility while adding the 0.31–0.33 agentic, continuity, safety, code-intelligence, artifact, and Durable Goal features. The release package is `codexpro-full`; installing it still provides the `codexpro` CLI.
 
-**Release status:** CodexPro Full **0.34.0** is the latest tagged GitHub Release. It includes the 0.33.9 operator usability and hook fixes and removes the configurable synchronous MCP-call deadline and `tool_time_probe`. Independent command/network safety limits, approval gates, jobs, processes, batches, Goals, and default-off local-service probe remain. Cross-platform and tag-triggered release checks succeeded.
+**Release status:** CodexPro Full **0.34.1** is the latest tagged GitHub Release. It includes the 0.33.9 operator usability and hook fixes and removes the configurable synchronous MCP-call deadline and `tool_time_probe`. Independent command/network safety limits, approval gates, jobs, processes, batches, Goals, and default-off local-service probe remain. Cross-platform and tag-triggered release checks succeeded.
 
 > Repository: `https://github.com/PracticalSwan/codexpro`
 > Upstream lineage: `https://github.com/rebel0789/codexpro`
 
 Feature availability depends on the active profile. Use `server_config` and `tool_surface_diagnostics` first when you need to know what the current ChatGPT session can actually call.
+
+## v0.34.1 reliability improvements
+
+- **Baseline-aware secret scanning:** safe edits to files with unchanged legacy matches proceed; newly introduced or duplicated secret-like values remain blocked with safe category/line diagnostics.
+- **Image delivery:** native PNG/JPEG/GIF/WebP MCP images retain dimensions and SHA-256, with a 6 MB explicit `max_bytes` ceiling for larger screenshots.
+- **Recovery and observation:** optional `workspace_snapshot.include_recovery` summarizes prior operations/jobs without replay; `read_codex_session.observation` returns bounded page counts labeled transcript-only evidence.
+- **Verification provenance:** synchronous checks and structured verification jobs include Git source identity and a current-state freshness indicator, with incomplete/untracked coverage labeled unknown.
 
 ## Quick start
 
