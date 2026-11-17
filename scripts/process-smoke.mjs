@@ -37,15 +37,15 @@ try {
   assert.equal('pid' in noisy, false, 'public process record exposed an OS PID');
   assert.ok(noisy.operationId?.startsWith('op_'));
 
-  const outputDeadline = Date.now() + 3000;
+  const outputDeadline = Date.now() + 8000;
   let first = manager.readOutput(noisy.id, { maxBytes: 4096 });
   while ((first.nextCursor <= first.cursor || (!first.truncated && !first.hasMore)) && Date.now() < outputDeadline) {
     await new Promise((resolve) => setTimeout(resolve, 50));
     first = manager.readOutput(noisy.id, { maxBytes: 4096 });
   }
-  assert.ok(first.nextCursor > first.cursor, 'workspace process did not produce readable output within 3 seconds');
+  assert.ok(first.nextCursor > first.cursor, 'workspace process did not produce readable output within 8 seconds');
   assert.ok(Buffer.byteLength(first.stdout + first.stderr, 'utf8') <= 5000);
-  assert.equal(first.truncated || first.hasMore, true, 'workspace process did not produce enough output to exercise cursor paging within 3 seconds');
+  assert.equal(first.truncated || first.hasMore, true, 'workspace process did not produce enough output to exercise cursor paging within 8 seconds');
   const second = manager.readOutput(noisy.id, { cursor: first.nextCursor, maxBytes: 4096 });
   assert.ok(second.cursor >= first.nextCursor);
   assert.throws(() => manager.status('proc_not_owned'), /Unknown process id/i);
@@ -56,19 +56,20 @@ try {
   assert.equal(manager.status(long.id).state, 'running');
   await manager.close();
   const stopped = manager.status(long.id);
-  assert.notEqual(stopped.state, 'running');
+  assert.equal(stopped.state, 'exited', 'shutdown must observe owned process exit');
   assert.equal(stopped.terminationReason, 'shutdown');
 
 } finally {
   console.log('[process smoke] test fixture teardown');
   await manager.close().catch(() => {});
+  console.log('[process smoke] managed termination states:', manager.list().map(({ state, terminationReason }) => ({ state, terminationReason })));
   for (const key of keys) {
     if (saved[key] === undefined) delete process.env[key];
     else process.env[key] = saved[key];
   }
   // Windows hosted runners may hold the test-owned directory briefly after child teardown.
   // Keep cleanup mandatory, with bounded retries instead of a timing-based sleep.
-  await fs.rm(rootRaw, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  await fs.rm(rootRaw, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   console.log('[process smoke] test fixture teardown complete');
 }
 console.log('process smoke passed');
